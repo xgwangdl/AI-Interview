@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class CandidatesService {
@@ -34,5 +35,13 @@ public class CandidatesService {
     public List<CandidateRecord> getCandidates() {
         List<Candidates> interviewers = this.interviewerRepository.findAll(Sort.by("id").descending());
         return interviewers.stream().map(Dto2Record::toCandidateRecord).toList();
+    }
+
+    public Candidates longinAdmin(String userid) {
+        Optional<Candidates> interviewerOpt = this.interviewerRepository.findById(Long.valueOf(userid));
+        if (!interviewerOpt.isPresent()) {
+            throw new RestException(String.valueOf(ResultCode.FORBIDDEN.getCode()),"不存在这个用户");
+        }
+        return interviewerOpt.get();
     }
 }

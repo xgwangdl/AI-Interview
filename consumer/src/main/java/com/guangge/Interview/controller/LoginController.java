@@ -66,4 +66,17 @@ public class LoginController {
         String username = decodedJWT.getClaim("userName").asString();
         return CommonResult.success(username);
     }
+
+    @PostMapping(value = "/loginAdmin")
+    public CommonResult<UserResponse> loginAdmin(@RequestParam("userid") String name) throws Exception {
+        Candidates candidates = this.candidatesService.longinAdmin(name);
+        String token = Sessions.loginUser(candidates.getName(),
+                true,
+                secret);
+        UserResponse userResponse = new UserResponse();
+        userResponse.setUserId(candidates.getId());
+        userResponse.setUserName(candidates.getName());
+        userResponse.setToken(token);
+        return CommonResult.success(userResponse);
+    }
 }

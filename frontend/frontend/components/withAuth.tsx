@@ -16,11 +16,17 @@ const withAuth = (WrappedComponent) => {
                     'token': token
                   },
         })
-        .then((response) => response.json())
+        .then((response) => {
+            if (!response.ok) { // 检查响应是否成功 (状态码 200-299)
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+          })
         .then((data) => {
             if (data.code == 401) {
               localStorage.removeItem('username');
               localStorage.removeItem('token');
+              localStorage.removeItem('isAdmin');
               navigate('/');
             } else {
               localStorage.setItem('username', data.data);
@@ -30,11 +36,13 @@ const withAuth = (WrappedComponent) => {
         .catch((err) => {
            localStorage.removeItem('username');
            localStorage.removeItem('token');
+           localStorage.removeItem('isAdmin');
            navigate('/');
         });
       } catch {
         localStorage.removeItem('username');
         localStorage.removeItem('token');
+        localStorage.removeItem('isAdmin');
         navigate('/');
       }
     }, [history]);

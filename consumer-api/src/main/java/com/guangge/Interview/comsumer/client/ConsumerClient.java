@@ -52,4 +52,7 @@ public interface ConsumerClient {
 
     @PostMapping(value = "/resume/create", consumes = MediaType.APPLICATION_JSON_VALUE)
     CommonResult<String> createCv(@RequestBody CvRequest cvRequest);
+
+    @PostMapping(value = "/loginAdmin")
+    CommonResult<UserResponse> loginAdmin(@RequestParam("userid") String name);
 }

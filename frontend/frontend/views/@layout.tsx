@@ -17,6 +17,8 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
+
   useEffect(() => {
     if (currentTitle) {
       documentTitleSignal.value = currentTitle;
@@ -28,8 +30,15 @@ export default function MainLayout() {
       <div slot="drawer" className="flex flex-col justify-between h-full p-m">
         <header className="flex flex-col gap-m">
           <span className="font-semibold text-l">拥抱AI</span>
+
           <SideNav onNavigate={({ path }) => navigate(path!)} location={location}>
-            {createMenuItems().map(({ to, title, icon }) => (
+            {createMenuItems().filter(item => ((item.order == 2 || item.order == 3) && isAdmin)).map(({ to, title, icon }) => (
+              <SideNavItem path={to} key={to}>
+                {icon ? <Icon icon={icon} slot="prefix"></Icon> : <></>}
+                {title}
+              </SideNavItem>
+            ))}
+            {createMenuItems().filter(item => item.order != 2 && item.order != 3 && !isAdmin).map(({ to, title, icon }) => (
               <SideNavItem path={to} key={to}>
                 {icon ? <Icon icon={icon} slot="prefix"></Icon> : <></>}
                 {title}
