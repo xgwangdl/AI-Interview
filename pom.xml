@@ -4,9 +4,7 @@
 	<packaging>pom</packaging>
 	<modules>
 		<module>consumer</module>
-		<module>frontend</module>
         <module>common</module>
-        <module>consumer-api</module>
     </modules>
 	<parent>
 		<groupId>org.springframework.boot</groupId>

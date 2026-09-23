@@ -1,6 +1,0 @@
-feign:
-  client:
-    config:
-      default: # 适用于所有 Feign Client
-        connectTimeout: 5000  # 连接超时 5 秒
-        readTimeout: 20000    # 读取超时 10 秒

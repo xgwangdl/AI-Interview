@@ -9,9 +9,9 @@ spring:
     debug: true                      # 开启debug模式用户会完整打印邮件发送过程的日志
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/interview
-    username: wxg
-    password: mysecretpassword
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/interview}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-init-sql: "CREATE EXTENSION IF NOT EXISTS vector;"
