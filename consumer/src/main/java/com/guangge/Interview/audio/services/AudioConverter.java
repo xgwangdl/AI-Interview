@@ -63,7 +63,7 @@ public class AudioConverter {
         errorThread.start();
 
         // 设置超时时间并等待进程完成
-        boolean finished = process.waitFor(10, TimeUnit.SECONDS);
+        boolean finished = process.waitFor(ffmpegTimeoutSeconds(), TimeUnit.SECONDS);
         if (!finished) {
             process.destroy(); // 强制结束进程
             throw new IOException("FFmpeg 处理超时");
@@ -83,6 +83,9 @@ public class AudioConverter {
     }
 
     private static String getFFmpegPath() {
+        String configured = System.getProperty("ffmpeg.path");
+        if (configured == null || configured.isBlank()) configured = System.getenv("FFMPEG_PATH");
+        if (configured != null && !configured.isBlank()) return configured;
         String os = System.getProperty("os.name").toLowerCase();
         if (os.contains("win")) {
             return "C:\\software\\ffmpeg-7.1-full_build\\bin\\ffmpeg.exe"; // Windows 路径
@@ -90,6 +93,17 @@ public class AudioConverter {
             return "/usr/bin/ffmpeg"; // Linux/macOS 路径
         } else {
             throw new UnsupportedOperationException("Unsupported operating system: " + os);
+        }
+    }
+
+    private static long ffmpegTimeoutSeconds() {
+        String configured = System.getProperty("ffmpeg.timeoutSeconds");
+        if (configured == null || configured.isBlank()) configured = System.getenv("FFMPEG_TIMEOUT_SECONDS");
+        if (configured == null || configured.isBlank()) return 60L;
+        try {
+            return Math.max(1L, Long.parseLong(configured.trim()));
+        } catch (NumberFormatException ignored) {
+            return 60L;
         }
     }
 }

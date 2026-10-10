@@ -18,11 +18,14 @@ const pageTitle = computed(() => ({ dashboard: '训练总览', setup: '创建训
 watch(() => route.fullPath, () => { menuOpen.value = false; });
 
 async function refreshPractice() {
+  // 登录页与首次跳转期间还没有 token，直接跳过，避免必然 401 的请求和误导性报错。
+  if (!localStorage.getItem('token')) return;
   try {
     await practice.loadFromServer();
     await practice.pruneExpired();
-  } catch {
-    ElMessage.error('无法读取练习记录，请检查后端连接后刷新页面。');
+  } catch (error) {
+    // 登录过期时守卫会跳转登录页，这时再弹「检查后端连接」只会误导用户。
+    if (error?.status !== 401) ElMessage.error('无法读取练习记录，请检查后端连接后刷新页面。');
   }
 }
 

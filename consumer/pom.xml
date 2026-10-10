@@ -3,7 +3,7 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>AI-Interview</artifactId>
+        <artifactId>Light-Interview</artifactId>
         <groupId>com.guangge</groupId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
@@ -12,16 +12,36 @@
     <artifactId>consumer</artifactId>
 
     <properties>
-        <java.version>17</java.version>
-        <spring-ai.version>1.0.0-SNAPSHOT</spring-ai.version>
-        <spring-ai-alibaba.version>1.0.0-M6.1</spring-ai-alibaba.version>
+        <java.version>21</java.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
+        <spring-ai-alibaba.version>1.1.2.4-security-fix</spring-ai-alibaba.version>
+        <aws-sdk.version>2.55.13</aws-sdk.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-bom</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Spring AI Alibaba -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter</artifactId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
             <version>${spring-ai-alibaba.version}</version>
             <exclusions>
                 <exclusion>
@@ -49,7 +69,6 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-tika-document-reader</artifactId>
-            <version>1.0.0-M6</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.springframework</groupId>
@@ -89,11 +108,6 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>com.alphacephei</groupId>
-            <artifactId>vosk</artifactId>
-            <version>0.3.45</version>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
@@ -117,8 +131,23 @@
 
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-pgvector-store</artifactId>
-            <version>1.0.0-M6</version>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws-sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>${aws-sdk.version}</version>
         </dependency>
 
         <dependency>
@@ -174,14 +203,6 @@
                     <jvmArguments>-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5247</jvmArguments>
                     <wait>500</wait>
                     <maxAttempts>240</maxAttempts>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>21</source>
-                    <target>21</target>
                 </configuration>
             </plugin>
         </plugins>

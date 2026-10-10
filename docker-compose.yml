@@ -1,0 +1,49 @@
+name: light-interview
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: light-interview-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-interview}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-interview}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: light-interview-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage for development.
+  # MinIO 官方镜像已从 Docker Hub 下架（minio/minio 返回 access denied），
+  # 这里改用 adobe/s3mock：同样走 S3 协议，适合本地开发与集成测试。
+  # 需要真实 MinIO 时把 image 换回自己的镜像源并保持同一组 MEDIA_S3_* 变量即可。
+  s3mock:
+    image: adobe/s3mock:latest
+    container_name: light-interview-s3mock
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${MEDIA_S3_BUCKET:-light-interview-media}
+    ports:
+      - "${S3_API_PORT:-9090}:9090"
+
+volumes:
+  postgres-data:
+  redis-data:

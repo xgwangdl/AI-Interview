@@ -34,3 +34,13 @@ build/
 .vscode/
 /Audio/
 /frontend/generated/
+
+### Vite / Vue build output ###
+dist/
+
+### Local configuration and secrets ###
+.env
+.env.local
+
+### Local recording storage (practice.media.storage-dir) ###
+/data/

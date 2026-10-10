@@ -54,6 +54,13 @@ public class CommonResult<T> {
     }
 
     /**
+     * 失败返回结果，使用指定的业务码。业务异常用它与 HTTP 状态保持一致。
+     */
+    public static <T> CommonResult<T> failed(long code, String message) {
+        return new CommonResult<T>(code, message, null);
+    }
+
+    /**
      * 失败返回结果
      */
     public static <T> CommonResult<T> failed() {

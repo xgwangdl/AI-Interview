@@ -31,7 +31,9 @@ export function buildQuestions(role, count, interviewType = 'behavioral') {
       ['你如何判断一个团队当前最需要解决的问题，并衡量改善效果？', '组织能力'],
     ],
   };
-  return questionSets[interviewType].slice(0, count).map(([text, category], index) => ({ id: `q-${index + 1}`, text, category }));
+  // 未知类型退回综合行为题库：服务端只校验 interviewType 非空，不能假定客户端一定给三种之一。
+  const questionSet = questionSets[interviewType] || questionSets.behavioral;
+  return questionSet.slice(0, count).map(([text, category], index) => ({ id: `q-${index + 1}`, text, category }));
 }
 
 export const styleLabels = { balanced: '专业平和', direct: '直接追问', supportive: '循序引导' };

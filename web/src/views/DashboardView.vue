@@ -6,7 +6,13 @@ import { usePracticeStore } from '../stores/practice';
 const router = useRouter();
 const practice = usePracticeStore();
 const latest = computed(() => practice.sessions.slice(0, 4));
-const completedMinutes = computed(() => practice.completed.reduce((sum, item) => sum + (item.durationMinutes || 0), 0));
+// 累计的是「实际录制时长」，不是创建练习时填的预计时长。
+const recordedSeconds = computed(() => practice.completed.reduce(
+  (total, session) => total + (session.answers || []).reduce((sum, answer) => sum + (answer.durationSeconds || 0), 0),
+  0));
+const recordedLabel = computed(() => (recordedSeconds.value >= 60
+  ? { value: Math.round(recordedSeconds.value / 60), unit: '分钟' }
+  : { value: recordedSeconds.value, unit: '秒' }));
 const dateLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 
 function openSession(session) {
@@ -33,7 +39,7 @@ function timeLabel(value) {
       </article>
       <article class="overview-card panel">
         <div class="overview-card-label"><span>练习时长</span><i class="icon-blue"><el-icon><Timer /></el-icon></i></div>
-        <div class="overview-number">{{ completedMinutes }}<small> 分钟</small></div>
+        <div class="overview-number">{{ recordedLabel.value }}<small> {{ recordedLabel.unit }}</small></div>
         <div class="overview-foot">累计录制与练习时间</div>
       </article>
       <article class="overview-card panel next-practice-card">

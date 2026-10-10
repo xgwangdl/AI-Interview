@@ -13,7 +13,7 @@ import java.util.Map;
 
 @Service
 public class SpeechToTextService {
-    @Value("${spring.ai.dash-scope.audio.api-key}")
+    @Value("${spring.ai.dashscope.audio.transcription.api-key}")
     private String apiKey;
 
     /**

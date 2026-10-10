@@ -11,10 +11,10 @@ import java.nio.ByteBuffer;
 
 @Service
 public class TextToSpeechService {
-    @Value("${spring.ai.dash-scope.audio.api-key}")
+    @Value("${spring.ai.dashscope.audio.speech.api-key}")
     private String apiKey;
 
-    @Value("${spring.ai.dash-scope.audio.options.model}")
+    @Value("${spring.ai.dashscope.audio.speech.options.model}")
     private String model;
 
     /**

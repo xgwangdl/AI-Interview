@@ -14,6 +14,5 @@ public record PracticeAnswerView(
         String transcriptStatus,
         String transcriptText,
         String evaluationStatus,
-        String evaluationJson,
         Instant createdAt) {
 }

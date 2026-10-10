@@ -3,18 +3,20 @@ import { reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
-import { trySyncSession } from '../services/api';
+import { extractResume, planQuestions, trySyncSession } from '../services/api';
 import { buildQuestions } from '../data/questions';
 
 const router = useRouter();
 const practice = usePracticeStore();
 const formRef = ref();
 const resumeName = ref('');
+const resumeText = ref('');
+const resumeStatus = ref('');
 const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20 });
 watch(() => form.questionCount, (count) => { form.durationMinutes = count * 4; });
 const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
 
-function onResumeChange(event) {
+async function onResumeChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   if (file.size > 8 * 1024 * 1024) {
@@ -23,12 +25,23 @@ function onResumeChange(event) {
     return;
   }
   resumeName.value = file.name;
+  resumeText.value = '';
+  resumeStatus.value = '正在解析简历…';
+  try {
+    const parsed = await extractResume(file);
+    resumeText.value = parsed.text;
+    resumeStatus.value = `已解析 ${parsed.characters} 字，将用于生成面试题`;
+  } catch {
+    // 简历解析是增强项：失败时仍可只用岗位信息出题。
+    resumeStatus.value = '未能读取这份简历，出题将只参考岗位信息';
+  }
 }
 
 async function continueToDevices() {
   try {
     await formRef.value.validate();
-    const draft = practice.createDraft({ ...form, resumeName: resumeName.value, questions: buildQuestions(form.role, form.questionCount, form.interviewType) });
+    const questions = await resolveQuestions();
+    const draft = practice.createDraft({ ...form, resumeName: resumeName.value, questions });
     const remote = await trySyncSession(draft);
     draft.id = remote.id;
     draft.createdAt = remote.createdAt;
@@ -38,6 +51,30 @@ async function continueToDevices() {
   } catch (error) {
     ElMessage.error(error.message || '无法创建练习，请检查后端连接。');
   }
+}
+
+/**
+ * 优先按岗位与 JD 让 AI 出题；模型不可用（未配置 Key、超时、返回不合法）时
+ * 回退到内置题库，保证练习一定能开始。
+ */
+async function resolveQuestions() {
+  try {
+    const plan = await planQuestions({
+      role: form.role,
+      company: form.company,
+      jobDescription: form.jobDescription,
+      resumeName: resumeName.value,
+      resumeText: resumeText.value,
+      interviewType: form.interviewType,
+      difficulty: form.difficulty,
+      interviewerStyle: form.interviewerStyle,
+      questionCount: form.questionCount,
+    });
+    if (plan?.questions?.length === form.questionCount) return plan.questions;
+  } catch {
+    // 静默回退，不打断创建流程。
+  }
+  return buildQuestions(form.role, form.questionCount, form.interviewType);
 }
 
 </script>
@@ -55,7 +92,7 @@ async function continueToDevices() {
           </div>
           <el-form-item label="岗位描述 JD（选填）"><el-input v-model="form.jobDescription" type="textarea" :rows="4" maxlength="3000" show-word-limit placeholder="粘贴岗位职责、技能要求或你特别想准备的内容" /></el-form-item>
           <div class="resume-upload-row">
-            <div class="resume-copy"><div class="resume-icon"><el-icon><Document /></el-icon></div><div><strong>{{ resumeName || '添加简历' }}</strong><small>PDF、DOCX，最多 8 MB；仅本地记录文件名</small></div></div>
+            <div class="resume-copy"><div class="resume-icon"><el-icon><Document /></el-icon></div><div><strong>{{ resumeName || '添加简历' }}</strong><small>{{ resumeStatus || 'PDF、DOCX，最多 8 MB；内容仅用于生成面试题' }}</small></div></div>
             <label class="upload-label"><input type="file" accept=".pdf,.doc,.docx" @change="onResumeChange" /><el-icon><Upload /></el-icon>选择文件</label>
           </div>
         </section>
@@ -96,4 +133,9 @@ async function continueToDevices() {
 @media(max-width: 900px) { .setup-grid { grid-template-columns: minmax(0,1fr) 240px; gap: 13px; }.form-section { padding: 17px 15px; } }
 @media(max-width: 720px) { .setup-grid { grid-template-columns: 1fr; }.setup-aside { position: static; order: -1; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.summary-card { grid-row: span 2; }.privacy-card { margin: 0; }.continue-button { align-self: end; }.choice-subtitle { font-size: 8px; } }
 @media(max-width: 460px) { .setup-aside { grid-template-columns: 1fr; }.summary-card { grid-row: auto; }.privacy-card { min-height: 70px; }.continue-button { min-height: 39px; }.field-grid { grid-template-columns: 1fr; gap: 0; }.choice-grid { gap: 5px; }.choice-grid :deep(.el-radio-button__inner) { height: 59px; padding: 0 7px; }.choice-subtitle { display: none; }.style-segment :deep(.el-radio-button__inner) { padding: 0 9px; } }
+.upload-label { position: relative; }
+.upload-label:focus-within { border-radius: 4px; outline: 2px solid #9dc7ac; outline-offset: 2px; }
+/* 原来的 display:none 让文件输入无法聚焦，键盘用户根本打不开选择器。
+   改成覆盖整个标签的透明输入：鼠标、键盘（Tab 后回车）与自动化都能触发。 */
+.upload-label input { display: block; position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 </style>

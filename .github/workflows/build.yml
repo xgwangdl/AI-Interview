@@ -1,0 +1,40 @@
+name: build
+
+# 版本策略要求「版本写入 Maven 与 npm lock 文件，并在 CI 中固定验证」。
+# 这里跑的是本地已经验证过的三条命令：后端干净构建、前端干净安装后测试并构建。
+# 需要 Postgres / S3 的集成用例由 -Ddb.integration / -Ds3.integration 控制，
+# 默认在 CI 中跳过；要纳入 CI 时再补一个带 service containers 的 job。
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Backend build and tests
+        run: mvn -B clean package
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Frontend install, test and build
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run build

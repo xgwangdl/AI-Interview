@@ -11,9 +11,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY;
-import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY;
-
 /**
  * 面试助手
  */
@@ -27,10 +24,10 @@ public class InterviewAssistant {
 
         this.chatClient = modelBuilder.defaultSystem(systemText)
                 .defaultAdvisors(
-                        new PromptChatMemoryAdvisor(chatMemory),
+                        PromptChatMemoryAdvisor.builder(chatMemory).build(),
                         new LoggingAdvisor()
                 )
-                .defaultFunctions("getResumeByName","changeInterView","getResumeById")
+                .defaultToolNames("getResumeByName","changeInterView","getResumeById")
                 .build();
     }
 
@@ -38,9 +35,7 @@ public class InterviewAssistant {
 
         return this.chatClient.prompt()
                 .user(userMessageContent)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, chatId)
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 20))
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
                 .call().content();
     }
 
@@ -48,9 +43,7 @@ public class InterviewAssistant {
 
         return this.chatClient.prompt()
                 .user(userMessageContent)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, chatId)
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 20))
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
                 .stream().content();
     }
 }

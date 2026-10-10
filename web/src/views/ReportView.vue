@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { getMedia } from '../services/mediaStore';
-import { getAnswerMedia } from '../services/api';
+import { getAnswerMedia, getPracticeReport, retryPracticeAnalysis } from '../services/api';
 import { buildQuestions, styleLabels, typeLabels } from '../data/questions';
 
 const route = useRoute();
@@ -14,17 +14,103 @@ const video = ref();
 const currentIndex = ref(0);
 const mediaUrl = ref('');
 const mediaLoading = ref(false);
+const report = ref(null);
+const reportLoading = ref(false);
 const session = computed(() => practice.find(route.params.id));
 const questions = computed(() => session.value ? (session.value.questions || buildQuestions(session.value.role, session.value.questionCount, session.value.interviewType)) : []);
 const currentQuestion = computed(() => questions.value[currentIndex.value]);
 const currentAnswer = computed(() => session.value?.answers.find((answer) => answer.questionIndex === currentIndex.value));
 const totalSeconds = computed(() => session.value?.answers.reduce((sum, answer) => sum + answer.durationSeconds, 0) || 0);
 const totalTime = computed(() => `${Math.floor(totalSeconds.value / 60)} 分 ${totalSeconds.value % 60} 秒`);
+const currentReport = computed(() => report.value?.questions?.find((item) => item.questionIndex === currentIndex.value) || null);
+const currentEvaluation = computed(() => currentReport.value?.evaluation || null);
+const signedMediaUrl = computed(() => currentReport.value?.mediaSignedUrl || '');
+const evidenceList = computed(() => currentEvaluation.value?.evidence || []);
+const dimensions = [
+  { key: 'relevance', label: '内容相关性' },
+  { key: 'completeness', label: '回答完整度' },
+  { key: 'professionalism', label: '专业程度' },
+  { key: 'starStructure', label: 'STAR 结构' },
+  { key: 'logic', label: '回答逻辑' },
+];
+const dimensionLabels = Object.fromEntries(dimensions.map((item) => [item.key, item.label]));
+const reportStatusLabel = computed(() => {
+  if (reportLoading.value) return '正在分析';
+  const status = report.value?.status;
+  if (status === 'ready') return '分析已完成';
+  if (status === 'partial') return '部分题目已分析';
+  if (status === 'analysis_failed') return '分析失败';
+  if (report.value?.analysis?.status === 'processing') return '正在分析';
+  if (status === 'awaiting_analysis') return '等待分析服务';
+  return session.value?.answers.some((answer) => answer.mediaId) ? '等待分析服务' : '录像未同步';
+});
+const reportHeadline = computed(() => (report.value?.status === 'ready' ? '视频练习与复盘已完成' : '视频练习已完成'));
+const reportSummaryText = computed(() => {
+  const base = `已保存 ${session.value?.answers.length || 0} 段回答，共 ${totalTime.value}。`;
+  if (reportLoading.value) return `${base} 正在读取 AI 复盘结果…`;
+  const analysis = report.value?.analysis;
+  if (analysis?.status === 'failed') {
+    return `${base} 转写或评分任务失败${analysis.error ? `：${analysis.error}` : ''}。可以点击重试，或删除后重新录制。`;
+  }
+  const summary = report.value?.summary;
+  if (summary?.averageOverallScore != null) {
+    const details = [];
+    if (summary.speechRateCharactersPerMinute) details.push(`平均语速 ${Math.round(summary.speechRateCharactersPerMinute)} 字/分`);
+    if (summary.totalPauseCount) details.push(`平均停顿 ${summary.totalPauseCount} 次`);
+    if (summary.totalFillerWordCount) details.push(`平均口头禅 ${summary.totalFillerWordCount} 次`);
+    return `${base} 综合 ${summary.averageOverallScore.toFixed(1)} 分${details.length ? ` · ${details.join(' · ')}` : ''}。`;
+  }
+  return `${base} 后台正在转写并评分，完成后会自动显示逐题反馈。`;
+});
 let activeUrl;
 let mediaRequest = 0;
+let reportPoller;
+const REPORT_POLL_MS = 10000;
 
-onMounted(() => { if (session.value?.answers.length) selectQuestion(session.value.answers[0].questionIndex); });
+onMounted(() => {
+  if (session.value?.answers.length) selectQuestion(session.value.answers[0].questionIndex);
+});
 watch(() => route.params.id, () => { if (!session.value) router.replace('/history'); });
+// 直接打开或刷新报告页时，练习记录是异步从服务端拉取的。
+// 只监听路由参数会在 store 尚未就绪时错过加载，页面会永远停在「尚未生成」。
+watch(() => session.value?.id, (id) => { if (id) loadReport(); }, { immediate: true });
+
+async function loadReport() {
+  window.clearTimeout(reportPoller);
+  report.value = null;
+  if (!session.value?.id) return;
+  reportLoading.value = true;
+  try {
+    report.value = await getPracticeReport(session.value.id);
+  } catch {
+    report.value = null;
+  } finally {
+    reportLoading.value = false;
+    if (!mediaUrl.value && signedMediaUrl.value) mediaUrl.value = signedMediaUrl.value;
+    scheduleReportPoll();
+  }
+}
+
+/** 分析在后台异步进行：只要还有任务排在队列里就继续轮询，出结果后自动停下。 */
+function scheduleReportPoll() {
+  const status = report.value?.analysis?.status;
+  if (status !== 'pending' && status !== 'processing') return;
+  reportPoller = window.setTimeout(loadReport, REPORT_POLL_MS);
+}
+
+/** 分析失败是终态，需要用户点一次才会重新排队。 */
+async function retryAnalysis() {
+  if (!session.value?.id) return;
+  reportLoading.value = true;
+  try {
+    report.value = await retryPracticeAnalysis(session.value.id);
+  } catch {
+    ElMessage.error('重试失败，请稍后再试。');
+  } finally {
+    reportLoading.value = false;
+    scheduleReportPoll();
+  }
+}
 
 async function selectQuestion(index) {
   const requestId = ++mediaRequest;
@@ -36,23 +122,41 @@ async function selectQuestion(index) {
   mediaLoading.value = true;
   try {
     let blob = await getMedia(currentAnswer.value.localMediaId || currentAnswer.value.mediaId);
-    if (!blob && currentAnswer.value.mediaId) blob = await getAnswerMedia(currentAnswer.value.mediaId);
+    if (!blob && currentAnswer.value.mediaId) {
+      try { blob = await getAnswerMedia(currentAnswer.value.mediaId); } catch { blob = null; }
+    }
     if (requestId !== mediaRequest) return;
     if (blob) {
       activeUrl = URL.createObjectURL(blob);
       mediaUrl.value = activeUrl;
-      if (video.value) { video.value.src = activeUrl; video.value.load(); }
     }
   } catch {
     if (requestId !== mediaRequest) return;
-    ElMessage.error('无法读取视频片段，请确认练习仍在保留期内。');
-  } finally { mediaLoading.value = false; }
+    if (!signedMediaUrl.value) ElMessage.error('无法读取视频片段，请确认练习仍在保留期内。');
+  } finally {
+    if (requestId === mediaRequest) {
+      if (!mediaUrl.value && signedMediaUrl.value) mediaUrl.value = signedMediaUrl.value;
+      mediaLoading.value = false;
+    }
+  }
 }
 
 function playAt(offset) {
   if (!video.value || !mediaUrl.value || !Number.isFinite(video.value.duration)) return;
   video.value.currentTime = Math.max(0, Math.min(offset, video.value.duration - 0.1));
   video.value.play();
+}
+
+function scoreOf(key) {
+  const value = currentEvaluation.value?.scores?.[key];
+  return Number.isFinite(value) ? value.toFixed(1) : '—';
+}
+
+function evidenceWidth(item) {
+  const duration = currentAnswer.value?.durationSeconds || 0;
+  if (!duration) return '15%';
+  const width = ((item.endSeconds - item.startSeconds) / duration) * 100;
+  return `${Math.min(100, Math.max(4, width))}%`;
 }
 
 async function removeSession() {
@@ -67,18 +171,18 @@ async function removeSession() {
   }
 }
 
-function formatDuration(seconds) { return `${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`; }
-onBeforeUnmount(() => { if (activeUrl) URL.revokeObjectURL(activeUrl); });
+function formatDuration(seconds) { const value = Math.max(0, Math.round(Number(seconds) || 0)); return `${String(Math.floor(value / 60)).padStart(2,'0')}:${String(value % 60).padStart(2,'0')}`; }
+onBeforeUnmount(() => { window.clearTimeout(reportPoller); if (activeUrl) URL.revokeObjectURL(activeUrl); });
 </script>
 
 <template>
   <section v-if="session" class="report-page">
     <div class="report-heading"><div><button class="report-back" @click="router.push('/history')"><el-icon><ArrowLeft /></el-icon>练习记录</button><h1>{{ session.role }} <span>练习报告</span></h1><p>{{ typeLabels[session.interviewType] || '模拟面试' }} · {{ styleLabels[session.interviewerStyle] || '专业平和' }} · {{ new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(session.completedAt || session.createdAt)) }}</p></div><el-button class="delete-button" @click="removeSession"><el-icon><Delete /></el-icon>删除练习数据</el-button></div>
-    <div class="report-status panel"><div class="status-symbol"><el-icon><VideoCamera /></el-icon></div><div class="status-copy"><strong>视频练习已完成</strong><span>已保存 {{ session.answers.length }} 段回答，共 {{ totalTime }}。转写与 AI 评分服务尚未连接，因此暂不显示评分。</span></div><el-tag class="analysis-tag" size="small"><i></i>{{ session.answers.some(answer => answer.mediaSizeBytes || answer.mediaId) ? '等待分析服务' : '录像未同步' }}</el-tag></div>
+    <div class="report-status panel"><div class="status-symbol"><el-icon><VideoCamera /></el-icon></div><div class="status-copy"><strong>{{ reportHeadline }}</strong><span>{{ reportSummaryText }}</span></div><el-tag class="analysis-tag" size="small"><i></i>{{ reportStatusLabel }}</el-tag></div>
     <div class="report-layout">
-      <section class="review-section"><div class="section-title">逐题回放 <small>{{ session.answers.length }} 段视频 · 点击问题可切换片段</small></div><div class="player-panel panel"><div class="player-frame"><video v-if="mediaUrl" ref="video" :src="mediaUrl" controls playsinline></video><div v-else class="player-empty"><el-icon v-if="mediaLoading" class="loading"><Loading /></el-icon><template v-else><el-icon><VideoCamera /></el-icon><strong>{{ currentAnswer ? '这段视频暂时无法读取' : '本题尚未录制' }}</strong><span>{{ currentAnswer ? '本地媒体文件可能已被清理。' : '本轮练习未完成全部问题。' }}</span></template></div><div class="player-label">{{ String(currentIndex + 1).padStart(2,'0') }} / {{ String(questions.length).padStart(2,'0') }}</div></div><div class="transcript-panel"><div class="transcript-header"><strong>回答转写</strong><el-tag class="tag-muted" size="small">尚未生成</el-tag></div><p>ASR 服务配置后，回答转写和时间戳会显示在这里，并可点击时间跳转到对应视频片段。</p><div v-if="currentAnswer" class="answer-meta"><span><el-icon><Timer /></el-icon>回答时长 {{ formatDuration(currentAnswer.durationSeconds) }}</span><span><el-icon><Files /></el-icon>{{ (currentAnswer.bytes / 1024 / 1024).toFixed(1) }} MB</span></div></div></div>
+      <section class="review-section"><div class="section-title">逐题回放 <small>{{ session.answers.length }} 段视频 · 点击问题可切换片段</small></div><div class="player-panel panel"><div class="player-frame"><video v-if="mediaUrl" ref="video" :src="mediaUrl" controls playsinline></video><div v-else class="player-empty"><el-icon v-if="mediaLoading" class="loading"><Loading /></el-icon><template v-else><el-icon><VideoCamera /></el-icon><strong>{{ currentAnswer ? '这段视频暂时无法读取' : '本题尚未录制' }}</strong><span>{{ currentAnswer ? '本地媒体文件可能已被清理。' : '本轮练习未完成全部问题。' }}</span></template></div><div class="player-label">{{ String(currentIndex + 1).padStart(2,'0') }} / {{ String(questions.length).padStart(2,'0') }}</div></div><div class="transcript-panel"><div class="transcript-header"><strong>回答转写</strong><el-tag :class="currentReport?.transcriptText ? 'tag-ready' : 'tag-muted'" size="small">{{ currentReport?.transcriptText ? '已生成' : '尚未生成' }}</el-tag></div><p v-if="currentReport?.transcriptText" class="transcript-text">{{ currentReport.transcriptText }}</p><p v-else>ASR 服务配置后，回答转写和时间戳会显示在这里，并可点击时间跳转到对应视频片段。</p><div v-if="currentAnswer" class="answer-meta"><span><el-icon><Timer /></el-icon>回答时长 {{ formatDuration(currentAnswer.durationSeconds) }}</span><span><el-icon><Files /></el-icon>{{ (currentAnswer.bytes / 1024 / 1024).toFixed(1) }} MB</span></div></div></div>
       <div class="question-list"><button v-for="(question,index) in questions" :key="question.id" class="question-card panel" :class="{ active: currentIndex === index }" @click="selectQuestion(index)"><span class="question-number">{{ String(index + 1).padStart(2,'0') }}</span><span class="question-info"><small>{{ question.category }}</small><strong>{{ question.text }}</strong></span><span class="question-duration">{{ session.answers.find((answer) => answer.questionIndex === index) ? formatDuration(session.answers.find((answer) => answer.questionIndex === index).durationSeconds) : '未回答' }}</span><el-icon v-if="currentIndex === index"><ArrowRight /></el-icon></button></div></section>
-      <aside class="score-section"><div class="section-title">回答分析 <el-tag class="tag-muted" size="small">等待接入</el-tag></div><div class="score-panel panel"><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>分析服务尚未配置</strong><p>接入 ASR 与结构化评分服务后，此处会展示回答相关性、完整性、专业性和 STAR 结构等反馈。</p></div><div class="rubric-list"><div><span>内容相关性</span><i>—</i></div><div><span>回答完整度</span><i>—</i></div><div><span>STAR 结构</span><i>—</i></div><div><span>表达节奏</span><i>—</i></div></div><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
+      <aside class="score-section"><div class="section-title">回答分析 <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? '已生成' : (reportLoading ? '分析中' : '等待接入') }}</el-tag></div><div class="score-panel panel"><template v-if="currentEvaluation"><div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>综合得分</span></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div><div class="delivery-list"><div><span>语速</span><i>{{ Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }} 字/分</i></div><div><span>停顿</span><i>{{ currentEvaluation.delivery.pauseCount }} 次 · 共 {{ currentEvaluation.delivery.totalPauseSeconds }} 秒</i></div><div><span>口头禅</span><i>{{ currentEvaluation.delivery.fillerWordCount }} 次</i></div></div></template><template v-else><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>{{ reportLoading ? '正在读取分析结果' : (report?.analysis?.status === 'failed' ? '分析失败' : '分析结果尚未生成') }}</strong><p>练习完成后台会自动转写并评分，完成后此处会展示逐题反馈。</p><el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">重试分析</el-button></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div></template><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel"><div class="section-title">改进建议</div><ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul></div><div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel"><div class="section-title">优秀回答示例</div><p class="sample-text">{{ currentEvaluation.sampleAnswer }}</p></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="evidenceList.length" class="evidence-list"><div v-for="(item, index) in evidenceList" :key="index" class="evidence-row"><button class="timeline-play" :aria-label="`播放证据 ${index + 1}`" :title="`播放证据 ${formatDuration(item.startSeconds)}`" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button><div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div><span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span></div></div><div v-else-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
     </div>
   </section>
 </template>
@@ -89,6 +193,24 @@ onBeforeUnmount(() => { if (activeUrl) URL.revokeObjectURL(activeUrl); });
 .report-layout { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(245px,.75fr); align-items: start; gap: 17px; }.review-section { min-width: 0; }.review-section > .section-title { margin-bottom: 11px; }.player-panel { overflow: hidden; box-shadow: none; }.player-frame { position: relative; display: grid; min-height: 225px; aspect-ratio: 16/9; place-items: center; overflow: hidden; background: #1c2923; }.player-frame video { width: 100%; height: 100%; max-height: 380px; object-fit: contain; }.player-empty { display: flex; align-items: center; flex-direction: column; gap: 8px; color: #9eafa3; font-size: 21px; }.player-empty strong { color: #dce8df; font-size: 10px; font-weight: 500; }.player-empty span { color: #9baba0; font-size: 8px; }.player-empty .loading { animation: rotate 1s linear infinite; }@keyframes rotate { to { transform: rotate(360deg); } }.player-label { position: absolute; top: 10px; left: 10px; padding: 5px 6px; border-radius: 3px; background: rgba(13,25,18,.7); color: white; font-size: 8px; }
 .transcript-panel { padding: 13px 14px 12px; }.transcript-header { display: flex; align-items: center; justify-content: space-between; }.transcript-header strong { color: #536058; font-size: 10px; }.transcript-panel > p { margin: 8px 0 12px; color: #959f99; font-size: 9px; line-height: 1.7; }.answer-meta { display: flex; flex-wrap: wrap; gap: 14px; padding-top: 9px; border-top: 1px solid #edf0ed; color: #7d8982; font-size: 8px; }.answer-meta span { display: flex; align-items: center; gap: 5px; }.question-list { display: grid; gap: 7px; margin-top: 9px; }.question-card { display: flex; min-height: 54px; align-items: center; gap: 9px; padding: 9px 11px; box-shadow: none; cursor: pointer; text-align: left; }.question-card.active { border-color: #9dc7ac; background: #f5faf6; }.question-number { display: grid; width: 25px; height: 25px; flex: none; place-items: center; border-radius: 50%; background: #f1f4f1; color: #829088; font-size: 8px; }.question-card.active .question-number { background: #e0f0e5; color: var(--green); }.question-info { display: grid; min-width: 0; flex: 1; gap: 4px; }.question-info small { color: #96a09a; font-size: 7px; }.question-info strong { display: -webkit-box; overflow: hidden; color: #57645c; font-size: 8px; font-weight: 500; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }.question-duration { flex: none; color: #98a29c; font-size: 8px; }.question-card > .el-icon { flex: none; color: var(--green); font-size: 11px; }
 .score-section { display: grid; gap: 10px; }.score-section > .section-title { margin: 0; }.score-panel { padding: 15px; box-shadow: none; }.score-empty { display: flex; align-items: center; flex-direction: column; padding: 10px 8px 13px; text-align: center; }.score-mark { display: grid; width: 39px; height: 39px; place-items: center; margin-bottom: 9px; border-radius: 50%; background: var(--blue-soft); color: var(--blue); font-size: 18px; }.score-empty strong { color: #4e5a53; font-size: 10px; }.score-empty p { margin: 7px 0 0; color: #89948e; font-size: 8px; line-height: 1.75; }.rubric-list { padding-top: 11px; border-top: 1px solid #edf0ed; }.rubric-list > div { display: flex; justify-content: space-between; margin: 11px 0; color: #7c8881; font-size: 8px; }.rubric-list i { color: #b0b8b2; font-style: normal; }.score-footnote { display: flex; gap: 5px; padding-top: 10px; border-top: 1px solid #edf0ed; color: #96a099; font-size: 7px; line-height: 1.6; }.score-footnote .el-icon { flex: none; color: #7298a5; }.evidence-panel { padding: 14px; box-shadow: none; }.evidence-panel .section-title { margin-bottom: 10px; }.evidence-row { display: flex; align-items: center; gap: 8px; }.timeline-play { display: grid; width: 25px; height: 25px; flex: none; place-items: center; border: 0; border-radius: 50%; background: var(--green-soft); color: var(--green); }.evidence-row > div { display: grid; flex: none; gap: 3px; }.evidence-row strong { color: #637067; font-size: 8px; font-weight: 600; }.evidence-row small { color: #99a29d; font-size: 7px; }.timeline-track { position: relative; height: 4px; flex: 1; overflow: hidden; border-radius: 3px; background: #e8eee9; }.timeline-track i { display: block; width: 15%; height: 100%; border-radius: inherit; background: var(--green); }.no-evidence { margin: 4px 0; color: #99a29d; font-size: 8px; line-height: 1.7; }
+.tag-ready.el-tag { border-color: #cfe6d8; background: #eef8f1; color: #3f8259; }
+.transcript-text { margin: 8px 0 12px; color: #5b6760; font-size: 9px; line-height: 1.85; }
+.score-overall { display: flex; align-items: baseline; gap: 7px; padding-bottom: 11px; border-bottom: 1px solid #edf0ed; }
+.score-overall strong { color: var(--green); font-size: 25px; font-weight: 650; }
+.score-overall span { color: #8b968f; font-size: 8px; }
+.rubric-list i.filled { color: #476b56; font-weight: 600; }
+.suggestion-panel { padding: 14px; box-shadow: none; }
+.suggestion-panel .section-title { margin-bottom: 8px; }
+.suggestion-list { margin: 0; padding-left: 14px; color: #6d7972; font-size: 8px; line-height: 1.8; }
+.suggestion-list li { margin: 5px 0; }
+.delivery-list { padding-top: 11px; border-top: 1px solid #edf0ed; }
+.delivery-list > div { display: flex; justify-content: space-between; margin: 8px 0; color: #7c8881; font-size: 8px; }
+.delivery-list i { color: #4d6f5b; font-style: normal; }
+.sample-panel { padding: 14px; box-shadow: none; }
+.sample-panel .section-title { margin-bottom: 8px; }
+.sample-text { margin: 0; color: #6d7972; font-size: 8px; line-height: 1.8; }
+.evidence-list { display: grid; gap: 9px; }
+.evidence-list .evidence-row { align-items: flex-start; }
 @media(max-width: 900px) { .report-layout { grid-template-columns: minmax(0,1.1fr) minmax(220px,.8fr); gap: 11px; }.player-frame { min-height: 185px; } }
 @media(max-width: 720px) { .report-layout { grid-template-columns: 1fr; }.score-section { grid-row: 1; grid-template-columns: 1fr; }.report-heading { align-items: flex-start; flex-direction: column; }.report-status { align-items: flex-start; }.analysis-tag { align-self: flex-start; }.player-frame { min-height: 190px; } }
 </style>

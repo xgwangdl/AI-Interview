@@ -2,6 +2,7 @@ package com.guangge.Interview.practice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.practice.dto.PracticeAnswerRequest;
+import com.guangge.Interview.practice.dto.PracticeAnswerView;
 import com.guangge.Interview.practice.dto.PracticeQuestion;
 import com.guangge.Interview.practice.dto.PracticeSessionRequest;
 import com.guangge.Interview.practice.entity.PracticeAnswerEntity;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -105,7 +107,7 @@ class PracticeSessionServiceTest {
     void completesSessionWhenRecordedAnswerMediaIsUploaded() {
         UUID sessionId = UUID.randomUUID();
         PracticeSessionEntity session = ownedSession(sessionId);
-        PracticeAnswerEntity answer = answer(sessionId, answerId());
+        PracticeAnswerEntity answer = answer(sessionId, mediaKey());
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(session));
         when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
         when(sessions.save(any(PracticeSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -118,10 +120,10 @@ class PracticeSessionServiceTest {
     }
 
     @Test
-    void rejectsNonVideoMediaUploads() {
+    void rejectsNonVideoMediaUploads() throws Exception {
         UUID sessionId = UUID.randomUUID();
-        UUID answerId = answerId();
-        PracticeAnswerEntity answer = answer(sessionId, answerId);
+        PracticeAnswerEntity answer = answer(sessionId, mediaKey());
+        UUID answerId = answer.getId();
         when(answers.findById(answerId)).thenReturn(Optional.of(answer));
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(ownedSession(sessionId)));
         MediaStorage storage = mock(MediaStorage.class);
@@ -132,7 +134,32 @@ class PracticeSessionServiceTest {
                         new java.io.ByteArrayInputStream(new byte[12])));
 
         assertEquals(HttpStatus.UNSUPPORTED_MEDIA_TYPE, error.getStatusCode());
-        verify(storage, never()).store(any(), any());
+        verify(storage, never()).store(any(), any(), anyLong());
+    }
+
+    @Test
+    void completeAnswerRequiresUploadedMedia() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeAnswerEntity answer = answer(sessionId, null);
+        when(answers.findById(answer.getId())).thenReturn(Optional.of(answer));
+        when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(ownedSession(sessionId)));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.completeAnswer("alice", answer.getId()));
+
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+    }
+
+    @Test
+    void completeAnswerReturnsTheUploadedAnswer() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeAnswerEntity answer = answer(sessionId, mediaKey());
+        when(answers.findById(answer.getId())).thenReturn(Optional.of(answer));
+        when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(ownedSession(sessionId)));
+
+        PracticeAnswerView view = service.completeAnswer("alice", answer.getId());
+
+        assertEquals(answer.getId(), view.id());
     }
 
     private static PracticeSessionEntity ownedSession(UUID id) {
@@ -164,7 +191,7 @@ class PracticeSessionServiceTest {
         return answer;
     }
 
-    private static String answerId() {
+    private static String mediaKey() {
         return UUID.randomUUID().toString();
     }
 }

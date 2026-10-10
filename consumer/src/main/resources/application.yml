@@ -3,8 +3,8 @@ spring:
     protocol: smtp                   # 邮件协议
     host: smtp.163.com               # smtp 服务器地址 （163邮箱为例）
     port: 25                         # 端口号（163邮箱为例）
-    username: ${USER_NAME}           # 发送人邮箱地址
-    password: ${PASS_WORD}           # 授权码
+    username: ${USER_NAME:}          # 发送人邮箱地址（未配置时邮件不可用，但不影响启动）
+    password: ${PASS_WORD:}          # 授权码
     default-encoding: utf-8          # 编码字符集
     debug: true                      # 开启debug模式用户会完整打印邮件发送过程的日志
 
@@ -20,9 +20,8 @@ spring:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-        initializeSchema: true
+        initialize-schema: true
         dimensions: 1536
-        schemaName: public
-        tableName: vector_store
-        batching-strategy: TOKEN_COUNT # Optional: Controls how documents are batched for embedding
+        schema-name: public
+        table-name: vector_store
         max-document-batch-size: 10000 # Optional: Maximum number of documents per batch

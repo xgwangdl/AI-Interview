@@ -13,6 +13,7 @@ import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.storage.MediaStorage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -21,8 +22,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -133,7 +132,7 @@ public class PracticeSessionService {
             throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "A video file is required");
         }
         String key = answer.getId().toString();
-        mediaStorage.store(key, content);
+        mediaStorage.store(key, content, size);
         answer.setMediaKey(key);
         answer.setMediaContentType(contentType);
         answer.setMediaSizeBytes(size);
@@ -142,11 +141,19 @@ public class PracticeSessionService {
 
     @Transactional(readOnly = true)
     public MediaFile getAnswerMedia(String ownerId, UUID answerId) {
-        PracticeAnswerEntity answer = requireOwnedAnswer(ownerId, answerId);
+        requireOwnedAnswer(ownerId, answerId);
+        return getAnswerMedia(answerId);
+    }
+
+    /** Reads media by answer id only; callers must have authorised the request first. */
+    @Transactional(readOnly = true)
+    public MediaFile getAnswerMedia(UUID answerId) {
+        PracticeAnswerEntity answer = answers.findById(answerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice answer not found"));
         if (answer.getMediaKey() == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media not found");
-        Path path = mediaStorage.resolve(answer.getMediaKey());
-        if (!Files.isRegularFile(path)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media not found");
-        return new MediaFile(path, answer.getMediaContentType());
+        Resource media = mediaStorage.find(answer.getMediaKey())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media not found"));
+        return new MediaFile(media, answer.getMediaContentType());
     }
 
     @Transactional
@@ -162,6 +169,16 @@ public class PracticeSessionService {
         session.setStatus("completed");
         session.setCompletedAt(Instant.now());
         return toView(sessions.save(session), answerViews(id));
+    }
+
+    /** 单题完成：录像必须已经上传，否则没什么可分析的。 */
+    @Transactional(readOnly = true)
+    public PracticeAnswerView completeAnswer(String ownerId, UUID answerId) {
+        PracticeAnswerEntity answer = requireOwnedAnswer(ownerId, answerId);
+        if (answer.getMediaKey() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Upload the answer video before completing it");
+        }
+        return toAnswerView(answer);
     }
 
     @Transactional
@@ -226,7 +243,7 @@ public class PracticeSessionService {
         return new PracticeAnswerView(answer.getId(), answer.getQuestionIndex(), answer.getQuestionId(),
                 answer.getMediaContentType(), answer.getMediaSizeBytes(), answer.getDurationSeconds(),
                 answer.getStartedAtOffsetSeconds(), answer.getTranscriptStatus(), answer.getTranscriptText(),
-                answer.getEvaluationStatus(), answer.getEvaluationJson(), answer.getCreatedAt());
+                answer.getEvaluationStatus(), answer.getCreatedAt());
     }
 
     private String writeQuestions(List<PracticeQuestion> questions) {
@@ -249,5 +266,5 @@ public class PracticeSessionService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    public record MediaFile(Path path, String contentType) { }
+    public record MediaFile(Resource resource, String contentType) { }
 }

@@ -7,8 +7,18 @@ export async function apiRequest(path, options = {}) {
     headers: { ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
   });
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `请求失败 (${response.status})`);
+    const body = await response.text();
+    // 后端统一返回 {code, message, data}：取出 message，避免把整段 JSON 当作错误消息显示给用户。
+    let message = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed.message === 'string' && parsed.message) message = parsed.message;
+    } catch {
+      // 非 JSON 响应（例如代理层报错），保留原文。
+    }
+    const error = new Error(message || `请求失败 (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return null;
   return response.json();
@@ -62,8 +72,34 @@ export function tryUploadAnswerMedia(answerId, blob) {
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/media`, { method: 'POST', body: form });
 }
 
+export function tryCompleteAnswer(answerId) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/complete`, { method: 'POST' });
+}
+
 export function tryCompleteSession(id) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(id)}/complete`, { method: 'POST' });
+}
+
+export function getPracticeReport(sessionId) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/report`);
+}
+
+export function retryPracticeAnalysis(sessionId) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/analysis/retry`, { method: 'POST' });
+}
+
+export function getQuestionNarration(sessionId, questionIndex) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/narration`);
+}
+
+export function planQuestions(payload) {
+  return apiRequest('/practice-sessions/question-plan', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function extractResume(file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return apiRequest('/resume/extract', { method: 'POST', body: form });
 }
 
 export async function getAnswerMedia(answerId) {

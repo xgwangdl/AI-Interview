@@ -3,8 +3,9 @@ package com.guangge.Interview.assistant;
 import com.guangge.Interview.advisor.LoggingAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,9 +16,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
-
-import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY;
-import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY;
 
 /**
  * 简历助手
@@ -34,11 +32,13 @@ public class ResumeRewriterAssistant {
         this.userTextAdvisors = userTextAdvisors;
         this.chatClient = modelBuilder.defaultSystem(s -> s.text(systemText))
                 .defaultAdvisors(
-                        new QuestionAnswerAdvisor(vectorStore, SearchRequest.builder().similarityThreshold(0.5).build(),
-                                userTextAdvisors.getContentAsString(Charset.defaultCharset())),
+                        QuestionAnswerAdvisor.builder(vectorStore)
+                                .searchRequest(SearchRequest.builder().similarityThreshold(0.5).build())
+                                .promptTemplate(new PromptTemplate(userTextAdvisors.getContentAsString(Charset.defaultCharset())))
+                                .build(),
                         new LoggingAdvisor()
                 )
-                //.defaultFunctions("changeTestResult","getInterviewDetails")
+                //.defaultToolNames("changeTestResult","getInterviewDetails")
                 .build();
     }
 

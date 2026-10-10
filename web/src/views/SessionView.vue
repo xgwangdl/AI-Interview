@@ -1,12 +1,12 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { getActiveStream, stopActiveStream, supportedRecorderType } from '../services/mediaCapture';
 import { getMedia, saveMedia } from '../services/mediaStore';
 import { buildQuestions, styleLabels } from '../data/questions';
-import { tryCompleteSession, trySaveAnswer, tryUploadAnswerMedia } from '../services/api';
+import { getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer, tryUploadAnswerMedia } from '../services/api';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,6 +16,14 @@ const recorderState = ref('idle');
 const currentIndex = ref(0);
 const elapsed = ref(0);
 const savedAnswer = ref(false);
+const audio = ref();
+const narration = ref(null);
+const narrationLoading = ref(false);
+const avatarState = ref('asking');
+const speaking = ref(false);
+const mouthLevel = ref(0);
+const amplitudeActive = ref(false);
+const narrationAudioFailed = ref(false);
 const stream = getActiveStream();
 const draft = practice.draft?.id === route.params.id ? practice.draft : practice.find(route.params.id);
 const questions = computed(() => draft ? (draft.questions || buildQuestions(draft.role, draft.questionCount, draft.interviewType)) : []);
@@ -23,6 +31,10 @@ const currentQuestion = computed(() => questions.value[currentIndex.value]);
 const answeredQuestions = computed(() => new Set(draft?.answers.map((answer) => answer.questionIndex) || []));
 const progress = computed(() => draft ? Math.round((answeredQuestions.value.size / questions.value.length) * 100) : 0);
 const formattedTime = computed(() => `${String(Math.floor(elapsed.value / 60)).padStart(2, '0')}:${String(elapsed.value % 60).padStart(2, '0')}`);
+const narrationCaption = computed(() => narration.value?.text || '请仔细阅读问题，准备好后开始回答');
+const mouthStyle = computed(() => (amplitudeActive.value
+  ? { transform: `scaleY(${(1 + mouthLevel.value * 2.4).toFixed(2)})` }
+  : null));
 let recorder;
 let chunks = [];
 let startedAt;
@@ -31,7 +43,7 @@ let pausedMilliseconds = 0;
 let elapsedTimer;
 let stopPromise;
 
-onMounted(() => {
+onMounted(async () => {
   if (!draft) {
     ElMessage.warning('未找到这次练习，请重新开始。');
     router.replace('/practice/setup');
@@ -47,7 +59,129 @@ onMounted(() => {
   if (video.value) video.value.srcObject = stream;
   const nextQuestion = questions.value.findIndex((_, index) => !answeredQuestions.value.has(index));
   currentIndex.value = nextQuestion === -1 ? 0 : nextQuestion;
+  await loadNarration();
 });
+
+watch(currentIndex, () => { loadNarration(); });
+
+async function loadNarration() {
+  stopNarration();
+  narration.value = null;
+  narrationAudioFailed.value = false;
+  if (!draft?.id) return;
+  narrationLoading.value = true;
+  avatarState.value = 'thinking';
+  try {
+    const result = await getQuestionNarration(draft.id, currentIndex.value);
+    narration.value = result;
+    avatarState.value = result.state || 'asking';
+    if (result.audioAvailable && result.audioUrl) playNarration(result.audioUrl);
+  } catch {
+    narration.value = null;
+    avatarState.value = 'asking';
+  } finally {
+    narrationLoading.value = false;
+  }
+}
+
+async function playNarration(url) {
+  if (!audio.value) return;
+  try {
+    audio.value.src = url;
+    audio.value.currentTime = 0;
+    await audio.value.play();
+  } catch {
+    // Autoplay is often blocked until the user interacts; the replay control covers that.
+    speaking.value = false;
+  }
+}
+
+async function replayNarration() {
+  const url = narration.value?.audioUrl;
+  if (!url || !audio.value) return;
+  if (speaking.value) { stopNarration(); return; }
+  try {
+    audio.value.currentTime = 0;
+    // 用户手势里才接分析器：AudioContext 在这里一定允许 resume，
+    // 避免出现「接上了分析器却因为挂起而没声音」的情况。
+    await resumeAudioContext();
+    startAmplitude();
+    await audio.value.play();
+  } catch {
+    ElMessage.warning('无法播放面试官语音，请检查浏览器音频权限。');
+  }
+}
+
+function stopNarration() {
+  if (audio.value) audio.value.pause();
+  stopAmplitude();
+  speaking.value = false;
+}
+
+function onNarrationPause() {
+  speaking.value = false;
+  stopAmplitude();
+}
+
+// 合成服务不可用（例如未配置 TTS Key）时隐藏播放控件，只保留数字人字幕。
+function onNarrationError() {
+  narrationAudioFailed.value = true;
+  speaking.value = false;
+  stopAmplitude();
+}
+
+let audioContext;
+let analyser;
+let amplitudeFrame;
+
+async function resumeAudioContext() {
+  if (audioContext && audioContext.state === 'suspended') await audioContext.resume();
+}
+
+function startAmplitude() {
+  if (!analyser && !attachAnalyser()) return;
+  const samples = new Uint8Array(analyser.frequencyBinCount);
+  const tick = () => {
+    analyser.getByteTimeDomainData(samples);
+    let energy = 0;
+    for (const sample of samples) {
+      const centered = (sample - 128) / 128;
+      energy += centered * centered;
+    }
+    mouthLevel.value = Math.min(1, Math.sqrt(energy / samples.length) * 4);
+    amplitudeFrame = requestAnimationFrame(tick);
+  };
+  cancelAnimationFrame(amplitudeFrame);
+  tick();
+}
+
+function attachAnalyser() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx || !audio.value) return false;
+    audioContext = new AudioCtx();
+    const source = audioContext.createMediaElementSource(audio.value);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.6;
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
+    amplitudeActive.value = true;
+    return true;
+  } catch {
+    // 拿不到分析器就退回状态驱动的口型动画，保证声音不受影响。
+    audioContext = undefined;
+    analyser = undefined;
+    amplitudeActive.value = false;
+    return false;
+  }
+}
+
+function stopAmplitude() {
+  if (amplitudeFrame) cancelAnimationFrame(amplitudeFrame);
+  amplitudeFrame = undefined;
+  mouthLevel.value = 0;
+}
 
 function startRecording() {
   if (!stream?.active || recorderState.value === 'recording') return;
@@ -70,6 +204,7 @@ function startRecording() {
     elapsed.value = 0;
     savedAnswer.value = false;
     recorderState.value = 'recording';
+    avatarState.value = 'listening';
     elapsedTimer = window.setInterval(() => { elapsed.value = Math.floor((Date.now() - startedAt - pausedMilliseconds) / 1000); }, 250);
   } catch {
     recorderState.value = 'error';
@@ -134,6 +269,12 @@ async function persistAnswer() {
 async function syncAnswer(answer, blob) {
   const saved = await trySaveAnswer(draft.id, answer);
   await tryUploadAnswerMedia(saved.id, blob);
+  try {
+    // 单题上传完就开始分析，不必等整场练习结束；失败也没关系，结束时还会统一入队。
+    await tryCompleteAnswer(saved.id);
+  } catch {
+    // 忽略：整场结束时 complete 会兜底入队。
+  }
   answer.mediaId = saved.id;
   answer.syncError = null;
 }
@@ -212,6 +353,8 @@ function selectQuestion(index) {
 }
 
 onBeforeUnmount(() => {
+  stopNarration();
+  if (audioContext) audioContext.close();
   window.clearInterval(elapsedTimer);
   if (recorder && (recorder.state === 'recording' || recorder.state === 'paused')) recorder.stop();
   stopActiveStream();
@@ -225,7 +368,7 @@ onBeforeUnmount(() => {
       <aside class="question-rail panel"><div class="rail-header"><span>本轮问题</span><strong>{{ answeredQuestions.size }} / {{ questions.length }}</strong></div><div class="overall-progress"><span :style="{ width: `${progress}%` }"></span></div><button v-for="(question, index) in questions" :key="question.id" class="question-nav" :class="{ active: index === currentIndex, answered: answeredQuestions.has(index) }" @click="selectQuestion(index)"><span class="question-index">{{ answeredQuestions.has(index) ? '✓' : String(index + 1).padStart(2, '0') }}</span><span><small>{{ question.category }}</small><strong>{{ question.text }}</strong></span><el-icon v-if="index === currentIndex"><ArrowRight /></el-icon></button><div class="rail-note"><el-icon><Lock /></el-icon>每道回答独立录制与保存</div></aside>
 
       <div class="session-main">
-        <div class="interviewer-panel panel"><div class="interviewer-screen"><div class="interviewer-scene"><div class="interviewer-glow"></div><div class="avatar-frame"><div class="avatar-hair"></div><div class="avatar-face"><i class="eye eye-left"></i><i class="eye eye-right"></i><i class="nose"></i><i class="mouth"></i></div><div class="avatar-neck"></div><div class="avatar-jacket"></div><div class="avatar-shirt"></div></div><div class="speech-lines"><i></i><i></i><i></i></div><div class="interviewer-caption"><small>AI 面试官 · {{ styleLabels[draft.interviewerStyle] }}</small><strong>请仔细阅读问题，准备好后开始回答</strong></div></div><div class="scene-dots"><i class="active"></i><i></i><i></i></div></div><div class="question-content"><div class="question-kicker">QUESTION {{ String(currentIndex + 1).padStart(2,'0') }} <span>{{ currentQuestion?.category }}</span></div><h1>{{ currentQuestion?.text }}</h1><p>建议使用具体事例展开：背景与目标、采取的行动、最终结果，以及你的复盘。</p></div></div>
+        <div class="interviewer-panel panel"><div class="interviewer-screen"><div class="interviewer-scene" :class="avatarState"><div class="interviewer-glow"></div><div class="avatar-frame"><div class="avatar-hair"></div><div class="avatar-face"><i class="eye eye-left"></i><i class="eye eye-right"></i><i class="nose"></i><i class="mouth" :class="{ speaking: speaking && !amplitudeActive }" :style="mouthStyle"></i></div><div class="avatar-neck"></div><div class="avatar-jacket"></div><div class="avatar-shirt"></div></div><div class="speech-lines"><i></i><i></i><i></i></div><div class="interviewer-caption"><small>AI 面试官 · {{ styleLabels[draft.interviewerStyle] }}</small><strong>{{ narrationCaption }}</strong><button v-if="narration?.audioAvailable && !narrationAudioFailed" class="narration-replay" :aria-label="speaking ? '正在朗读问题' : '重播问题'" :title="speaking ? '正在朗读问题' : '重播问题'" @click="replayNarration"><el-icon><VideoPause v-if="speaking" /><VideoPlay v-else /></el-icon>{{ speaking ? '朗读中' : '重播问题' }}</button></div><audio ref="audio" class="narration-audio" @play="speaking = true" @pause="onNarrationPause" @ended="onNarrationPause" @error="onNarrationError"></audio></div><div class="scene-dots"><i :class="{ active: avatarState === 'thinking' }"></i><i :class="{ active: avatarState === 'asking' }"></i><i :class="{ active: avatarState === 'listening' }"></i></div></div><div class="question-content"><div class="question-kicker">QUESTION {{ String(currentIndex + 1).padStart(2,'0') }} <span>{{ currentQuestion?.category }}</span></div><h1>{{ currentQuestion?.text }}</h1><p>建议使用具体事例展开：背景与目标、采取的行动、最终结果，以及你的复盘。</p></div></div>
 
         <div class="recording-panel panel"><div class="self-preview"><video ref="video" autoplay muted playsinline></video><div v-if="!stream?.active" class="self-placeholder"><el-icon><UserFilled /></el-icon><small>设备连接中</small></div><div class="recording-indicator" :class="recorderState"><i></i>{{ recorderState === 'recording' ? '录制中' : recorderState === 'paused' ? '已暂停' : recorderState === 'saving' ? '保存中' : '摄像头已连接' }}</div></div><div class="record-controls"><div class="record-time"><span>{{ formattedTime }}</span><small>{{ recorderState === 'recording' ? '正在录制本题回答' : recorderState === 'paused' ? '录制已暂停' : recorderState === 'saved' ? '本题已保存，可重新录制' : '准备好后开始录制' }}</small></div><div class="record-buttons"><el-button v-if="recorderState === 'idle' || recorderState === 'error' || recorderState === 'saved'" class="record-button" @click="startRecording"><span class="record-dot"></span>{{ recorderState === 'saved' ? '重新录制' : '开始回答' }}</el-button><template v-else><el-button class="pause-button" :disabled="recorderState === 'saving'" @click="pauseRecording"><el-icon><VideoPause v-if="recorderState === 'recording'" /><VideoPlay v-else /></el-icon>{{ recorderState === 'recording' ? '暂停' : recorderState === 'paused' ? '继续' : '保存中' }}</el-button><el-button class="save-button" :disabled="recorderState === 'saving'" @click="stopRecording"><el-icon><CircleCheck /></el-icon>结束回答</el-button></template></div></div></div>
         <div class="session-bottom"><span><el-icon><Lock /></el-icon>视频保留 7 天 · 可随时删除</span><el-button class="primary-button" :disabled="recorderState === 'recording' || recorderState === 'paused' || recorderState === 'saving'" @click="finishQuestion">{{ currentIndex === questions.length - 1 ? '完成并查看报告' : '保存并继续' }} <el-icon><ArrowRight /></el-icon></el-button></div>
@@ -241,6 +384,14 @@ onBeforeUnmount(() => {
 .recording-panel { display: flex; min-height: 109px; gap: 14px; align-items: center; padding: 12px 14px; box-shadow: none; }.self-preview { position: relative; width: 126px; height: 80px; flex: none; overflow: hidden; border-radius: 5px; background: #26352e; }.self-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }.self-placeholder { display: grid; position: absolute; inset: 0; place-content: center; justify-items: center; gap: 4px; color: #dbe8df; font-size: 17px; }.self-placeholder small { font-size: 8px; }.recording-indicator { position: absolute; bottom: 5px; left: 5px; display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-radius: 3px; background: rgba(18,29,23,.75); color: white; font-size: 7px; }.recording-indicator i { width: 5px; height: 5px; border-radius: 50%; background: #7bbc8e; }.recording-indicator.recording i { background: #e46758; animation: blink .8s infinite alternate; }.recording-indicator.paused i { background: #e4b451; }.recording-indicator.saving i { background: #7ba0b2; }@keyframes blink { to { opacity: .25; } }
 .record-controls { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 10px; }.record-time { display: grid; gap: 4px; }.record-time > span { color: #38453e; font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 650; }.record-time small { color: #97a19b; font-size: 8px; }.record-buttons { display: flex; flex-wrap: wrap; gap: 7px; }.record-button.el-button { height: 34px; border-color: #b44b3c; background: #bd5545; color: white; font-size: 9px; }.record-button.el-button:hover { border-color: #a44233; background: #a44233; }.record-dot { width: 7px; height: 7px; border-radius: 50%; background: white; }.pause-button.el-button,.save-button.el-button { height: 32px; padding: 0 10px; font-size: 9px; }.pause-button.el-button { border-color: #e3e8e4; color: #65726a; }.save-button.el-button { border-color: #cfe5d4; background: #eef7f0; color: #4b865e; }
 .session-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.session-bottom > span { display: inline-flex; align-items: center; gap: 5px; color: #8a958e; font-size: 8px; }.session-bottom .primary-button { height: 36px; }
+.narration-audio { display: none; }
+.narration-replay { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #4f7a61; font-size: 8px; cursor: pointer; }
+.narration-replay:hover { color: #35624a; }
+.avatar-face .mouth.speaking { animation: avatar-talk .26s ease-in-out infinite; }
+.interviewer-scene.thinking .speech-lines i { animation: avatar-pulse 1.4s ease-in-out infinite; }
+.interviewer-scene.asking .speech-lines i { opacity: .9; }
+@keyframes avatar-talk { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(2.8); } }
+@keyframes avatar-pulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
 @media(max-width: 920px) { .session-layout { grid-template-columns: 205px minmax(0,1fr); gap: 10px; }.question-nav { gap: 6px; padding: 10px 8px; }.session-meta { justify-content: center; }.interviewer-screen { height: 170px; }.avatar-frame { left: 15%; transform: scale(.85); transform-origin: bottom center; }.interviewer-caption { right: 5%; }.interviewer-caption strong { font-size: 9px; } }
 @media(max-width: 700px) { .session-top { flex-wrap: wrap; }.session-top .back-button { order: 0; }.session-meta { order: 2; width: 100%; justify-content: flex-start; }.end-button { order: 1; }.session-layout { grid-template-columns: 1fr; }.question-rail { position: static; padding-bottom: 5px; }.rail-header { padding: 0 12px; }.question-nav { display: none; }.question-nav.active { display: flex; }.rail-note { display: none; }.overall-progress { margin-bottom: 4px; }.interviewer-screen { height: 145px; }.avatar-frame { left: 8%; transform: scale(.72); }.interviewer-caption { right: 5%; bottom: 23px; max-width: 55%; }.interviewer-caption strong { font-size: 8px; }.speech-lines { left: 42%; }.recording-panel { align-items: stretch; flex-direction: column; }.self-preview { width: 100%; height: auto; aspect-ratio: 16/9; }.record-controls { align-items: flex-start; }.session-bottom > span { max-width: 45%; line-height: 1.5; } }
 </style>
