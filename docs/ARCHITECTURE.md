@@ -1,0 +1,351 @@
+# Light-Interview 项目架构
+
+面向**开发与维护者**：代码怎么组织、一次练习在系统里怎么流动、改哪里、扩展点在哪。
+
+- 使用与部署：见 [USER-GUIDE.md](USER-GUIDE.md) / [DEPLOYMENT.md](DEPLOYMENT.md)
+- 完成度与验证证据：见 [STATUS.md](STATUS.md)
+
+---
+
+## 1. 总览
+
+| 层 | 选型 |
+| --- | --- |
+| 后端 | Java 21 · Spring Boot 3.4 · Spring AI 1.1.8 · Spring AI Alibaba 1.1.2.4（DashScope） |
+| 前端 | Vue 3.5 · Vite 6 · Element Plus · Pinia · Vue Router |
+| 数据库 | PostgreSQL 16 + pgvector（Flyway 迁移） |
+| 缓存/队列 | Redis（当前仅作为依赖存在，见「已知限制」） |
+| 对象存储 | 本地磁盘 / S3 兼容（开发用 `adobe/s3mock`，生产可换 MinIO / AWS S3） |
+| 媒体处理 | 浏览器 `MediaRecorder` 录制 · ffmpeg 抽取音轨 · Paraformer 转写 · Sambert 合成 |
+
+运行时组件与端口：
+
+| 组件 | 端口 | 说明 |
+| --- | --- | --- |
+| consumer（Spring Boot） | 8088 | 后端 API |
+| web（Vite） | 5173 | 前端开发服务器 |
+| PostgreSQL | 5432 | 业务表 + 向量表 |
+| Redis | 6379 | compose 中已起，代码未使用 |
+| s3mock | 9090 | S3 兼容的开发用对象存储 |
+
+---
+
+## 2. 仓库结构
+
+```
+AI-Interview/
+├── pom.xml                     # 聚合 common + consumer 的 Maven 根工程
+├── docker-compose.yml          # postgres / redis / s3mock
+├── .env.example                # 全部环境变量样例（复制成 .env 使用）
+├── common/                     # 共享模块：通用返回体、异常、鉴权工具、共享 record/VO
+├── consumer/                   # 后端主体（Spring Boot 应用）
+│   ├── src/main/java/com/guangge/Interview/
+│   │   ├── ConsumerApplication.java
+│   │   ├── practice/           # 【新】练习面试体系（当前主线）
+│   │   ├── analysis/           # 【新】转写 + 评分流水线
+│   │   ├── avatar/             # 【新】数字人播报与 TTS
+│   │   ├── security/           # 【新】登录限流
+│   │   ├── assistant/ audio/ controller/ data/ repository/
+│   │   │   services/ tools/ images/ mail/ advisor/   # 【遗留】旧面试功能
+│   │   └── util/               # LogSanitizer / JsonText 等工具
+│   └── src/main/resources/
+│       ├── application.properties / application.yml
+│       ├── db/migration/       # Flyway：V1 练习表、V2 分析任务、V3 登录账号
+│       └── prompt/             # 出题与评分的系统提示词
+├── web/                        # Vue 3 前端
+│   └── src/{views,stores,services,data}
+├── scripts/smoke-test.ps1      # 端到端冒烟脚本
+└── docs/                       # 本文档所在目录
+```
+
+---
+
+## 3. 模块划分
+
+### 3.1 `common`
+
+与业务无关的共享代码，被 `consumer` 依赖：
+
+| 包 | 内容 |
+| --- | --- |
+| `auth` | `Sign`（JWT 签发/校验）、`Sessions`、`AuthConstant` |
+| `util` | `CommonResult` 统一返回体、`ResultCode` / `IErrorCode`、`JacksonMapperUtils` |
+| `exception` | `RestException` 与 `RestExceptionAdvice` 全局异常处理 |
+| `config` | `WebConfig`、`RedisConfig` |
+| `record` / `vo` | 跨模块的请求响应模型（`CvRequest`、`CandidateRecord`、`InterViewRequest` 等） |
+
+### 3.2 `consumer`
+
+后端主体，**内部分两代代码**：
+
+- **新体系（`practice` + `analysis` + `avatar` + `security`）**：练习面试主线，有完整测试与验收；
+- **遗留体系（其余包）**：项目早期的「简历改写 / 编程题 / 候选人管理 / 语音对话」功能。
+  它们依赖未被 Flyway 管理的表，部分接口调用即 500；现在统一要求 Bearer Token（见 3.3），
+  但保留还是删除属于待决策项（见 STATUS.md）。
+
+### 3.3 遗留接口的鉴权
+
+`practice/security/LegacyApiAuthInterceptor` 通过 `LegacyApiAuthConfiguration` 注册，
+对 `/frontend`、`/interview`、`/resume`、`/fileupload`、`/candidate`、`/image`、`/talk`、
+`/api/stream-audio` 等路径统一要求与 `/api/v1` 相同的 Bearer Token。
+
+它只拦匿名访问，不改变这些功能的实现——目的是把「谁能调」这件事先对齐。
+
+---
+
+## 4. 一次练习的数据流
+
+```
+前端 SetupView
+   │  POST /api/v1/practice-sessions/question-plan      ← 可选：AI 出题
+   │  POST /api/v1/resume/extract                       ← 可选：简历抽文本
+   ▼
+POST /api/v1/practice-sessions           创建会话，题目写入 questions_json
+   ▼
+前端 DeviceCheckView → SessionView
+   │  POST /practice-sessions/{id}/answers             逐题创建作答记录
+   │  POST /answers/{answerId}/media                   上传录像（video/*）
+   ▼
+POST /practice-sessions/{id}/complete    校验：至少 1 题、且上传都已结束
+   ▼
+AnalysisJobService.enqueue(sessionId)    为每个有录像的作答插入 analysis_jobs（pending）
+   ▼
+@Scheduled processPending()              领取任务：UPDATE ... WHERE status='pending'（原子领取）
+   ▼
+runProviders(job)
+   ├─ MediaStorage.load(mediaKey)        取回录像
+   ├─ AudioConverter（ffmpeg）           抽音轨
+   ├─ AsrProvider.transcribe(...)        → TranscriptResult
+   ├─ EvaluationProvider.evaluate(...)   → 原始 JSON
+   └─ EvaluationResultValidator         结构校验（不合格即失败，不落库脏数据）
+   ▼
+状态写回 analysis_jobs（completed / failed + 脱敏错误）
+   ▼
+GET /practice-sessions/{id}/report       PracticeReportService 组装报告视图
+```
+
+任务状态机：
+
+```
+pending ──claim──▶ processing ──成功──▶ completed
+                      │
+                      └──失败──▶ failed ──retry──▶ pending
+```
+
+- 领取是**数据库层的原子更新**，多实例并发也不会重复处理同一任务；
+- 失败的 `processing` 超过 10 分钟会被 `reclaimStuckJobs()` 回收（进程崩溃兜底）；
+- 每次执行有 `providerTimeoutMs` 超时上限，失败重试上限 `MAX_ATTEMPTS`。
+
+---
+
+## 5. 后端包逐个说明
+
+### 5.1 `analysis` —— 转写与评分流水线
+
+| 类 | 职责 |
+| --- | --- |
+| `AnalysisJobEntity` / `AnalysisJobRepository` | 任务表实体与仓储 |
+| `AnalysisJobService` | 入队、原子领取、执行、重试、卡死回收、超时控制 |
+| `AsrProvider` | 转写接口；`DashScopeAsrProvider` 走 Paraformer，`StubAsrProvider` 为本地兜底 |
+| `EvaluationProvider` | 评分接口；`SpringAiEvaluationProvider` 走大模型，`StubEvaluationProvider` 为兜底 |
+| `EvaluationResultValidator` | 校验固定 JSON 结构（分数 0–100、证据时间区间、必填字段），校验不过抛 `EvaluationFormatException` |
+| `EvaluationOutcome` / `EvaluationProvenance` | 评分结果 + 来源（供应商、模型、耗时） |
+| `EvaluationRequest` / `EvaluationResult` / `EvaluationReport` | 请求与响应模型 |
+| `TranscriptResult` | 转写文本 + 片段 |
+
+**设计要点**：供应商以接口注入，切换只改配置；评分强制走 JSON 结构校验，自由文本直接被拒绝，
+避免模型输出漂移进数据库。
+
+### 5.2 `avatar` —— 数字人播报
+
+| 类 | 职责 |
+| --- | --- |
+| `AvatarController` | `GET /api/v1/practice-sessions/{id}/questions/{i}/narration`（拿文本 + 音频地址）与 `.../narration/audio`（拿音频字节） |
+| `AvatarProvider` / `LocalAvatarProvider` | 组装播报内容与状态（`AvatarState`） |
+| `TtsProvider` / `DashScopeTtsProvider` | Sambert 语音合成 |
+| `SpeechAudio` | 音频字节 + MIME 类型 |
+
+合成失败会转成 **503** 而不是 500，客户端据此隐藏播报控件、保留字幕。
+
+### 5.3 `practice` —— 练习面试主线
+
+| 子包 | 关键类 | 职责 |
+| --- | --- | --- |
+| `controller` | `PracticeSessionController` | `/api/v1` 下的会话、作答、上传、报告、删除等接口 |
+| `service` | `PracticeSessionService` | 会话生命周期、归属校验、录像落库、保留期清理 |
+| | `PracticeReportService` | 把会话 + 作答 + 评分组装成报告视图，并推导 `ready` / `awaiting_analysis` / `analysis_failed` |
+| | `PracticeQuestionCatalog` | 读写会话上的题目 JSON |
+| `entity` / `repository` | `PracticeSessionEntity`、`PracticeAnswerEntity` 及其仓储 | 持久化 |
+| `dto` | `PracticeSessionRequest`、`PracticeAnswerRequest`、`PracticeReportView` 等 | API 模型 |
+| `plan` | `QuestionPlanController` / `QuestionPlanService` / `SpringAiQuestionPlanProvider` / `QuestionPlanValidator` | AI 出题，输出同样要过结构校验 |
+| `resume` | `ResumeController` / `ResumeExtractionService` | 上传 PDF/Word，用 Apache Tika 抽文本 |
+| `security` | `OwnerResolver` | 从 Bearer Token 解析出当前用户，作为数据归属 |
+| | `LegacyApiAuthInterceptor` / `LegacyApiAuthConfiguration` | 给遗留接口补鉴权 |
+| `media` | `MediaSignedUrlService` | HMAC-SHA256 签发带过期时间的播放地址并校验 |
+| `storage` | `MediaStorage`（接口）· `LocalMediaStorage` · `S3MediaStorage` · `S3ObjectResource` · `S3MediaStorageConfiguration` | 录像存取，`MEDIA_PROVIDER=local/s3` 切换 |
+
+### 5.4 `security`
+
+`LoginAttemptGuard` 实现登录限流：同一用户名连续失败超过阈值后锁定一段时间，
+计数在进程内存中（多实例部署会失效，见「已知限制」）。
+
+### 5.5 `util`
+
+| 类 | 职责 |
+| --- | --- |
+| `LogSanitizer` | 脱敏 Bearer 令牌、密钥、邮箱、手机号 |
+| `JsonText` | 从模型返回里提取 JSON |
+| `Dto2Record` / `MarkdownToPdfConverter` | 遗留功能的转换工具 |
+
+### 5.6 遗留包
+
+| 包 | 说明 |
+| --- | --- |
+| `assistant` | `InterviewAssistant` / `JavaAssistant` / `ProgramAssistant` / `ResumeRewriterAssistant`，基于 Spring AI `ChatClient` 的对话助手 |
+| `audio` | `AudioService` / `SpeechToTextService` / `TextToSpeechService` / `AudioConverter`（ffmpeg） |
+| `controller` | 旧接口：`/interview`、`/frontend`、`/resume`、`/fileupload`、`/candidate`、`/api/stream-audio` |
+| `data` / `repository` | 旧实体（`Candidates`、`Resume`、`Knowledge`、`ResumeVector`）与仓储 |
+| `services` | `ResumeService`、`KnowledgeService`、`EmbeddingService`、`RedisService` 等 |
+| `tools` | Spring AI Function Calling 用的工具类 |
+| `images` / `mail` / `advisor` | 图像生成、邮件、日志 Advisor |
+
+---
+
+## 6. 认证与授权
+
+- **登录**：`POST /login`，姓名 + 邀请码查 `candidates` 表；
+- **令牌**：HS256 JWT，密钥来自 `AUTH_TOKEN_SECRET`，默认有效期 15 分钟；
+- **传递**：`Authorization: Bearer <token>`；
+- **归属隔离**：`OwnerResolver` 把 token 解析成 owner，所有查询按 owner 过滤——
+  所以未认证返回 401、跨用户访问返回 404（不泄露资源是否存在）；
+- **限流**：`LoginAttemptGuard`，默认 10 次失败锁 15 分钟；
+- **媒体访问**：播放走短时签名 URL（HMAC + expires），不直接暴露存储路径。
+
+---
+
+## 7. 媒体存储与播放
+
+```
+上传：POST /api/v1/answers/{answerId}/media   (multipart, Content-Type: video/*)
+  └─ PracticeSessionService.storeAnswerMedia → MediaStorage.save → 记录 mediaKey / 大小 / 类型
+
+播放：GET /api/v1/media/{answerId}/signed-url  →  { url: /api/v1/media/{id}?expires=&signature= }
+      GET /api/v1/media/{answerId}?expires=&signature=   →  校验签名与过期时间 → 返回字节
+```
+
+- 本地模式落在 `MEDIA_STORAGE_DIR`，S3 模式走 `practice.media.s3.*`；
+- 媒体端点支持 HTTP Range（206），所以浏览器能拖动进度条；
+- 超过 `MEDIA_RETENTION_DAYS`（默认 7 天）的会话会被定时清理，同时删除录像。
+
+---
+
+## 8. 数据模型
+
+Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
+
+| 迁移 | 表 | 要点 |
+| --- | --- | --- |
+| `V1__practice_sessions.sql` | `practice_sessions`、`practice_answers` | 会话（owner、题目 JSON、状态、保留期）+ 逐题作答（录像 key、大小、时长） |
+| `V2__analysis_jobs.sql` | `analysis_jobs` | 分析任务：`status`、`attempts`、`last_error`，按 `answer_id` 唯一 |
+| `V3__candidate_login.sql` | `candidates` | 登录账号（姓名 + 邀请码） |
+
+> 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
+> `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
+> `spring.ai.vectorstore.pgvector` 使用的 `vector_store` 表由 Spring AI 在启动时按需初始化。
+
+---
+
+## 9. 配置项
+
+全部配置集中在 `consumer/src/main/resources/application.properties`，环境变量样例见 `.env.example`。
+后端会自动加载仓库根目录（或 `consumer/` 目录）的 `.env`（`spring.config.import`）。
+
+| 分组 | 关键配置 | 默认值 |
+| --- | --- | --- |
+| 数据库 | `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | 本地 interview 库 |
+| 迁移 | `PRACTICE_FLYWAY_ENABLED` | true |
+| 服务 | `SERVER_PORT` | 8088 |
+| 媒体 | `MEDIA_PROVIDER` / `MEDIA_STORAGE_DIR` / `MEDIA_RETENTION_DAYS` / `MEDIA_SIGNED_URL_TTL_SECONDS` | local / ./data/media / 7 / 300 |
+| S3 | `MEDIA_S3_ENDPOINT` / `_REGION` / `_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` / `_PATH_STYLE` | 见 .env.example |
+| 上传上限 | `MEDIA_MAX_FILE_SIZE` / `MEDIA_MAX_REQUEST_SIZE` | 250MB |
+| 供应商 | `PRACTICE_ASR_PROVIDER` / `PRACTICE_EVALUATION_PROVIDER` | dashscope / spring-ai |
+| 分析调度 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` / `_PROVIDER_TIMEOUT_MS` / `_POLL_INTERVAL_MS` / `_INITIAL_DELAY_MS` | 3 / 120000 / 15000 / 30000 |
+| 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
+| 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
+| 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
+| 模型 | `spring.ai.dashscope.*`（chat `qwen-max`、embedding `text-embedding-v2`、speech / transcription） | 统一读 `Ali_API_KEY` |
+
+> `spring.ai.dashscope.*.api-key` 都写成 `${Ali_API_KEY:}`，缺 Key 时不会在占位符解析阶段崩溃，
+> 而是给出明确的 `DashScope API key must be set`。
+
+---
+
+## 10. 前端架构
+
+| 文件 | 职责 |
+| --- | --- |
+| `main.js` / `App.vue` | 应用入口与整体布局 |
+| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history` |
+| `authGuard.js` | 路由守卫：未登录跳登录页 |
+| `views/` | 7 个页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView` |
+| `stores/practice.js` | Pinia store：会话列表与草稿、`localStorage` 持久化、过期清理、断网补传 |
+| `services/api.js` | 后端 API 封装，统一注入 token、错误归一化 |
+| `services/mediaCapture.js` | `MediaRecorder` 封装：权限、开始/停止、分片、时长 |
+| `services/mediaStore.js` | 上传失败的本地缓存 |
+| `data/questions.js` | 内置题库（无 Key 时的回退题目） |
+
+前端通过 `VITE_API_BASE_URL` 指向后端；开发态由 `web/vite.config.js` 代理到 8088。
+
+---
+
+## 11. 测试策略
+
+| 层 | 工具 | 规模 |
+| --- | --- | --- |
+| 后端单元/集成 | JUnit 5 + Spring Boot Test | 90 个用例（默认跳过 6 个需要容器/外部服务的） |
+| 前端 | Vitest | 25 个用例（API 客户端、路由守卫、媒体捕获、store、内置题库） |
+| 端到端 | `scripts/smoke-test.ps1` | 24 项断言，覆盖登录 → 出题 → 上传 → 分析 → 报告 → 签名播放 → Range → 删除 |
+
+```bash
+# 全部后端测试（含需要 Postgres / S3 的集成用例）
+mvn -B clean package
+mvn -B test "-Ddb.integration=true" "-Ds3.integration=true"
+
+# 前端
+npm --prefix web test
+
+# 端到端：兜底供应商（假字节即可）
+pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady
+
+# 端到端：真实供应商（ASR 需要真实音轨）
+pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
+  -MediaPath data/verify-clip.mp4 -AnalysisTimeoutSeconds 300
+```
+
+> 真实 ASR 是异步的，脚本会等 `pending` 与 `processing` 两种状态，别只判断 `pending`。
+
+---
+
+## 12. 扩展点
+
+| 想做什么 | 改哪里 |
+| --- | --- |
+| 换转写供应商 | 实现 `AsrProvider`，在配置里把 `PRACTICE_ASR_PROVIDER` 指过去 |
+| 换评分模型/提示词 | 实现 `EvaluationProvider`，或改 `prompt/practice-evaluation-system-prompt.st` |
+| 换出题提示词 | `prompt/practice-question-plan-system-prompt.st` + `SpringAiQuestionPlanProvider` |
+| 换 TTS | 实现 `TtsProvider` / `AvatarProvider`，配置 `PRACTICE_AVATAR_*` |
+| 换对象存储 | 实现 `MediaStorage`，配置 `MEDIA_PROVIDER` |
+| 加题型/题库 | `data/questions.js`（前端内置）+ `PracticeQuestionCatalog`（后端读取） |
+| 调整保留期与调度 | `MEDIA_RETENTION_DAYS`、`PRACTICE_ANALYSIS_*` |
+
+---
+
+## 13. 已知限制
+
+1. **遗留接口**：`/interview`、`/resume`、`/fileupload` 等依赖未被 Flyway 管理的表，部分调用即 500；
+   已补鉴权，但迁移还是删除尚未决定。
+2. **Redis 未使用**：分析队列与任务认领在 PostgreSQL，登录限流在进程内存，Redis 目前是空转依赖。
+3. **无 Key 无法启动**：遗留的四个 `*Assistant` 在构造时就需要 DashScope `ChatModel` 并校验 Key，
+   所以即使 `PRACTICE_*_PROVIDER=stub`，也必须给 `Ali_API_KEY` 一个非空值。
+4. **单机限流**：`LoginAttemptGuard` 用进程内存计数，多实例部署时失效。
+5. **口型动画**：振幅驱动逻辑只有构建验证，未在真实音频下实测。

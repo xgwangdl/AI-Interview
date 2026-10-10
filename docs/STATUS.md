@@ -1,0 +1,346 @@
+# Light-Interview 实施状态
+
+对照 `PLAN.md` 的逐条核对。状态含义：
+
+- **已验证**：有可复现的运行时证据（命令输出、HTTP 响应、浏览器实测或测试用例）。
+- **已实现·未验证**：代码在，但缺少运行时证据。
+- **待输入 / 待决定**：需要外部凭证或产品决策。
+
+复现命令见文末。
+
+## 下次继续（最后更新 2026-10-10）
+
+### 本轮验证结果（2026-10-10 续做）
+
+上一轮删掉 Vosk 后留下的唯一悬念「应用还能不能起来」已经验证，同时补上了两块之前一直缺的运行时证据：
+
+- **启动验证通过**：`java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar` →
+  `Started ConsumerApplication in 14.7s`，Tomcat 监听 8088。Vosk 移除没有破坏启动
+  （对应上一轮记录的「单元测试全绿但启动失败」那类风险，这次排除）。
+- **端到端冒烟 24 项断言全过**：`pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady`
+  覆盖登录、401/404 鉴权、出题、TTS 503 降级、上传、分析完成、签名播放、HTTP Range 206、删除后 404。
+- **90 个测试、0 跳过**：容器起来后 `mvn -B test "-Ddb.integration=true" "-Ds3.integration=true"`
+  把原先跳过的 6 个用例（`PracticePersistenceIntegrationTest` 4 个、`S3MediaStorageIntegrationTest` 2 个）跑成绿色。
+  注意 PowerShell 下 `-Dkey=value` 必须加引号，否则会被拆成 `.integration=true` 并报生命周期错误。
+- 打包体积仍为 173.0 MB，`rg -i vosk` 全仓库 0 命中。
+
+### 新发现：缺 `Ali_API_KEY` 时的启动行为
+
+- `application.properties` 里三处 `spring.ai.dashscope.*.api-key=${Ali_API_KEY}` 原本没有默认值，
+  缺 Key 时先以 `Could not resolve placeholder 'Ali_API_KEY'` 炸掉上下文，报错指向 TTS 而不是根因。
+- 已改为 `${Ali_API_KEY:}`，现在报错变为可执行的一句话：
+  `DashScope API key must be set. Use the connection property: spring.ai.dashscope.api-key`。
+- **但无 Key 仍然起不来**：根因是四个遗留 AI 组件（`InterviewAssistant`、`JavaAssistant`、
+  `ProgramAssistant`、`ResumeRewriterAssistant`）构造时就要 `ChatClient.Builder`，
+  而底层 `DashScopeChatModel` 强制校验 key，与 `PRACTICE_*_PROVIDER=stub` 无关。
+- 文档本来就写明「至少填 `Ali_API_KEY`」，所以这属于已声明约束，不是缺陷。
+  若要做到**真正无 Key 演示**，需把上述遗留组件改成条件装配（连带 `InterViewController`、
+  `AudioStreamController`、`ResumeRewriterService`）——正好与待办 4「遗留接口迁移还是删除」一起决定。
+
+### 新发现：后端原本不读 `.env`（已修）
+
+- 文档让用户 `cp .env.example .env` 填 Key，但**后端没有 dotenv 依赖**，`spring-boot:run` 与
+  `java -jar` 都不读它 —— Spring Boot 只读环境变量与 `application*.properties`。
+  也就是说照文档做，Key 填了也起不来。
+- 已在 `application.properties` 加入
+  `spring.config.import=optional:file:.env[.properties],optional:file:../.env[.properties]`，
+  两条路径分别覆盖「在仓库根目录跑 fat jar」与「在 consumer/ 目录跑 Maven 插件」两种工作目录；
+  文件不存在时静默跳过。
+- 实测（2026-10-10，临时 `.env` + shell 里**不设任何**环境变量）：
+  `java -jar consumer/target/*.jar` 读到 `.env` 的 `SERVER_PORT=8099` →
+  `Started ConsumerApplication in 18.0s`，随后冒烟 24 项全过；
+  `mvn -pl consumer spring-boot:run` 同样从 `../.env` 读到 8099 并启动成功。
+- 顺带修掉文档缺陷：`docs/DEPLOYMENT.md` 原本直接给 `mvn -pl consumer spring-boot:run`，
+  干净检出下会因 `-pl` 不带 `-am` 而从本地仓库拿到过期的 `common`，报
+  `NoClassDefFoundError: com/guangge/Interview/vo/CvRequest`。已改为推荐的
+  `mvn -B clean package` + `java -jar`，并在文档里写明「用 `spring-boot:run` 需先
+  `mvn -B install -DskipTests`」。
+- 验证用的临时 `.env` 已删除，仓库根目录当前**没有** `.env`。
+
+### 如何提供 `Ali_API_KEY`（面聊时不要直接贴 Key）
+
+1. 在仓库根目录新建 `.env`（该文件已在 `.gitignore` 里，不会进版本库），加一行
+   `Ali_API_KEY=你的Key`；其余变量可照 `.env.example` 复制；
+2. 告诉我「填好了」，我会用真实供应商（`PRACTICE_ASR_PROVIDER=dashscope`、
+   `PRACTICE_EVALUATION_PROVIDER=spring-ai`）启动后端并跑冒烟；
+3. 我不会回显 Key，错误信息走 `analysis.error` / `analysis_jobs.last_error`（已脱敏）。
+
+### 真实供应商验证结果（2026-10-10，Key 到手后）
+
+`.env` 已填好（`Ali_API_KEY` 117 字符，`PRACTICE_ASR_PROVIDER=dashscope`、
+`PRACTICE_EVALUATION_PROVIDER=spring-ai`），四条真实模型链路**首次全部跑通**：
+
+| 链路 | 供应商 | 证据 |
+| --- | --- | --- |
+| 出题 | Spring AI + DashScope chat | `POST /api/v1/practice-sessions/question-plan` 返回 3 道贴 JD 的题：Spring Boot 高并发处理、订单系统性能瓶颈定位、分布式事务实践 |
+| TTS | Sambert | `narration/audio` 返回 200 与 1.96 MB 音频（此前只验证过 503 降级路径） |
+| ASR | Paraformer | 把一段中文回答合成为音频再喂回上传接口，转写几乎逐字一致：`削峰`→`消峰`、`八百毫秒`→`800毫秒` |
+| 评分 | Spring AI | 综合 **85**，维度分有区分度：relevance 90 / completeness 85 / professionalism 90 / starStructure 70 / logic 90 —— 该回答确实没有 STAR 结构，低分合理 |
+
+- **得分 0 不是兜底值**：第一次拿 `docs/step2.mp4` 的片段测试时得到 0 分，因为那段音频是面试官开场白，
+  与题目毫无关系。`EvaluationResultValidator` 只做 0–100 边界校验、没有默认值，所以 0 是模型自己的判断；
+  换成贴题回答后立刻变成 85。
+- **真实链路冒烟 24 项断言全过**：
+  `pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady -MediaPath data/verify-clip.mp4`。
+- **冒烟脚本已扩展**：新增 `-MediaPath <文件>`（用真实素材，假字节过不了 ffmpeg）与
+  `-AnalysisTimeoutSeconds <秒>`；同时修掉一个真缺陷 —— 轮询原先只等 `pending`，而真实 ASR 是异步的、
+  会先进入 `processing`，旧逻辑会把「还在处理」当成「已结束」直接判失败。
+- **接口事实**：创建练习时题目必须由客户端给定（`questions.size()` 必须等于 `questionCount`，否则 400）；
+  AI 出题是独立接口 `POST /api/v1/practice-sessions/question-plan`。
+- 本地留了验证脚本 `data/real-verify.ps1`（`data/` 已 gitignore，不进版本库），用「第 2 题的播报 TTS
+  当第 1 题的答案音频」在没有真人录音的情况下验证评分链路。
+- 留了一个可查看的会话 `23591550-e275-49ad-9c28-3b407ec02693`（报告 ready，含真实转写与评分）。
+
+### 当前环境状态
+
+- **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，
+  跑完集成测试后仍未停（下次可直接复用，或 `docker compose down` 收掉）。
+- **后端在运行**：8088，真实供应商（配置全部来自 `.env`），验证会话仍可访问。
+  停止方式：`Get-Process java | Stop-Process`。
+- **前端**：本轮未改动、未启动。
+- **构建状态**（2026-10-10）：`mvn -B clean package` → 90 个测试、6 个跳过、BUILD SUCCESS；
+  容器起来后 `-Ddb.integration=true -Ds3.integration=true` → 90 个测试、0 跳过、BUILD SUCCESS。
+- 代码与文档完好，`git status` 有 **102 项未提交改动**（15 项删除、39 项修改、48 项新增），
+  集中在 `consumer/`（70）与 `web/`（18）。下一次开工建议先决定提交策略，再动代码。
+
+### 下次开工第一件事
+
+1. 三条构建/启动基线都已经跑绿（见上），不用重复；
+2. 四条真实模型链路也已跑通（见「真实供应商验证结果」）；
+3. 真正剩下的都是**需要你输入**的：摄像头授权（两项验收）、Redis 去留、遗留接口去留 ——
+   见下方「需要你处理的事项」；
+4. 如果只是想先看效果：`docker compose up -d` → 直接 `java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar`
+   （`.env` 会自动加载），演示账号 `smoke / 123456`。
+
+### 附：CC Switch 报错与升级（与本项目无关，只做记录）
+
+报错原文：
+
+> CC Switch local proxy failed while handling Codex endpoint `/responses`.
+> Provider: DeepSeek; model: `deepseek-v4-flash`; upstream_status: HTTP 400;
+> cause: The `reasoning_content` in the thinking mode must be passed back to the API.
+
+**含义**：`deepseek-v4-flash` 的思考模式会返回 `reasoning_content`，多轮对话时必须把它
+原样回传；CC Switch 的本地代理在 Codex `/responses` ↔ DeepSeek 之间做协议转换时把它丢了，
+DeepSeek 侧因此返回 400。这**不是** Light-Interview 的问题，是代理层的转换缺陷。
+
+**本机现状**（2026-10-10 读取）：
+
+- 程序：`%LOCALAPPDATA%\Programs\CC Switch\cc-switch.exe`，42.5 MB，文件时间 2026-10-08，
+  没有写入版本信息（`FileVersion` 为空），所以只能按文件时间判断新旧。
+- 配置：`C:\Users\xgwan\.cc-switch\`（`settings.json`、`live-state.json`、`cc-switch.db`、
+  `logs\`、`backups\`）。`live-state.json` 显示 `apps.codex.mode = "proxy"`、`attached = true`。
+
+**下次可选的处置，按代价从低到高**：
+
+1. 在 CC Switch 里把 Codex 切成 `direct`（不经过本地代理），绕开转换层；
+2. 换用不带思考模式的 DeepSeek 模型标识，让响应里不出现 `reasoning_content`；
+3. 升级 CC Switch：需要联网，且要先确认上游有新版本修了这个透传问题；
+4. 把 Codex 的 provider 直接指向 DeepSeek 官方端点，不再经过 CC Switch。
+
+升级属于本机工具运维，且要联网下载安装包 —— 等你确认后再做。
+
+### 上次离开时（2026-10-09）的环境
+
+- **容器**：`postgres` / `redis` / `s3mock` 都在运行（`docker compose ps`）
+- **后端**：8088，本地存储 + `stub` 转写/评分 —— 可直接体验完整闭环
+- **前端**：5173（Vite dev server）
+- **演示账号**：`smoke / 123456`
+- **数据**：无残留（`sessions=0 / jobs=0`，本地媒体 0 文件）
+- **版本控制**：本轮所有改动**仍未提交**（`git status` 约 78 项，含新增的
+  `analysis` / `avatar` / `practice.plan` / `practice.resume` / `practice.security` /
+  `practice.media` / `practice.storage` 包与三份文档）。下次开工可先决定是否提交或分组提交。
+
+```bash
+# 停止全部（数据卷保留，下次 up 即可恢复）
+docker compose down
+
+# 下次恢复
+docker compose up -d
+mvn -B clean package
+java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar      # 见下方环境变量
+cd web && npm run dev
+```
+
+后端环境变量（无 Key 也能跑通闭环）：
+
+```bash
+AUTH_TOKEN_SECRET=change-this-development-secret
+PRACTICE_ASR_PROVIDER=stub
+PRACTICE_EVALUATION_PROVIDER=stub
+PRACTICE_ANALYSIS_INITIAL_DELAY_MS=2000
+PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
+```
+
+### 恢复后建议的第一件事
+
+**有 `Ali_API_KEY` 时**（唯一还能推进的运行时验证）：
+
+1. 用真实供应商重启后端：把 `PRACTICE_ASR_PROVIDER` / `PRACTICE_EVALUATION_PROVIDER`
+   改回 `dashscope` / `spring-ai`，并设置 `Ali_API_KEY`；
+2. 跑 `pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady`；
+3. 若分析失败，先看报告里的 `analysis.error`，再看 `analysis_jobs.last_error`（已脱敏），
+   失败可用 `POST /api/v1/practice-sessions/{id}/analysis/retry` 重试。
+
+**没有 Key 时**：改做需要摄像头的那两项验收（权限拒绝/设备不存在、录制中断与断网恢复）。
+
+### 剩余待办
+
+见上方「需要你处理的事项」，一句话概括（原 4 项，第 1 项已完成）：
+
+1. ~~提供 `Ali_API_KEY`~~ —— 2026-10-10 已提供，四条真实链路验证通过
+2. 授权我用摄像头做完剩余两项验收
+3. 决定 Redis 采用还是移除
+4. 决定遗留接口迁移还是删除
+
+## 需要你处理的事项
+
+| # | 事项 | 影响 | 你可以怎么做 |
+| --- | --- | --- | --- |
+| 1 | ~~**有效的 `Ali_API_KEY`**~~ **已完成** | 转写、评分、出题、TTS 四条真实模型调用已全部验证通过（见「真实供应商验证结果」） | —— |
+| 2 | **摄像头授权** | 验收项「权限拒绝 / 设备不存在」与「录制中断、断网恢复」无法验证 | 允许我在浏览器里操作相机，或你手动走一遍 |
+| 3 | **Redis 采用还是移除** | 它现在空转；分析队列在数据库里 | 说一声即可：接共享计数/队列，或从依赖与 compose 中删除 |
+| 4 | **遗留接口迁移还是删除** | 旧功能（简历改写、编程题、候选人管理）依赖未被 Flyway 管理的表，调用即 500 | 二选一；删除我可以先给出完整清单 |
+
+## 重构顺序
+
+| PLAN 项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 清理根 Maven 模块 | 已完成 | 模块为 `common` + `consumer`；`consumer-api` 已移除 |
+| 统一 Java 21 / Spring Boot / Spring AI | 已完成 | Java 21、Spring Boot 3.4.0、Spring AI 1.1.8、Alibaba 1.1.2.4 |
+| 移除 `SNAPSHOT` / `M` 版本 | 已完成 | 依赖树中已无里程碑或快照版本 |
+| 修复 JWT / CORS / API 客户端问题 | 已完成 | CORS 来源可配、API 客户端解析统一错误体、登录过期不再误报后端故障 |
+| 干净环境构建通过 | 已完成 | `mvn -B clean package`、`npm ci` + `npm run build` 均通过 |
+| 统一应用边界（单一后端 / 单一前端） | 基本完成 | 后端只有 `consumer`，前端只有 `web`；旧 Vaadin/React 已从仓库移除（仅剩本地空目录） |
+| 完成视频训练闭环 | 已完成 | 见下方产品流程 1–8 |
+| 完成 AI 复盘 | 已完成 | 结构化评分、逐题/整体报告、时间轴证据 |
+| 接入数字人 | 已完成 | 2D 半身 + TTS + 状态动画 + 不可用降级 |
+| 清理与发布 | 基本完成 | Compose、环境变量、部署文档、数据删除、日志脱敏、存储清理；遗留接口待决定 |
+
+## 产品流程
+
+| 步骤 | 状态 | 证据 |
+| --- | --- | --- |
+| 1 岗位 / JD / 简历 | 已验证 | 浏览器实测；简历用真实 `.docx` 抽取正文（HTTP 200，45 字） |
+| 2 类型 / 难度 / 风格 / 时长 | 已验证 | 浏览器实测 |
+| 3 设备检测 | 已验证（授权通过路径） | 浏览器实测：摄像头/麦克风就绪、音量正常后才允许进入 |
+| 4 AI 按简历与岗位出题 | 已实现·未验证 | 接口、Schema 校验与回退路径已验证；无 Key 时返回 503 并回退内置题库 |
+| 5 逐题录制（暂停/重录） | 已验证 | 真实浏览器用摄像头录完 5 题并生成报告 |
+| 6 后台异步存储/转写/分析 | 已验证 | 用本地兜底供应商跑通完整闭环；队列认领、重试、超时、持久化均已验证 |
+| 7 逐题报告 / 回放 / 转写 / 时间轴证据 / 改进建议 | 已验证 | 浏览器实测点击证据跳转到视频时间点（`currentTime` 0 → 2.93 并继续播放） |
+| 8 保留 7 天 + 立即删除 | 已验证 | 服务端定时清理与前端 `pruneExpired` 都实测过；删除后媒体与记录不可访问 |
+
+## 版本化接口
+
+PLAN 列出的 10 个接口全部实现，另有补充：
+
+| 接口 | 状态 |
+| --- | --- |
+| `POST/GET /api/v1/practice-sessions` | 已验证 |
+| `GET /api/v1/practice-sessions/{id}`、`/status` | 已验证 |
+| `POST .../{id}/start` | 已验证（设备检测页调用，写入 `startedAt`） |
+| `POST .../{id}/answers` | 已验证 |
+| `POST /api/v1/answers/{id}/media` | 已验证（重传幂等覆盖；未知回答 404） |
+| `POST /api/v1/answers/{id}/complete` | 已验证（未上传录像 409；会话未结束即可出分） |
+| `GET .../{id}/report` | 已验证 |
+| `GET /api/v1/media/{id}/signed-url`、`GET /api/v1/media/{id}` | 已验证（含 HTTP Range 206 与签名/过期校验） |
+| `DELETE /api/v1/practice-sessions/{id}` | 已验证 |
+| 补充：`.../question-plan`、`/api/v1/resume/extract`、`.../analysis/retry`、`.../narration` | 已验证 |
+
+## 核心接口类型与供应商选择
+
+`AsrProvider`、`TtsProvider`、`AvatarProvider`、`EvaluationProvider`、`MediaStorage`、`AnalysisJobRepository` 均已存在。
+
+供应商通过配置选择（业务层只依赖接口）：
+
+| 配置 | 取值 | 默认 |
+| --- | --- | --- |
+| `practice.asr.provider` | `dashscope` / `stub` | `dashscope` |
+| `practice.evaluation.provider` | `spring-ai` / `stub` | `spring-ai` |
+| `practice.media.provider` | `local` / `s3` | `local` |
+| `practice.avatar.provider` | `local-2d` | `local-2d` |
+
+本地兜底实现（`stub`）让「录制 → 转写 → 评分 → 报告」在没有云端凭证时也能完整跑通，
+溯源标注为 `stub-local`，不会伪装成真实模型结果。
+
+## 数据模型（与 PLAN 的偏差）
+
+PLAN 列了 7 张表；实际用 3 张表 + JSON 列，属于有意的简化：
+
+| PLAN 表 | 实际落地 |
+| --- | --- |
+| `practice_sessions` | 同名表，另用 `questions_json` 承载题目（一次读写，无需单独表） |
+| `practice_answers` | 同名表 |
+| `analysis_jobs` | 同名表 |
+| `practice_questions` | 并入 `practice_sessions.questions_json` |
+| `media_assets` | 并入 `practice_answers` 的 `media_*` 列（一题一段录像） |
+| `transcripts` | 并入 `practice_answers` 的 `transcript_*` 列 |
+| `evaluation_reports` | 并入 `practice_answers` 的 `evaluation_json` 列 |
+
+报告审计字段全部落库并已断言：模型名与版本、Prompt 版本、分析时间、结构化评分、
+**原始模型响应**、可定位视频时间点的证据。
+
+## AI 复盘指标
+
+10 项指标全部在报告页可见（浏览器实测）：相关性、完整性、专业性、STAR 结构、回答逻辑、
+语速、停顿次数与总时长、口头禅数量、改进建议、优秀回答示例。评分结果走固定 JSON 结构校验，
+自由文本会被拒绝。
+
+## 数字人
+
+2D 半身界面 + TTS + 状态（`idle/thinking/asking/listening/finished`）+ 振幅驱动口型。
+合成不可用时接口返回 503，客户端隐藏播报控件、保留字幕；口型的振幅逻辑**只有构建验证**。
+
+## 测试与验收
+
+| PLAN 验收项 | 状态 | 证据 |
+| --- | --- | --- |
+| Maven 与前端干净构建 | 已验证 | 见复现命令 |
+| 登录、Token 注入、权限与用户数据隔离 | 已验证 | 未认证 401、跨用户 404；登录失败 10 次后 429 |
+| 摄像头/麦克风权限拒绝与设备不存在 | **待输入** | 需要相机权限 |
+| 录制中断、上传重试和断网恢复 | 部分验证 | 重传幂等与未知回答 404 已在 HTTP 层验证；本地缓存合并与清理有 Vitest 用例；**UI 中断与断网路径仍需相机** |
+| 视频播放、签名 URL 过期、数据删除 | 已验证 | 播放与证据跳转浏览器实测；过期单测；删除后 404；前端删除/过期清理逻辑另有 Vitest 用例 |
+| ASR/评分超时与重复任务幂等 | 已验证 | 挂起供应商 + 300ms 超时单测；入队去重与失败重试往返实测 |
+| 数字人 TTS 可用与不可用两条路径 | 已验证 | 有 Key：Sambert 返回 200 与真实音频；无 Key：音频端点 503 → 客户端隐藏控件 |
+| 真实模型四条链路（出题 / TTS / ASR / 评分） | 已验证 | 2026-10-10 拿到 Key 后逐条跑通，见「真实供应商验证结果」 |
+| 5 题模拟面试全流程 | 已验证（分两半） | 浏览器用真实摄像头录完 5 题并生成报告（当时用兜底供应商）；转写与结构化评分已用真实供应商单独验证。**同一场会话同时具备真人录像与真实模型评分，仍待摄像头授权** |
+
+## 版本策略
+
+| 要求 | 状态 |
+| --- | --- |
+| Java 21 / Node LTS | 已验证（Java 21.0.6、Node 当前本地版本） |
+| 依赖升到最新稳定版 | 已完成（Spring AI 1.1.8 / Alibaba 1.1.2.4 / Spring Boot 3.4.0 / Vue 3.5 / Vite 6） |
+| 禁止 `SNAPSHOT` 与里程碑 | 已验证（依赖树扫描） |
+| 版本写入锁文件 | 已完成（`package-lock.json` 经 `npm ci` 校验） |
+| 在 CI 中固定验证 | 已添加 `.github/workflows/build.yml`：后端 `mvn -B clean package`，前端 `npm ci` / `npm test` / `npm run build`。**尚未在真实 CI 上跑过**；需要 Postgres / S3 的集成用例没有纳入 CI |
+| 密钥 / 存储 / 保留 / Provider 走环境变量 | 已完成（35 个配置项全部有文档） |
+
+## 与 PLAN 的其他偏差
+
+- **MinIO 改为 `adobe/s3mock`**：MinIO 官方镜像已从 Docker Hub 下架，`docker pull minio/minio` 返回 access denied。协议不变，换 provider 只需改 endpoint 与凭证。
+- **Redis 未使用**：分析队列与认领在 PostgreSQL；限流计数在进程内存（多实例会失效）。见待决定事项 3。
+- **前端页面合并**：`AnswerRecorder` 并入 `SessionView`，`PracticeProcessing` 并入 `ReportView` 的轮询，能力未减少。
+
+## 复现命令
+
+```bash
+# 单元与集成测试
+mvn -B clean package
+mvn -B test "-Ddb.integration=true" "-Ds3.integration=true"   # PowerShell 下必须加引号
+
+# 前端
+npm --prefix web ci && npm --prefix web run build
+
+# 端到端（兜底供应商，假字节即可）
+pwsh scripts/smoke-test.ps1 -Name demo -Code <邀请码> -ExpectAnalysisReady
+
+# 端到端（真实供应商：ASR 需要真实音轨，假字节过不了 ffmpeg）
+pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
+  -MediaPath data/verify-clip.mp4 -AnalysisTimeoutSeconds 300
+```
+
+当前规模：后端 **90 个测试**（默认跳过 6 个需要容器/外部服务的用例）、前端 **25 个 Vitest 用例**
+（API 客户端 6 / 路由守卫 4 / 媒体捕获 5 / store 3 / 内置题库 7），
+冒烟脚本 **24 项断言**（带 `-ExpectAnalysisReady`；不加该开关为 20 项），
+真实供应商模式下同样 24 项全过。

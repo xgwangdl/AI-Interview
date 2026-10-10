@@ -1,159 +1,81 @@
-# 🤖 AI Interviewer - Next-Gen Intelligent Interview System
+# Light-Interview
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)
-[![GitHub Stars](https://img.shields.io/github/stars/yourname/ai-interviewer?style=social)](https://github.com/yourname/ai-interviewer)
+A **video practice and review tool for job interviews**: pick a role, record one answer per question,
+then get a transcription, structured scoring, and a per-question report with evidence anchored to the video timeline.
 
-**The first open-source AI system supporting full-cycle technical interviews** | **RESTful API Design** | **Code Practice Evaluation** | **Multimodal Behavior Analysis**
+[中文 README](../README.md) · [Deployment guide](DEPLOYMENT.md) · Apache License 2.0
 
-<p align="center">
-  <img src="docs/demo.gif" alt="Demo" width="800">
-</p>
+> Chinese-language deep dives: [USER-GUIDE.md](USER-GUIDE.md) (how to use the system) and
+> [ARCHITECTURE.md](ARCHITECTURE.md) (code structure, data flow, extension points).
 
-## 🌟 Why Choose AI Interviewer?
+## Features
 
-### Developer Pain Points
-- 😰 Lack of realistic technical interview practice
-- 📚 Traditional coding practice doesn't improve communication skills
-- ⏳ High cost of human mock interviews
+- **Practice setup** — target role, company, job description, resume file name, interview type,
+  interviewer style, difficulty, question count and duration.
+- **Device check** — camera and microphone permission, live preview, ambient volume check.
+- **AI question planning** — the uploaded PDF/Word resume is parsed and combined with the target role,
+  company and job description to generate questions, with a silent fallback to the built-in bank when
+  the model is unavailable. The resume text is used for planning only and is never persisted.
+- **Mock interview** — a digital interviewer narrates each question (with mouth animation, or a
+  caption-only fallback), and every answer is recorded separately, with pause and retake.
+- **AI review** — speech-to-text, then structured scoring (relevance, completeness, professionalism,
+  STAR structure, logic, speech rate, pauses, filler words) surfaced per question with timeline evidence.
+- **Retention and deletion** — recordings are kept for 7 days by default and can be deleted at any
+  time, which also removes the media, transcripts and scores.
 
-### Our Advantages
-✅ **Lightweight Architecture** - REST API based, easy to integrate  
-✅ **In-Depth Technical Assessment** - AST parsing + LLM code review dual engine  
-✅ **Smart Evolution System** - Weekly automatic interview question updates  
-✅ **Multimodal Analysis** - Voice/code/expression multi-dimensional evaluation
+## Stack
 
-## 🚀 Core Features
+| Layer | Choice |
+| --- | --- |
+| Backend | Java 21 · Spring Boot 3.4 · Spring AI 1.1.8 · Spring AI Alibaba 1.1.2.4 (DashScope) |
+| Frontend | Vue 3.5 · Vite 6 · Element Plus · Pinia |
+| Storage | PostgreSQL 16 + pgvector · Redis 7 · S3-compatible object storage (local disk / MinIO / AWS S3) |
+| Media | Browser `MediaRecorder` · ffmpeg audio extraction · Paraformer ASR · Sambert TTS |
 
-| Feature Module      | Technical Highlights               | Use Case                     |
-|---------------------|------------------------------------|-----------------------------|
-| Smart Q&A Engine    | GPT-4 + Local Knowledge Base       | Technical concept evaluation|
-| Code Evaluation     | JavaParser + Custom Rule Engine    | Algorithm/system design     |
-| Voice Interaction   | REST API + Async Task Queue        | Technical communication     |
-| Behavior Dashboard  | OpenCV emotion recognition + Code heatmap | Interview performance visualization |
+## Quick start
 
-## 🛠️ Tech Stack
 ```bash
-AI Engine: Spring Boot + QWen-Max
+cp .env.example .env          # set Ali_API_KEY and AUTH_TOKEN_SECRET at minimum
+# the backend auto-loads .env from the repository root; no manual export needed
+docker compose up -d
 
-Speech Recognition: Vosk + FFmpeg
+mvn -B clean package
+java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar   # Flyway migrations run on first start
 
-Speech Synthesis: Sambert
+# Migrations create the table but no users; provision a login after the backend has started once.
+docker compose exec -T postgres psql -U postgres -d interview \
+  -c "INSERT INTO candidates (candidate_name, invitation_code, status) VALUES ('demo','123456',1);"
 
-Code Analysis: JavaParser + ANTLR
-
-Rag Processing: Postgre Vector
-
-Database: Postgresql
-
-The Real-Time Communication Library for Python: FastRTC
+cd web && npm install && npm run dev
 ```
-##🗣️ Project Iteration Videos
-<tr>
-<td width="50%">
-<h5>Iteration 5<h5>
-<p>Simulating Distinctive Interview Experiences with Tech Leaders' Personas</p>
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/c81d6f3f-51e4-4d88-bfab-11beb17ae662" width="450" controls></video>
-</p>
-</td>
-<td width="50%">
-<h5>Iteration 4<h5>
-<p>Added resume generation and foreign language conversation practice</p>
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/52a52a13-e21c-4b89-98b4-da8c0ef91234" width="450" controls></video>
-</p>
-</td>
-<td width="50%">
-<h5>Iteration 3</h5>
-<p>Added coding challenges and facial recognition</p>
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/16e440a9-9c97-4cb1-a36e-639f7ad22bc4" width="450" controls></video>
-</p>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<h5>Iteration 2</h5>
-<p>Added voice interview</p>
-[观看视频](https://github.com/xgwangdl/AI-Interview/blob/master/docs/step2.mp4)
-</td>
-<td width="50%">
-<h5>Iteration 1</h5>
-<p>Project setup</p>
-[观看视频](https://github.com/xgwangdl/AI-Interview/blob/master/docs/step1.mp4)
-</td>
-</tr>
 
-## 🚩 Project Showcase
+Open <http://localhost:5173> and sign in with `demo / 123456`.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full configuration reference and storage switching.
 
-1. Login Interface  
-![image](https://github.com/user-attachments/assets/84f996dc-e97c-43a0-a39d-7f21f87d9824)  
+## Tests
 
-2. Coding & Written Test Interface  
-![image](https://github.com/user-attachments/assets/0dc0f4af-2ac7-48f9-9f4a-40d071b26de3)  
-![image](https://github.com/user-attachments/assets/292710b6-ee46-440b-a006-0a393d5522ce)  
-
-3. Interview Interface  
-- Facial Recognition  
-![image](https://github.com/user-attachments/assets/d5ba9d39-c33e-498f-912a-1e38809eb4f8)  
-- Interviewer Questions  
-![image](https://github.com/user-attachments/assets/f77a2319-4274-498e-9478-b567bbf26fda)  
-- Candidate Response  
-![image](https://github.com/user-attachments/assets/75cdd8a2-f7ba-4e9a-aa9c-8a298ec20133)  
-
-4. Resume Generation Interface  
-![image](https://github.com/user-attachments/assets/e8e046ae-2661-42d2-bd04-4b608df61467)  
-
-5. Speaking Practice Interface  
-![image](https://github.com/user-attachments/assets/758037e4-5038-4516-ae1d-cd2187c9b936)
-
-6.Simulating Distinctive Interview Experiences with Tech Leaders' Personas
-![image](https://github.com/user-attachments/assets/3a63560a-79b7-40e1-9a9f-e5e760172cd9)
-
-
-##🚀 Quick Start
-Start your first AI interview in 5 minutes:
 ```bash
-# 1. Clone repositories
-Java part:
-git clone https://github.com/xgwangdl/AI-Interview.git
-Python part:
-git clone https://github.com/xgwangdl/AI-Interview-py.git
-
-# 2. Start services (requires Docker)
-cd ai-interviewer
-docker-compose up -d
-
-# 3. Access API docs
-open http://localhost:8080/swagger-ui.html
-
-# Project Info
-Author: Dalian Guangge  
-Tech Stack: JAVA, AI, React 
-Email: xgwangdl@163.com
+mvn -B clean package                                    # unit tests; external dependencies skip
+mvn -B test -Ddb.integration=true -Ds3.integration=true # against real Postgres / S3
+pwsh scripts/smoke-test.ps1 -Name demo -Code 123456     # end-to-end HTTP smoke test
 ```
-📜 License
-Apache License 2.0 - You are free to:
 
-Modify and deploy privately ✅
+## Verification status
 
-Use in commercial products ✅
+Verified: application startup against real PostgreSQL + Redis with all Flyway migrations applied;
+the full browser flow (login → setup → device check → five-question recording → report);
+both local and S3 media storage; HTTP Range support on the media endpoint; 401 for unauthenticated
+requests and 404 for cross-user access; deletion removing media and records.
 
-Maintain original copyright notice ⚠️
+Not yet verified: a single session that combines a real camera recording with real model scoring
+(both halves are verified separately), the two camera acceptance cases (permission denied / missing
+device, recording interrupted / offline recovery), and the amplitude-driven mouth animation, which
+is build-verified only.
 
-🙌 Acknowledgments
-Special thanks to these excellent open-source projects:
+Real model calls were verified end to end on 2026-10-10 with a live `Ali_API_KEY`: AI question
+planning, Paraformer transcription, Sambert synthesis and Spring AI evaluation all returned real
+results. See "真实供应商验证结果" in [STATUS.md](STATUS.md).
 
-Spring Boot - Core REST API framework
+## License
 
-QWen-max - Alibaba's QWen large model
-
-Spring-Ai-Alibaba - Rapid generative AI application development
-
-⭐ If this project helps you, please give us a star in the upper right corner!
-📢 Stay updated: Click Watch to get notifications for new features
-
-## 🌱 Growth  
-[![Star History Chart](https://api.star-history.com/svg?repos=xgwangdl/AI-Interview)](https://star-history.com/#xgwangdl/AI-Interview)  
-*Thanks for starring!*
+Apache License 2.0. Refactored from [guangge](https://github.com/xgwangdl)'s AI-Interview.
