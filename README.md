@@ -66,6 +66,16 @@ pwsh scripts/smoke-test.ps1 -Name demo -Code 123456     # 端到端 HTTP 冒烟
 
 CI（`.github/workflows/build.yml`）会重复跑上面三条：后端干净构建、前端干净安装后测试并构建。
 
+真实供应商链路可以单独验证（需要有效 `Ali_API_KEY`，会把报告写成审计产物）：
+
+```bash
+pwsh scripts/e2e-real-providers.ps1                       # 或用 -MediaPath 指定真人录制的素材
+```
+
+分析队列的指标走 `/actuator/prometheus`（`analysis_queue_length`、`analysis_failure_rate`、
+`analysis_dlq_size` 等）；重试到上限的任务进入死信队列，可通过
+`GET /api/v1/analysis/dlq` 查看、`POST /api/v1/analysis/dlq/{jobId}/requeue` 重新入队。
+
 没有云端凭证也能跑通整条链路：
 
 ```bash

@@ -103,10 +103,20 @@ MEDIA_S3_PATH_STYLE=true
 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` | `3` | 分析任务最大重试次数 |
 | `PRACTICE_ANALYSIS_PROVIDER_TIMEOUT_MS` | `120000` | 单次转写/评分调用超时，避免挂起拖垮队列 |
 | `PRACTICE_ANALYSIS_POLL_INTERVAL_MS` | `15000` | 分析任务轮询间隔 |
+| `PRACTICE_ANALYSIS_RETRY_BACKOFF_MS` | `5000` | 失败重试的指数退避基数（第 n 次等 基数 × 2^(n-1)） |
+| `PRACTICE_ANALYSIS_RETRY_BACKOFF_MAX_MS` | `300000` | 退避上限 |
 | `PRACTICE_ASR_PROVIDER` | `dashscope` | 转写供应商：`dashscope` / `stub` |
 | `PRACTICE_EVALUATION_PROVIDER` | `spring-ai` | 评分供应商：`spring-ai` / `stub` |
 | `PRACTICE_AVATAR_TTS_ENABLED` | `true` | 关闭后退化为「头像 + 文字」 |
 | `FFMPEG_PATH` | Windows 上一个固定路径 | ASR 前抽取音轨用的 ffmpeg |
+
+### 可观测性与死信队列
+
+- `GET /actuator/prometheus` 暴露分析队列指标：`analysis_queue_length`、
+  `analysis_processing_latency_ms`、`analysis_failure_rate`、`analysis_retry_count_total`、
+  `analysis_dlq_size`。**与应用同端口且未鉴权**，生产部署请用管理端口或网关限制来源。
+- 重试达到 `PRACTICE_ANALYSIS_MAX_ATTEMPTS` 的任务会写入 `analysis_jobs_dlq`；
+  `GET /api/v1/analysis/dlq` 查看、`POST /api/v1/analysis/dlq/{jobId}/requeue` 重新入队。
 
 ### 关于 Redis
 

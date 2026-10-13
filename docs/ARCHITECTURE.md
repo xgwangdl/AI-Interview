@@ -152,9 +152,17 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `EvaluationOutcome` / `EvaluationProvenance` | 评分结果 + 来源（供应商、模型、耗时） |
 | `EvaluationRequest` / `EvaluationResult` / `EvaluationReport` | 请求与响应模型 |
 | `TranscriptResult` | 转写文本 + 片段 |
+| `AnalysisQueueMetrics` | Micrometer 指标：队列长度、处理耗时、失败率、重试与 DLQ 计数 |
+| `AnalysisDlqEntity` / `AnalysisDlqRepository` / `AnalysisDlqView` | 死信队列的持久化与视图 |
+| `AnalysisDlqController` | `GET /api/v1/analysis/dlq`（列出）与 `POST .../dlq/{jobId}/requeue`（重新入队） |
+| `AnalysisRequeueResult` | 重新入队后的明确返回体 |
 
 **设计要点**：供应商以接口注入，切换只改配置；评分强制走 JSON 结构校验，自由文本直接被拒绝，
 避免模型输出漂移进数据库。
+
+失败处理（#10）：任务失败后按 `retry-backoff-ms × 2^(n-1)` 退避重排（上限 `retry-backoff-max-ms`），
+调度器只领取 `next_attempt_at` 到期的任务；重试到 `max-attempts` 后写入 `analysis_jobs_dlq`
+并把原任务置为 `failed`（报告据此显示 `analysis_failed`）。
 
 ### 5.2 `avatar` —— 数字人播报
 
@@ -182,6 +190,7 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `security` | `OwnerResolver` | 从 Bearer Token 解析出当前用户，作为数据归属 |
 | | `LegacyApiAuthInterceptor` / `LegacyApiAuthConfiguration` | 给遗留接口补鉴权 |
 | `media` | `MediaSignedUrlService` | HMAC-SHA256 签发带过期时间的播放地址并校验 |
+| | `ChunkedUploadService` / `ChunkUploadController` / `MediaMergeRequest` / `MediaUploadStatusView` | 分片上传、断点续传、合并与整段 sha256 校验（#12） |
 | `storage` | `MediaStorage`（接口）· `LocalMediaStorage` · `S3MediaStorage` · `S3ObjectResource` · `S3MediaStorageConfiguration` | 录像存取，`MEDIA_PROVIDER=local/s3` 切换 |
 
 ### 5.4 `security`
@@ -237,6 +246,20 @@ pending ──claim──▶ processing ──成功──▶ completed
 - 媒体端点支持 HTTP Range（206），所以浏览器能拖动进度条；
 - 超过 `MEDIA_RETENTION_DAYS`（默认 7 天）的会话会被定时清理，同时删除录像。
 
+大文件走**分片上传**（#12），与单段上传并存：
+
+```
+GET    /api/v1/answers/{id}/media/upload?totalChunks=N    → 已收到的分片（刷新后据此续传）
+PUT    /api/v1/answers/{id}/media/chunks/{index}?...       → 上传单个分片（application/octet-stream）
+POST   /api/v1/answers/{id}/media/merge                    → 校验 sha256 → 拼流写入正式 key → 入队分析
+DELETE /api/v1/answers/{id}/media/upload?totalChunks=N     → 放弃并清理临时分片
+```
+
+- 上传标识复用 `answerId`，不需要额外的上传会话表；
+- 临时分片存在 `uploads/{answerId}/chunk-N`，合并成功后删除；
+- 合并前先按序算一遍整段 SHA-256，**校验失败不覆盖已有媒体**，分片保留供补传；
+- 前端 `chunkedUpload.js` 超过 4MB 自动分片，遇到后端 404/405 回退单段上传。
+
 ---
 
 ## 8. 数据模型
@@ -270,6 +293,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 上传上限 | `MEDIA_MAX_FILE_SIZE` / `MEDIA_MAX_REQUEST_SIZE` | 250MB |
 | 供应商 | `PRACTICE_ASR_PROVIDER` / `PRACTICE_EVALUATION_PROVIDER` | dashscope / spring-ai |
 | 分析调度 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` / `_PROVIDER_TIMEOUT_MS` / `_POLL_INTERVAL_MS` / `_INITIAL_DELAY_MS` | 3 / 120000 / 15000 / 30000 |
+| 重试退避 | `PRACTICE_ANALYSIS_RETRY_BACKOFF_MS` / `_RETRY_BACKOFF_MAX_MS` | 5000 / 300000 |
+| 可观测性 | `management.endpoints.web.exposure.include`（health / info / prometheus） | 见 application.properties |
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
@@ -302,9 +327,10 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 
 | 层 | 工具 | 规模 |
 | --- | --- | --- |
-| 后端单元/集成 | JUnit 5 + Spring Boot Test | 90 个用例（默认跳过 6 个需要容器/外部服务的） |
-| 前端 | Vitest | 25 个用例（API 客户端、路由守卫、媒体捕获、store、内置题库） |
+| 后端单元/集成 | JUnit 5 + Spring Boot Test | 101 个用例（默认跳过 6 个需要容器/外部服务的） |
+| 前端 | Vitest | 33 个用例（API 客户端、路由守卫、媒体捕获、分片上传、store、内置题库） |
 | 端到端 | `scripts/smoke-test.ps1` | 24 项断言，覆盖登录 → 出题 → 上传 → 分析 → 报告 → 签名播放 → Range → 删除 |
+| 真实链路端到端 | `scripts/e2e-real-providers.ps1` | 真实凭据 + 真实音轨，产出 `artifacts/e2e/report-*.json` |
 
 ```bash
 # 全部后端测试（含需要 Postgres / S3 的集成用例）
@@ -320,6 +346,12 @@ pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady
 # 端到端：真实供应商（ASR 需要真实音轨）
 pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
   -MediaPath data/verify-clip.mp4 -AnalysisTimeoutSeconds 300
+
+# 真实供应商 E2E（带审计产物；也可用 -MediaPath 指定真人录制的素材）
+pwsh scripts/e2e-real-providers.ps1
+
+# 分析队列指标
+curl http://localhost:8088/actuator/prometheus | Select-String analysis_
 ```
 
 > 真实 ASR 是异步的，脚本会等 `pending` 与 `processing` 两种状态，别只判断 `pending`。
@@ -349,3 +381,8 @@ pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
    所以即使 `PRACTICE_*_PROVIDER=stub`，也必须给 `Ali_API_KEY` 一个非空值。
 4. **单机限流**：`LoginAttemptGuard` 用进程内存计数，多实例部署时失效。
 5. **口型动画**：振幅驱动逻辑只有构建验证，未在真实音频下实测。
+6. **actuator 未鉴权**：`/actuator/prometheus` 与应用同端口且不带鉴权，
+   生产部署需要用管理端口或网关限制访问来源。
+7. **分片合并读两遍**：为保证「校验失败不落库」，合并前先算一遍整段 SHA-256 再拼流写入；
+   在 S3 下意味着分片会被读两次，文件很大时要注意流量成本。
+8. **DLQ 无独立管理员角色**：`/api/v1/analysis/dlq` 按数据归属过滤，只能看到自己的死信任务。

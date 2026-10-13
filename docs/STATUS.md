@@ -91,6 +91,59 @@
   当第 1 题的答案音频」在没有真人录音的情况下验证评分链路。
 - 留了一个可查看的会话 `23591550-e275-49ad-9c28-3b407ec02693`（报告 ready，含真实转写与评分）。
 
+### GitHub issue #10 / #11 / #12 的实现与验证（2026-10-13）
+
+三个 issue 都判定为「合理且可实现」，已全部实现并逐条验证。
+
+**#10 分析队列：可观测性、重试与死信（DLQ）**
+
+- 指标（`spring-boot-starter-actuator` + Micrometer Prometheus，`/actuator/prometheus`）：
+  `analysis_queue_length`、`analysis_processing_latency_ms`、`analysis_failure_rate`、
+  `analysis_retry_count_total`、`analysis_dlq_size`，以及 enqueued/completed/failed/dq 计数器。
+- 失败改为**指数退避**（`retry-backoff-ms` × 2^(n-1)，上限 `retry-backoff-max-ms`），
+  调度器只领取 `next_attempt_at` 已到期的任务（`V4__analysis_queue_observability.sql` 加列 + 索引）。
+- 重试到上限后写入新的 `analysis_jobs_dlq` 表；`analysis_jobs` 那一行保持 `failed`，
+  报告页照旧显示 `analysis_failed`。人工恢复接口：`GET /api/v1/analysis/dlq`、
+  `POST /api/v1/analysis/dlq/{jobId}/requeue`（按数据归属过滤，没有角色模型）。
+- 日志补上 job/session/answer 维度，失败原因仍走 `LogSanitizer` 脱敏。
+- **运行时验证**：把 `FFMPEG_PATH` 指向不存在的路径强制 ASR 失败 →
+  报告 `analysis_failed` 且带可读原因；DLQ 出现 1 条；重入队后调度器再次领取并再次失败
+  （`moved_at` 变为新时间，证明旧条目被删除后重建）；
+  Prometheus 指标同步变化：`enqueued=1`、`failed=2`、`dlq=2`、`retry=1`、`dlq_size=1`、`failure_rate=1.0`。
+- 单元测试：退避时间、DLQ 转存、重入队、指标计数（`AnalysisJobServiceTest` 19 个用例）。
+
+**#11 真实摄像 + 真实模型的单会话端到端**
+
+- 新增 `scripts/e2e-real-providers.ps1`：校验凭据与后端健康 → 选素材（`-MediaPath`，
+  否则从 `docs/step*.mp4` 截 15 秒）→ 跑完整闭环 → 把报告 JSON 写成审计产物
+  （`artifacts/e2e/`，已 gitignore）。`scripts/smoke-test.ps1` 增加 `-ReportOut` 与 `-KeepSession`。
+- 新增可选 CI：`.github/workflows/e2e-real-providers.yml`（`workflow_dispatch`，
+  读 `ALI_API_KEY` secret，上传报告 artifact）。**尚未在真实 runner 上跑过**，需要先在仓库配 secret。
+- `POST /answers/{id}/media` 与 `POST /answers/{id}/complete` 都会入队分析，前端两条路径
+  （录完一题、结束整场）都调用了，**没有发现 race 或漏入队**，不需要改动。
+- **运行时验证**：本机真实凭据下 E2E PASSED —— 报告 `ready`、已评分 2/2、
+  转写为真实中文内容、审计产物落在 `artifacts/e2e/report-*.json`。
+- 诚实说明：**浏览器真摄像头**（权限拒绝/设备不存在、录制中断与断网恢复）仍属人工验收，
+  自动化脚本用的是「真实录像文件 + 真实模型」；两者都已各自验证。
+
+**#12 分片上传与断点续传**
+
+- 后端 `practice/media/`：`ChunkedUploadService` + `ChunkUploadController`，接口
+  `GET /answers/{id}/media/upload`（查询已收分片）、`PUT /answers/{id}/media/chunks/{index}`、
+  `POST /answers/{id}/media/merge`、`DELETE /answers/{id}/media/upload`。
+- 上传标识复用 `answerId`，因此**不需要额外的上传会话表**；分片落在
+  `uploads/{answerId}/chunk-N`，合并时按序拼流写入正式 key，成功后删除临时分片并入队分析。
+- **完整性校验**：合并前按序算整段 SHA-256，不匹配返回 400 且**不覆盖**已有媒体、保留分片供补传。
+- 单段上传接口保持不变，前后端都可回退（前端遇到 404/405 自动退回单段）。
+- 前端 `web/src/services/chunkedUpload.js`：4MB 分片、先查服务端已有分片再补传（刷新后可续传）、
+  整段 sha256；`SessionView` 按大小自动选择分片或单段上传。
+- **运行时验证**：3 片素材只传 0、2 → 查询显示 `[0,2]` → 补传后 `3/3 ready` →
+  合并成功（305474 字节）→ 临时分片清零 → 错误 sha256 被 400 拒绝 →
+  结束练习后报告 `ready`，转写长度 60（真实 ASR），说明合并后的媒体确实进入了分析流水线。
+- 测试：后端 `ChunkedUploadServiceTest` 6 个用例；前端 `chunkedUpload.test.js` 8 个用例。
+
+当前规模：后端 **101 个测试**（原 90 + 11 新增）、前端 **33 个 Vitest 用例**（原 25 + 8 新增）。
+
 ### 当前环境状态
 
 - **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，

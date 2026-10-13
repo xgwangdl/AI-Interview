@@ -156,6 +156,8 @@ PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
 4. 全部答完提交，结束整场练习。
 
 断网或上传失败时，录像会先存在浏览器本地，恢复后自动补传——不会因为网络抖动丢作答。
+录像超过 4MB 时走**分片上传**：只重传缺失的分片，刷新页面后也能接着传，不用从头再来。
+每道题上传完就立即进入转写与评分，不必等整场练习结束。
 
 提交整场练习有两个前置条件：**至少完成 1 题**，且**所有已录题目的上传都已结束**。
 
@@ -225,6 +227,31 @@ PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
 | 启动报 `NoClassDefFoundError ... CvRequest` | 用了 `mvn -pl consumer spring-boot:run` 但没先装 common | 先执行 `mvn -B install -DskipTests` |
 | 启动报 `DashScope API key must be set` | 缺 `Ali_API_KEY` | 在 `.env` 里填一个非空值 |
 | PowerShell 下 Maven 报 `Unknown lifecycle phase ".integration=true"` | `-D` 参数被拆分 | 加引号：`mvn -B test "-Ddb.integration=true"` |
+
+### 8.1 运维：指标与死信队列
+
+分析队列的关键指标通过 Prometheus 暴露（与应用同端口、未鉴权，生产请用网关限制来源）：
+
+```bash
+curl http://localhost:8088/actuator/prometheus | Select-String analysis_
+```
+
+重点看 `analysis_queue_length`（积压）、`analysis_failure_rate`（失败率）、
+`analysis_retry_count_total`（重试次数）、`analysis_dlq_size`（死信条数）。
+
+任务重试到上限后会进入死信队列，可以查询并重新入队：
+
+```bash
+# 列出自己的死信任务（需要 Bearer token）
+curl -H "Authorization: Bearer <token>" http://localhost:8088/api/v1/analysis/dlq
+
+# 重新入队
+curl -X POST -H "Authorization: Bearer <token>" \
+  http://localhost:8088/api/v1/analysis/dlq/<jobId>/requeue
+```
+
+失败任务按指数退避重试（默认 5 秒起、上限 5 分钟），所以看到 `analysis_failed` 时
+先排查根因（Key、配额、ffmpeg、网络），再重入队才有意义。
 
 ---
 
