@@ -47,3 +47,7 @@ dist/
 
 ### E2E 审计产物（scripts/e2e-real-providers.ps1） ###
 /artifacts/
+
+### 本地前端开发服务器日志 ###
+/web-dev.log
+/web-dev.err.log

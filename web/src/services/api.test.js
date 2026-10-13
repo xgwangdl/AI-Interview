@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getAnswerMedia } from './api';
+import { apiRequest, getAnswerMedia, tryLogin, tryRegister } from './api';
 
 function fakeResponse(status, body) {
   return {
@@ -65,5 +65,67 @@ describe('getAnswerMedia', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
 
     await expect(getAnswerMedia('a-1')).rejects.toThrow('无法读取这段视频');
+  });
+});
+
+describe('登录与注册', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('登录提交表单编码的 name/code 到 /login，并返回 token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      code: 200, message: 'ok', data: { token: 'tok', userId: 7, userName: 'alice' },
+    })));
+    globalThis.fetch = fetchMock;
+
+    const data = await tryLogin('alice', 'secret123');
+
+    expect(data).toEqual({ token: 'tok', userId: 7, userName: 'alice' });
+    expect(fetchMock.mock.calls[0][0]).toBe('/login');
+    expect(fetchMock.mock.calls[0][1].body).toBeInstanceOf(URLSearchParams);
+    expect(String(fetchMock.mock.calls[0][1].body)).toContain('name=alice');
+  });
+
+  it('注册提交到 /register，并在填写邮箱时带上 email', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      code: 200, message: 'ok', data: { token: 'tok', userId: 8, userName: 'bob' },
+    })));
+    globalThis.fetch = fetchMock;
+
+    await tryRegister('bob', 'secret123', 'bob@example.com');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/register');
+    const body = String(fetchMock.mock.calls[0][1].body);
+    expect(body).toContain('name=bob');
+    expect(body).toContain('email=bob%40example.com');
+  });
+
+  it('未填邮箱时不发送空 email 参数', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      code: 200, message: 'ok', data: { token: 'tok', userId: 9, userName: 'carol' },
+    })));
+    globalThis.fetch = fetchMock;
+
+    await tryRegister('carol', 'secret123', '');
+
+    expect(String(fetchMock.mock.calls[0][1].body)).not.toContain('email=');
+  });
+
+  it('用户名重复时抛出后端给的原因', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(409, JSON.stringify({
+      code: 409, message: '该用户名已被注册，请换一个', data: null,
+    })));
+
+    await expect(tryRegister('alice', 'secret123', '')).rejects.toThrow('该用户名已被注册，请换一个');
+  });
+
+  it('响应缺少 token 时视为失败', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      code: 200, message: 'ok', data: { userId: 1 },
+    })));
+
+    await expect(tryLogin('alice', 'secret123')).rejects.toThrow('用户名或密码不正确。');
   });
 });

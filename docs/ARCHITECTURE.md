@@ -222,7 +222,11 @@ pending ──claim──▶ processing ──成功──▶ completed
 
 ## 6. 认证与授权
 
-- **登录**：`POST /login`，姓名 + 邀请码查 `candidates` 表；
+- **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
+  用户名唯一（DB 唯一索引兜底并发）、口令用 BCrypt 哈希存进 `candidates.invitation_code`，
+  注册成功直接签发 token，前端不用再登录一次；
+- **登录**：`POST /login`，按用户名取账号后校验口令。历史数据的明文邀请码仍可登录，
+  校验通过后就地升级成 BCrypt 哈希（老账号无需人工迁移）；
 - **令牌**：HS256 JWT，密钥来自 `AUTH_TOKEN_SECRET`，默认有效期 15 分钟；
 - **传递**：`Authorization: Bearer <token>`；
 - **归属隔离**：`OwnerResolver` 把 token 解析成 owner，所有查询按 owner 过滤——
@@ -271,6 +275,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V1__practice_sessions.sql` | `practice_sessions`、`practice_answers` | 会话（owner、题目 JSON、状态、保留期）+ 逐题作答（录像 key、大小、时长） |
 | `V2__analysis_jobs.sql` | `analysis_jobs` | 分析任务：`status`、`attempts`、`last_error`，按 `answer_id` 唯一 |
 | `V3__candidate_login.sql` | `candidates` | 登录账号（姓名 + 邀请码） |
+| `V4__analysis_queue_observability.sql` | `analysis_jobs` / `analysis_jobs_dlq` | 退避字段 `next_attempt_at` + 死信表 |
+| `V5__candidate_registration.sql` | `candidates` | 用户名唯一索引（开放注册），口令改存 BCrypt 哈希 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

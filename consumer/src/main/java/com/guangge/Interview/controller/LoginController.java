@@ -49,7 +49,7 @@ public class LoginController {
         }
         Candidates candidates;
         try {
-            candidates = this.candidatesService.longin(name, code);
+            candidates = this.candidatesService.login(name, code);
         } catch (RuntimeException exception) {
             this.loginAttempts.recordFailure(attemptKey);
             throw exception;

@@ -158,6 +158,37 @@
 - 附带修掉长说明会被 Element 的 `white-space: nowrap` 挤成一行溢出的问题；
   窄屏改为单列，不再把说明文字隐藏掉。
 
+### 2026-10-13 新增功能：用户自助注册
+
+在此之前账号只能手工 `INSERT` 进 `candidates` 表，除了内置的冒烟用户没人能登录。
+
+- **后端**：`POST /register`（`RegistrationController` → `CandidatesService.register`）。
+  用户名 2–80 字符（中文/字母/数字/`_ . -`），密码至少 6 位；注册成功直接签发 token。
+- **口令安全**：引入 `spring-security-crypto`，口令用 **BCrypt** 存哈希（此前是明文比对）。
+  历史明文账号仍可登录，并在**登录成功后就地升级为哈希**，无需人工迁移。
+- **唯一性**：`V5__candidate_registration.sql` 在 `candidate_name` 上建唯一索引——
+  实体早就写着 `unique = true`，但 V3 只建了普通索引，两边一直不一致；并发注册同名时
+  唯一索引兜底，服务层把 `DataIntegrityViolationException` 转成 409。
+- **顺带修的隐患**：`Candidates` 的主键原本用 `GenerationType.IDENTITY`，而 Flyway 建的表只是
+  `DEFAULT nextval(...)`（不是 identity 列）。改成 `SEQUENCE + interviewer_id_seq` 后
+  JPA 插入才正常——注册之前从没走过 JPA 插入这条路，所以一直没暴露。
+- **前端**：登录页加「登录 / 注册」页签（`auth-switch`），注册含确认密码与可选邮箱；
+  `tryLogin` / `tryRegister` 收敛到 `services/api.js`；Vite 增加 `/register` 代理。
+- **运行时验证**（真实 HTTP）：
+  | 场景 | 结果 |
+  | --- | --- |
+  | 注册新用户 | 200，返回 token，`userId=2` |
+  | 用新账号登录 | 200 |
+  | 错误密码 | 403 |
+  | 重复用户名 | 409 |
+  | 密码不足 6 位 | 400 |
+  | 老账号 `smoke/123456` | 200（明文自动升级） |
+  | 通过 Vite 代理注册 | 200，`userId=3` |
+
+  数据库核对：两条记录的 `invitation_code` 均为 60 字符 `$2a$10$...` BCrypt 哈希。
+- 测试：后端 `CandidatesServiceTest` 9 个用例；前端 `api.test.js` 新增 5 个登录/注册用例。
+- **已知限制**：注册接口没有验证码与频率限制，公网部署需要在网关层加限流（已写入 DEPLOYMENT.md）。
+
 ### 当前环境状态
 
 - **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，

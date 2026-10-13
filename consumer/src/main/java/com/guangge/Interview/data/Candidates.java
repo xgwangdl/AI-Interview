@@ -8,15 +8,18 @@ import java.sql.Date;
 @Table(name = "candidates")
 public class Candidates {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    // 主键由 Flyway 建的 interviewer_id_seq 提供；改成 SEQUENCE 才能让 JPA 正常插入，
+    // IDENTITY 依赖的是 serial/identity 列，而这张表的 id 只是 DEFAULT nextval(...)。
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "interviewer_id_seq")
+    @SequenceGenerator(name = "interviewer_id_seq", sequenceName = "interviewer_id_seq", allocationSize = 1)
     private Long id;
 
-    // 姓名
+    // 登录名
     @Column(name = "candidate_name", nullable = false, unique = true)
     private String name;
 
-    // 姓名
-    @Column(name = "invitation_code", nullable = false, unique = true)
+    // 口令（BCrypt 哈希）。老数据可能是明文邀请码，登录成功后会就地升级成哈希。
+    @Column(name = "invitation_code", nullable = false)
     private String code;
 
     // 简历

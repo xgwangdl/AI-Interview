@@ -16,6 +16,7 @@ export default defineConfig({
     proxy: {
       '/api': apiServer,
       '/login': { target: apiServer, bypass: spaBypass },
+      '/register': { target: apiServer, bypass: spaBypass },
       '/auth': { target: apiServer, bypass: spaBypass },
     },
   },

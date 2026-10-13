@@ -38,20 +38,27 @@ pgvector 扩展由 Hikari 的 `connection-init-sql` 自动创建。
 
 ### 登录用户
 
-登录使用「用户名 + 邀请码」，数据来自 `candidates` 表（`V3__candidate_login.sql` 创建）。
-迁移只建表不写数据，首次部署需要自己创建一个账号：
+登录使用「用户名 + 密码」，数据来自 `candidates` 表（`V3__candidate_login.sql` 创建）。
+**用户可以直接在登录页自助注册**（`POST /register`），口令以 BCrypt 哈希存进
+`candidates.invitation_code`，注册成功即签发 token。用户名唯一由
+`V5__candidate_registration.sql` 的唯一索引保证（2–80 字符，支持中文/字母/数字/`_ . -`，
+密码至少 6 位）。
+
+需要批量造账号（或做演示数据）时也可以用 SQL，写明文口令即可：
 
 ```bash
 docker compose exec -T postgres psql -U postgres -d interview \
   -c "INSERT INTO candidates (candidate_name, invitation_code, status) VALUES ('demo','123456',1);"
 ```
 
-之后即可用 `demo / 123456` 登录 <http://localhost:5173/login>。
-邀请码是唯一的准入凭证，请勿在演示环境之外使用示例值。
+之后用 `demo / 123456` 登录 <http://localhost:5173/login> 即可；首次登录成功后该行会被
+自动改写成 BCrypt 哈希，无需人工迁移。请勿在生产环境使用示例口令。
+
+> 注册接口目前没有验证码或频率限制，公网部署时建议在网关层加限流。
 
 启动后：
 
-- 前端 <http://localhost:5173>（Vite 已把 `/api`、`/login`、`/auth` 代理到 `localhost:8088`）
+- 前端 <http://localhost:5173>（Vite 已把 `/api`、`/login`、`/register`、`/auth` 代理到 `localhost:8088`）
 - S3 兼容端点 <http://localhost:9090>（开发凭证任意）
 - 健康检查 `GET /api/v1/practice-sessions`（需 Bearer Token）
 

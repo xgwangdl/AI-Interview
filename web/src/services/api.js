@@ -46,6 +46,31 @@ export function tryDeleteSession(id) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/**
+ * 登录与注册走根路径（不是 /api/v1），所以单独封装：
+ * 两者都返回 { token, userId, userName }，失败时抛出后端给的 message。
+ */
+async function postCredentials(path, payload, fallbackMessage) {
+  const response = await fetch(path, { method: 'POST', body: new URLSearchParams(payload) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.code !== 200) {
+    throw new Error(result.message || fallbackMessage);
+  }
+  // 接口成功但没给 token 属于异常响应，此时 result.message 通常是 "ok"，
+  // 直接用它会误导用户，所以退回本地的兜底文案。
+  if (!result.data?.token) throw new Error(fallbackMessage);
+  return result.data;
+}
+
+export function tryLogin(name, code) {
+  return postCredentials('/login', { name, code }, '用户名或密码不正确。');
+}
+
+export function tryRegister(name, code, email) {
+  const payload = email ? { name, code, email } : { name, code };
+  return postCredentials('/register', payload, '注册失败，请换一个用户名。');
+}
+
 export function getSessions() {
   return apiRequest('/practice-sessions');
 }

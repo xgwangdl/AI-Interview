@@ -74,12 +74,16 @@ java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar
 
 ### 3.4 创建登录账号
 
-系统没有自助注册，账号来自 `candidates` 表。迁移只建表，需要手动插一条：
+直接在登录页点「注册」，填用户名 + 密码即可，注册成功会自动登录（密码至少 6 位）。
+用户名允许中文、字母、数字与 `_ . -`，长度 2–80。需要批量造账号时也可以用 SQL：
 
 ```bash
 docker compose exec -T postgres psql -U postgres -d interview \
   -c "INSERT INTO candidates (candidate_name, invitation_code, status) VALUES ('demo','123456',1);"
 ```
+
+这样插入的是**明文口令**，仍然可以登录；首次登录成功后后端会自动把它改写成 BCrypt 哈希，
+不需要人工迁移。
 
 ### 3.5 启动前端
 
@@ -109,12 +113,13 @@ PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
 
 ## 4. 登录
 
-- 登录方式是**姓名 + 邀请码**，校验 `candidates` 表；
+- 登录方式是**用户名 + 密码**，校验 `candidates` 表；密码以 BCrypt 哈希保存，管理员看不到原文；
+- 没有账号时在同一个页面切到「注册」页签，注册成功即刻进入工作台；
 - 登录成功后在浏览器 `localStorage` 保存 token，后续请求自动带上；
 - 同一用户名连续失败 **10 次**会被锁定 **15 分钟**（`AUTH_LOGIN_MAX_ATTEMPTS` /
   `AUTH_LOGIN_LOCK_WINDOW_MINUTES` 可调）。
 
-演示账号：`smoke / 123456`（若你按 3.4 建的是 `demo / 123456`，就用 demo）。
+演示账号：`smoke / 123456`。
 
 ---
 
@@ -227,6 +232,9 @@ PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
 | 启动报 `NoClassDefFoundError ... CvRequest` | 用了 `mvn -pl consumer spring-boot:run` 但没先装 common | 先执行 `mvn -B install -DskipTests` |
 | 启动报 `DashScope API key must be set` | 缺 `Ali_API_KEY` | 在 `.env` 里填一个非空值 |
 | PowerShell 下 Maven 报 `Unknown lifecycle phase ".integration=true"` | `-D` 参数被拆分 | 加引号：`mvn -B test "-Ddb.integration=true"` |
+| 注册时提示「该用户名已被注册」 | 用户名全局唯一 | 换一个用户名；账号是全局共享的，不区分邮箱 |
+| 注册时提示密码长度不足 | 口令至少 6 位 | 换更长一些的密码 |
+| 忘记了密码 | 目前没有自助找回 | 联系管理员在库中把该行口令改回明文，登录一次即自动重新哈希 |
 
 ### 8.1 运维：指标与死信队列
 

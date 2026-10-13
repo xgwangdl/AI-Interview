@@ -39,15 +39,13 @@ docker compose up -d
 mvn -B clean package
 java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar
 
-# 4. 创建登录账号（迁移只建表不写数据，必须先启动过一次后端）
-docker compose exec -T postgres psql -U postgres -d interview \
-  -c "INSERT INTO candidates (candidate_name, invitation_code, status) VALUES ('demo','123456',1);"
-
-# 5. 前端
+# 4. 前端
 cd web && npm install && npm run dev
 ```
 
-打开 <http://localhost:5173>，用 `demo / 123456` 登录。
+打开 <http://localhost:5173>，在登录页点「注册」自己建账号（用户名 + 至少 6 位密码），
+注册成功会直接进入工作台。演示账号是 `smoke / 123456`。
+需要批量造账号时也可以直接往 `candidates` 表插一行，明文口令首次登录后会自动升级成哈希。
 上手流程见 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)，代码结构与扩展点见
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，完整变量与对象存储切换见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
