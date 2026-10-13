@@ -21,7 +21,9 @@ param(
     [string]$Code,
     [switch]$ExpectAnalysisReady,
     [string]$MediaPath,
-    [int]$AnalysisTimeoutSeconds = 60
+    [int]$AnalysisTimeoutSeconds = 60,
+    [string]$ReportOut,
+    [switch]$KeepSession
 )
 
 $ErrorActionPreference = 'Stop'
@@ -219,15 +221,43 @@ $rangeBody = $rangeResponse.Content.ReadAsByteArrayAsync().Result
 Assert-Equal 206 ([int]$rangeResponse.StatusCode) '媒体端点支持 HTTP Range'
 Assert-Equal 10 $rangeBody.Length 'Range 请求返回的字节数'
 
-$null = Invoke-RestMethod -Method Delete -Uri "$api/practice-sessions/$($session.id)" -Headers $headers
-Write-Host '  PASS 删除练习' -ForegroundColor Green
+# 真实供应商的 e2e 会把报告当审计产物留档，所以这里支持导出后再决定是否删除会话。
+if ($ReportOut) {
+    $artifact = [ordered]@{
+        generatedAt       = (Get-Date).ToUniversalTime().ToString('o')
+        baseUrl           = $BaseUrl
+        sessionId         = $session.id
+        reportStatus      = $report.status
+        analysisStatus    = $report.analysis.status
+        analysisAttempts  = $report.analysis.attempts
+        analysisError     = $report.analysis.error
+        questionCount     = $report.questions.Count
+        evaluatedCount    = $report.evaluatedCount
+        mediaFile         = $videoName
+        mediaBytes        = $videoBytes.Length
+        report            = $report
+    }
+    $artifactDir = Split-Path -Parent $ReportOut
+    if ($artifactDir -and -not (Test-Path -LiteralPath $artifactDir)) {
+        New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+    }
+    $artifact | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $ReportOut -Encoding utf8
+    Write-Host "  INFO 报告已写出：$ReportOut" -ForegroundColor DarkGray
+}
 
-try {
-    $null = Invoke-RestMethod -Uri "$api/practice-sessions/$($session.id)/report" -Headers $headers
-    Write-Host '  FAIL 删除后报告仍可访问' -ForegroundColor Red
-    $failures++
-} catch {
-    Assert-Equal 404 ([int]$_.Exception.Response.StatusCode) '删除后报告不可访问'
+if ($KeepSession) {
+    Write-Host "  INFO 保留会话便于查看：$($session.id)" -ForegroundColor DarkGray
+} else {
+    $null = Invoke-RestMethod -Method Delete -Uri "$api/practice-sessions/$($session.id)" -Headers $headers
+    Write-Host '  PASS 删除练习' -ForegroundColor Green
+
+    try {
+        $null = Invoke-RestMethod -Uri "$api/practice-sessions/$($session.id)/report" -Headers $headers
+        Write-Host '  FAIL 删除后报告仍可访问' -ForegroundColor Red
+        $failures++
+    } catch {
+        Assert-Equal 404 ([int]$_.Exception.Response.StatusCode) '删除后报告不可访问'
+    }
 }
 
 if ($failures -eq 0) {

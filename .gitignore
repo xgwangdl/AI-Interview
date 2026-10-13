@@ -44,3 +44,6 @@ dist/
 
 ### Local recording storage (practice.media.storage-dir) ###
 /data/
+
+### E2E 审计产物（scripts/e2e-real-providers.ps1） ###
+/artifacts/

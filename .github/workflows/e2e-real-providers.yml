@@ -1,0 +1,81 @@
+name: e2e-real-providers
+
+# issue #11：可选的「真实供应商端到端」验证。
+#
+# 只在手动触发（workflow_dispatch）时运行，因为真实 ASR / 评分调用会产生费用，
+# 并且需要仓库 secret `ALI_API_KEY`。默认的 build workflow 保持无凭据、可公开复现。
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check ALI_API_KEY secret
+        run: |
+          if [ -z "${{ secrets.ALI_API_KEY }}" ]; then
+            echo "::error::缺少 ALI_API_KEY secret，无法运行真实供应商 E2E（在仓库 Settings → Secrets 中配置）"
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          {
+            echo "Ali_API_KEY=${{ secrets.ALI_API_KEY }}"
+            echo "PRACTICE_ASR_PROVIDER=dashscope"
+            echo "PRACTICE_EVALUATION_PROVIDER=spring-ai"
+            echo "PRACTICE_ANALYSIS_INITIAL_DELAY_MS=2000"
+            echo "PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000"
+          } >> .env
+
+      - name: Start infrastructure
+        run: docker compose up -d
+
+      - name: Build backend
+        run: mvn -B clean package -DskipTests
+
+      - name: Start backend
+        run: |
+          nohup java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8088/actuator/health > /dev/null; then
+              echo "backend is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::后端启动超时"
+          tail -n 200 backend.log
+          exit 1
+
+      - name: Provision demo user
+        run: |
+          docker compose exec -T postgres psql -U postgres -d interview \
+            -c "INSERT INTO candidates (candidate_name, invitation_code, status) VALUES ('smoke','123456',1);"
+
+      - name: Run real-provider E2E
+        shell: pwsh
+        run: ./scripts/e2e-real-providers.ps1
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-real-providers
+          path: |
+            artifacts/e2e
+            backend.log
+          if-no-files-found: warn
