@@ -24,8 +24,8 @@ public class StubEvaluationProvider implements EvaluationProvider {
         String raw = "{\"stub\":true,\"questionId\":\"" + request.questionId() + "\"}";
         EvaluationResult result = new EvaluationResult(
                 75.0,
-                new EvaluationResult.DimensionScores(78, 72, 75, 70, 76),
-                new EvaluationResult.DeliveryMetrics(200, 3, 5.5, 2),
+                new EvaluationResult.DimensionScores(78.0, 72.0, 75.0, 70.0, 76.0),
+                new EvaluationResult.DeliveryMetrics(200.0, 3, 5.5, 2),
                 List.of("（本地模拟评分）接入真实模型后，这里会给出针对本题的改进建议。"),
                 "（本地模拟评分）示例回答占位内容。",
                 // 证据刻意放在非零时间点，便于验证报告页「点击证据跳转到视频位置」。

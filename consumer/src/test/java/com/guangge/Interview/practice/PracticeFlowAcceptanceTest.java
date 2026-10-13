@@ -257,11 +257,11 @@ class PracticeFlowAcceptanceTest {
     private static EvaluationProvider evaluatingProvider() {
         EvaluationResult result = new EvaluationResult(
                 82.5,
-                new EvaluationResult.DimensionScores(88, 80, 85, 75, 84),
+                new EvaluationResult.DimensionScores(88.0, 80.0, 85.0, 75.0, 84.0),
                 new EvaluationResult.DeliveryMetrics(210.5, 4, 7.5, 3),
                 List.of("多用 STAR 结构描述项目"),
                 "先讲背景，再讲任务与行动。",
-                List.of(new EvaluationResult.Evidence("relevance", "answer", 0, 5)));
+                List.of(new EvaluationResult.Evidence("relevance", "answer", 0.0, 5.0)));
         return new EvaluationProvider() {
             @Override
             public EvaluationOutcome evaluate(EvaluationRequest request) {

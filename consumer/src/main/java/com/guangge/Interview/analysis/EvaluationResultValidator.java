@@ -63,7 +63,8 @@ public class EvaluationResultValidator {
                 if (evidence.dimension() == null || evidence.dimension().isBlank()) {
                     throw new EvaluationFormatException("evidence.dimension is required");
                 }
-                if (evidence.startSeconds() < 0 || evidence.endSeconds() < evidence.startSeconds()) {
+                if (evidence.startSeconds() == null || evidence.endSeconds() == null
+                        || evidence.startSeconds() < 0 || evidence.endSeconds() < evidence.startSeconds()) {
                     throw new EvaluationFormatException("evidence time range is invalid");
                 }
             }
@@ -82,17 +83,20 @@ public class EvaluationResultValidator {
         }
     }
 
-    private static void bounded(double value, String field) {
+    private static void bounded(Double value, String field) {
+        if (value == null) throw new EvaluationFormatException(field + " is required");
         if (Double.isNaN(value) || value < 0 || value > 100) {
             throw new EvaluationFormatException(field + " must be between 0 and 100");
         }
     }
 
-    private static void nonNegative(int value, String field) {
+    private static void nonNegative(Integer value, String field) {
+        if (value == null) throw new EvaluationFormatException(field + " is required");
         if (value < 0) throw new EvaluationFormatException(field + " must not be negative");
     }
 
-    private static void nonNegative(double value, String field) {
+    private static void nonNegative(Double value, String field) {
+        if (value == null) throw new EvaluationFormatException(field + " is required");
         if (Double.isNaN(value) || value < 0) {
             throw new EvaluationFormatException(field + " must not be negative");
         }
