@@ -145,6 +145,15 @@ public class PracticeSessionService {
         return getAnswerMedia(answerId);
     }
 
+    /**
+     * 分片上传的归属校验入口：确认作答存在且属于当前用户（否则 404）。
+     * 分片本身由 {@code ChunkedUploadService} 落到媒体存储，这里只负责授权。
+     */
+    @Transactional(readOnly = true)
+    public void assertOwnedAnswer(String ownerId, UUID answerId) {
+        requireOwnedAnswer(ownerId, answerId);
+    }
+
     /** Reads media by answer id only; callers must have authorised the request first. */
     @Transactional(readOnly = true)
     public MediaFile getAnswerMedia(UUID answerId) {

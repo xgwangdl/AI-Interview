@@ -72,6 +72,33 @@ export function tryUploadAnswerMedia(answerId, blob) {
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/media`, { method: 'POST', body: form });
 }
 
+// --- 分片上传（#12）：大文件断点续传，见 services/chunkedUpload.js ---
+
+export function getMediaUploadStatus(answerId, totalChunks) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/media/upload?totalChunks=${totalChunks}`);
+}
+
+export function uploadMediaChunk(answerId, index, totalChunks, chunk) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/media/chunks/${index}?totalChunks=${totalChunks}`, {
+    method: 'PUT',
+    body: chunk,
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });
+}
+
+export function completeMediaUpload(answerId, payload) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/media/merge`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function abortMediaUpload(answerId, totalChunks) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/media/upload?totalChunks=${totalChunks}`, {
+    method: 'DELETE',
+  });
+}
+
 export function tryCompleteAnswer(answerId) {
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/complete`, { method: 'POST' });
 }

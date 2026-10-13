@@ -26,7 +26,8 @@ public class LocalMediaStorage implements MediaStorage {
     @Override
     public void store(String key, InputStream content, long contentLength) throws IOException {
         Path target = resolve(key);
-        Files.createDirectories(root);
+        // 分片上传会用到 uploads/{answerId}/chunk-N 这种嵌套 key，父目录必须一起建。
+        Files.createDirectories(target.getParent());
         Files.copy(content, target, StandardCopyOption.REPLACE_EXISTING);
     }
 

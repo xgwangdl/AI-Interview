@@ -6,7 +6,8 @@ import { usePracticeStore } from '../stores/practice';
 import { getActiveStream, stopActiveStream, supportedRecorderType } from '../services/mediaCapture';
 import { getMedia, saveMedia } from '../services/mediaStore';
 import { buildQuestions, styleLabels } from '../data/questions';
-import { getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer, tryUploadAnswerMedia } from '../services/api';
+import { getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer } from '../services/api';
+import { uploadAnswerMediaWithFallback } from '../services/chunkedUpload';
 
 const route = useRoute();
 const router = useRouter();
@@ -268,7 +269,12 @@ async function persistAnswer() {
 
 async function syncAnswer(answer, blob) {
   const saved = await trySaveAnswer(draft.id, answer);
-  await tryUploadAnswerMedia(saved.id, blob);
+  // 大文件走分片上传：断点续传 + sha256 完整性校验；小文件仍是单段上传。
+  await uploadAnswerMediaWithFallback(saved.id, blob, {
+    onProgress: (ratio) => {
+      answer.uploadProgress = Math.round(ratio * 100);
+    },
+  });
   try {
     // 单题上传完就开始分析，不必等整场练习结束；失败也没关系，结束时还会统一入队。
     await tryCompleteAnswer(saved.id);
@@ -276,6 +282,7 @@ async function syncAnswer(answer, blob) {
     // 忽略：整场结束时 complete 会兜底入队。
   }
   answer.mediaId = saved.id;
+  answer.uploadProgress = 100;
   answer.syncError = null;
 }
 
