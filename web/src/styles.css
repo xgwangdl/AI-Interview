@@ -69,7 +69,26 @@ a { color: inherit; text-decoration: none; }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; color: #293430; font-size: 14px; font-weight: 650; }
 .section-title small { color: #8b9691; font-size: 11px; font-weight: 400; }
 .eyebrow { color: var(--green); font-size: 10px; font-weight: 700; text-transform: uppercase; }
-.primary-button.el-button { --el-button-bg-color: var(--green); --el-button-border-color: var(--green); --el-button-hover-bg-color: var(--green-dark); --el-button-hover-border-color: var(--green-dark); height: 40px; padding: 0 17px; font-size: 12px; font-weight: 600; }
+.primary-button.el-button {
+  /* 只覆盖背景色是不够的：Element Plus 的默认文字色是深灰 #606266，
+     压在 --green(#287b63) 上对比度只有 1.19:1，字基本看不见。这里把前景色一起定死。 */
+  --el-button-bg-color: var(--green);
+  --el-button-border-color: var(--green);
+  --el-button-text-color: #fff;
+  --el-button-hover-bg-color: var(--green-dark);
+  --el-button-hover-border-color: var(--green-dark);
+  --el-button-hover-text-color: #fff;
+  --el-button-active-bg-color: var(--green-dark);
+  --el-button-active-border-color: var(--green-dark);
+  --el-button-active-text-color: #fff;
+  --el-button-disabled-bg-color: #c8d8d1;
+  --el-button-disabled-border-color: #c8d8d1;
+  --el-button-disabled-text-color: #5c6b64;
+  height: 40px;
+  padding: 0 17px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .soft-button.el-button { height: 38px; border-color: var(--line); color: #53605a; font-size: 12px; }
 .tag-muted.el-tag { border-color: #e8ece8; background: #f5f7f5; color: #737e78; }
 .empty-state { display: flex; min-height: 220px; align-items: center; flex-direction: column; justify-content: center; padding: 26px; color: #8a948f; text-align: center; }
