@@ -7,8 +7,10 @@ import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.service.PracticeQuestionCatalog;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ByteArrayResource;
 
 import java.io.IOException;
@@ -19,6 +21,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,11 +38,14 @@ class AnalysisJobServiceTest {
     private static final String RAW_RESPONSE = "{\"overallScore\": 82.5, \"note\": \"raw-model-output\"}";
 
     private AnalysisJobRepository jobs;
+    private AnalysisDlqRepository dlq;
     private PracticeSessionRepository sessions;
     private PracticeAnswerRepository answers;
     private MediaStorage mediaStorage;
     private EvaluationResultValidator validator;
     private ObjectMapper objectMapper;
+    private SimpleMeterRegistry registry;
+    private AnalysisQueueMetrics metrics;
 
     private UUID sessionId;
     private UUID answerId;
@@ -50,10 +56,13 @@ class AnalysisJobServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper().findAndRegisterModules();
         jobs = mock(AnalysisJobRepository.class);
+        dlq = mock(AnalysisDlqRepository.class);
         sessions = mock(PracticeSessionRepository.class);
         answers = mock(PracticeAnswerRepository.class);
         mediaStorage = mock(MediaStorage.class);
         validator = new EvaluationResultValidator(objectMapper);
+        registry = new SimpleMeterRegistry();
+        metrics = new AnalysisQueueMetrics(registry, jobs, dlq);
 
         sessionId = UUID.randomUUID();
         answerId = UUID.randomUUID();
@@ -223,7 +232,7 @@ class AnalysisJobServiceTest {
     @Test
     void skipsJobsThatAnotherInstanceAlreadyClaimed() {
         AnalysisJobEntity job = pendingJob();
-        when(jobs.findAllByStatusOrderByCreatedAtAsc(AnalysisJobService.STATUS_PENDING))
+        when(jobs.findDueJobs(eq(AnalysisJobService.STATUS_PENDING), any()))
                 .thenReturn(List.of(job));
         when(jobs.transitionStatus(eq(job.getId()), anyString(), anyString(), any())).thenReturn(0);
 
@@ -240,7 +249,7 @@ class AnalysisJobServiceTest {
         stuck.setStatus(AnalysisJobService.STATUS_PROCESSING);
         when(jobs.findAllByStatusAndUpdatedAtBefore(eq(AnalysisJobService.STATUS_PROCESSING), any()))
                 .thenReturn(List.of(stuck));
-        when(jobs.findAllByStatusOrderByCreatedAtAsc(AnalysisJobService.STATUS_PENDING))
+        when(jobs.findDueJobs(eq(AnalysisJobService.STATUS_PENDING), any()))
                 .thenReturn(List.of());
 
         service(stubAsr("..."), stubEvaluation(), 3).processPending();
@@ -296,14 +305,121 @@ class AnalysisJobServiceTest {
         assertTrue(job.getLastError().contains("超时"), job.getLastError());
     }
 
+    @Test
+    void delaysTheNextAttemptUsingExponentialBackoff() {
+        AnalysisJobEntity job = pendingJob();
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+        stubStoredMedia();
+
+        AsrProvider failing = (media, contentType) -> {
+            throw new IOException("asr provider is down");
+        };
+
+        AnalysisJobService service = service(failing, stubEvaluation(), 3);
+        Instant before = Instant.now();
+
+        assertThrows(IllegalStateException.class, () -> service.process(job.getId()));
+
+        assertEquals(AnalysisJobService.STATUS_PENDING, job.getStatus());
+        assertNotNull(job.getNextAttemptAt(), "失败后必须设置下次重试时间，否则退避没有意义");
+        assertTrue(job.getNextAttemptAt().isAfter(before.plusMillis(500)),
+                "首次失败应退避约 1 秒，实际 " + job.getNextAttemptAt());
+        assertTrue(job.getNextAttemptAt().isBefore(before.plusMillis(5_000)),
+                "退避不应超过配置上限，实际 " + job.getNextAttemptAt());
+    }
+
+    @Test
+    void movesExhaustedJobsToTheDeadLetterQueue() {
+        AnalysisJobEntity job = pendingJob();
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+        stubStoredMedia();
+        when(dlq.existsById(job.getId())).thenReturn(false);
+
+        AsrProvider failing = (media, contentType) -> {
+            throw new IOException("asr provider is down");
+        };
+
+        AnalysisJobService service = service(failing, stubEvaluation(), 1);
+
+        assertThrows(IllegalStateException.class, () -> service.process(job.getId()));
+
+        assertEquals(AnalysisJobService.STATUS_FAILED, job.getStatus());
+        assertNull(job.getNextAttemptAt(), "终态失败的任务不应再被调度");
+        ArgumentCaptor<AnalysisDlqEntity> captor = ArgumentCaptor.forClass(AnalysisDlqEntity.class);
+        verify(dlq).save(captor.capture());
+        AnalysisDlqEntity entry = captor.getValue();
+        assertEquals(job.getId(), entry.getId());
+        assertEquals(sessionId, entry.getSessionId());
+        assertEquals(answerId, entry.getAnswerId());
+        assertTrue(entry.getLastError().contains("asr provider is down"), entry.getLastError());
+        assertEquals(1.0, registry.get("analysis.jobs.dlq").counter().count());
+        assertEquals(1.0, registry.get("analysis.jobs.failed").counter().count());
+    }
+
+    @Test
+    void requeuesADeadLetterEntry() {
+        AnalysisJobEntity job = pendingJob();
+        job.setStatus(AnalysisJobService.STATUS_FAILED);
+        job.setAttempts(3);
+        AnalysisDlqEntity entry = new AnalysisDlqEntity();
+        entry.setId(job.getId());
+        entry.setSessionId(sessionId);
+        entry.setAnswerId(answerId);
+        entry.setAttempts(3);
+        when(dlq.findById(job.getId())).thenReturn(Optional.of(entry));
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+
+        var requeued = service(stubAsr("..."), stubEvaluation(), 3).requeueFromDlq(job.getId());
+
+        assertTrue(requeued.isPresent());
+        assertEquals(AnalysisJobService.STATUS_PENDING, job.getStatus());
+        assertEquals(0, job.getAttempts());
+        assertNull(job.getLastError());
+        assertNotNull(job.getNextAttemptAt());
+        verify(dlq).delete(entry);
+    }
+
+    @Test
+    void ignoresRequeueForUnknownDeadLetterEntries() {
+        UUID unknown = UUID.randomUUID();
+        when(dlq.findById(unknown)).thenReturn(Optional.empty());
+
+        assertTrue(service(stubAsr("..."), stubEvaluation(), 3).requeueFromDlq(unknown).isEmpty());
+        verify(dlq, never()).delete(any(AnalysisDlqEntity.class));
+    }
+
+    @Test
+    void countsEnqueuedAndCompletedJobs() {
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(jobs.findByAnswerId(answerId)).thenReturn(Optional.empty());
+        service(stubAsr("..."), stubEvaluation(), 3).enqueueAnswer(answerId);
+        assertEquals(1.0, registry.get("analysis.jobs.enqueued").counter().count());
+
+        AnalysisJobEntity job = pendingJob();
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+        stubStoredMedia();
+
+        service(stubAsr("我主导了订单系统的重构"), stubEvaluation(), 3).process(job.getId());
+
+        assertEquals(1.0, registry.get("analysis.jobs.completed").counter().count());
+        assertEquals(1L, registry.get("analysis.processing.latency.ms").summary().count());
+    }
+
     private AnalysisJobService service(AsrProvider asr, EvaluationProvider evaluation, int maxAttempts) {
         return service(asr, evaluation, maxAttempts, 60_000);
     }
 
     private AnalysisJobService service(AsrProvider asr, EvaluationProvider evaluation, int maxAttempts,
                                        long providerTimeoutMs) {
-        return new AnalysisJobService(jobs, sessions, answers, mediaStorage, asr, evaluation, validator,
-                new PracticeQuestionCatalog(objectMapper), maxAttempts, providerTimeoutMs);
+        return new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, asr, evaluation, validator,
+                new PracticeQuestionCatalog(objectMapper), metrics, maxAttempts, providerTimeoutMs,
+                1_000, 60_000);
     }
 
     private void stubStoredMedia() {

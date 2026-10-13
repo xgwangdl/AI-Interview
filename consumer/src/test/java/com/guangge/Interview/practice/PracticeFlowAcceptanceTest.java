@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.analysis.AnalysisJobEntity;
 import com.guangge.Interview.analysis.AnalysisJobRepository;
 import com.guangge.Interview.analysis.AnalysisJobService;
+import com.guangge.Interview.analysis.AnalysisDlqRepository;
+import com.guangge.Interview.analysis.AnalysisQueueMetrics;
 import com.guangge.Interview.analysis.AsrProvider;
 import com.guangge.Interview.analysis.EvaluationProvider;
 import com.guangge.Interview.analysis.EvaluationProvenance;
@@ -28,6 +30,7 @@ import com.guangge.Interview.practice.service.PracticeReportService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
 import com.guangge.Interview.practice.storage.LocalMediaStorage;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -76,7 +79,9 @@ class PracticeFlowAcceptanceTest {
     private PracticeSessionRepository sessions;
     private PracticeAnswerRepository answers;
     private AnalysisJobRepository jobs;
+    private AnalysisDlqRepository dlq;
     private MediaStorage mediaStorage;
+    private AnalysisQueueMetrics metrics;
     private PracticeSessionService sessionService;
     private AnalysisJobService jobService;
     private PracticeReportService reportService;
@@ -87,15 +92,17 @@ class PracticeFlowAcceptanceTest {
         sessions = mock(PracticeSessionRepository.class);
         answers = mock(PracticeAnswerRepository.class);
         jobs = mock(AnalysisJobRepository.class);
+        dlq = mock(AnalysisDlqRepository.class);
         mediaStorage = new LocalMediaStorage(tempDir.toString());
+        metrics = new AnalysisQueueMetrics(new SimpleMeterRegistry(), jobs, dlq);
 
         EvaluationResultValidator validator = new EvaluationResultValidator(objectMapper);
         PracticeQuestionCatalog catalog = new PracticeQuestionCatalog(objectMapper);
         signedUrls = new MediaSignedUrlService("acceptance-secret", 300);
 
         sessionService = new PracticeSessionService(sessions, answers, mediaStorage, objectMapper, 7);
-        jobService = new AnalysisJobService(jobs, sessions, answers, mediaStorage, transcribingAsr(),
-                evaluatingProvider(), validator, catalog, 3, 60_000);
+        jobService = new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, transcribingAsr(),
+                evaluatingProvider(), validator, catalog, metrics, 3, 60_000, 1_000, 60_000);
         reportService = new PracticeReportService(sessions, answers, jobs, validator, signedUrls, catalog);
 
         stubRepositories();
@@ -216,7 +223,7 @@ class PracticeFlowAcceptanceTest {
             UUID answerId = invocation.getArgument(0, UUID.class);
             return jobStore.values().stream().filter(job -> answerId.equals(job.getAnswerId())).findFirst();
         });
-        when(jobs.findAllByStatusOrderByCreatedAtAsc(anyString())).thenAnswer(invocation -> {
+        when(jobs.findDueJobs(anyString(), any())).thenAnswer(invocation -> {
             String status = invocation.getArgument(0, String.class);
             return jobStore.values().stream().filter(job -> status.equals(job.getStatus())).toList();
         });

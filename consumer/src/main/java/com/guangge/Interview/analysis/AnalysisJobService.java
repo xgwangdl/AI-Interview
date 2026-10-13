@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -42,6 +45,7 @@ public class AnalysisJobService {
     private static final Duration PROCESSING_TIMEOUT = Duration.ofMinutes(10);
 
     private final AnalysisJobRepository jobs;
+    private final AnalysisDlqRepository dlq;
     private final PracticeSessionRepository sessions;
     private final PracticeAnswerRepository answers;
     private final MediaStorage mediaStorage;
@@ -49,11 +53,15 @@ public class AnalysisJobService {
     private final EvaluationProvider evaluationProvider;
     private final EvaluationResultValidator validator;
     private final PracticeQuestionCatalog questions;
+    private final AnalysisQueueMetrics metrics;
     private final int maxAttempts;
     private final long providerTimeoutMs;
+    private final long retryBackoffMs;
+    private final long retryBackoffMaxMs;
 
     public AnalysisJobService(
             AnalysisJobRepository jobs,
+            AnalysisDlqRepository dlq,
             PracticeSessionRepository sessions,
             PracticeAnswerRepository answers,
             MediaStorage mediaStorage,
@@ -61,9 +69,13 @@ public class AnalysisJobService {
             EvaluationProvider evaluationProvider,
             EvaluationResultValidator validator,
             PracticeQuestionCatalog questions,
+            AnalysisQueueMetrics metrics,
             @Value("${practice.analysis.max-attempts:3}") int maxAttempts,
-            @Value("${practice.analysis.provider-timeout-ms:120000}") long providerTimeoutMs) {
+            @Value("${practice.analysis.provider-timeout-ms:120000}") long providerTimeoutMs,
+            @Value("${practice.analysis.retry-backoff-ms:5000}") long retryBackoffMs,
+            @Value("${practice.analysis.retry-backoff-max-ms:300000}") long retryBackoffMaxMs) {
         this.jobs = jobs;
+        this.dlq = dlq;
         this.sessions = sessions;
         this.answers = answers;
         this.mediaStorage = mediaStorage;
@@ -71,8 +83,11 @@ public class AnalysisJobService {
         this.evaluationProvider = evaluationProvider;
         this.validator = validator;
         this.questions = questions;
+        this.metrics = metrics;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.providerTimeoutMs = Math.max(1000, providerTimeoutMs);
+        this.retryBackoffMs = Math.max(0, retryBackoffMs);
+        this.retryBackoffMaxMs = Math.max(this.retryBackoffMs, retryBackoffMaxMs);
     }
 
     /** Creates one pending job per recorded answer, skipping answers already queued. */
@@ -103,7 +118,10 @@ public class AnalysisJobService {
         job.setAttempts(0);
         job.setCreatedAt(now);
         job.setUpdatedAt(now);
+        // 入队即可处理；失败后这个时间会被指数退避推后。
+        job.setNextAttemptAt(now);
         jobs.save(job);
+        metrics.recordEnqueued(1);
         return true;
     }
 
@@ -113,7 +131,8 @@ public class AnalysisJobService {
     @Transactional
     public void processPending() {
         reclaimStuckJobs();
-        for (AnalysisJobEntity job : jobs.findAllByStatusOrderByCreatedAtAsc(STATUS_PENDING)) {
+        // 只领取已到期的任务；失败任务会被指数退避推后 next_attempt_at。
+        for (AnalysisJobEntity job : jobs.findDueJobs(STATUS_PENDING, Instant.now())) {
             if (!claim(job.getId())) {
                 continue;
             }
@@ -121,7 +140,8 @@ public class AnalysisJobService {
             try {
                 run(job);
             } catch (RuntimeException exception) {
-                log.warn("Analysis job {} failed: {}", job.getId(), exception.getMessage());
+                log.warn("分析任务处理失败 job={} session={} answer={}: {}",
+                        job.getId(), job.getSessionId(), job.getAnswerId(), exception.getMessage());
             }
         }
     }
@@ -154,11 +174,54 @@ public class AnalysisJobService {
             job.setStatus(STATUS_PENDING);
             job.setAttempts(0);
             job.setLastError(null);
+            job.setNextAttemptAt(Instant.now());
             job.setUpdatedAt(Instant.now());
             jobs.save(job);
+            // 终态失败的任务同时躺在 DLQ 里，重新入队后要把死信条目清掉，否则会重复出现在列表里。
+            dlq.findById(job.getId()).ifPresent(dlq::delete);
             requeued++;
         }
         return requeued;
+    }
+
+    /**
+     * 把死信队列里的任务重新入队（#10 的人工恢复入口）。
+     *
+     * @return 重新入队后的任务；空表示该 id 不在死信队列中
+     */
+    @Transactional
+    public java.util.Optional<AnalysisJobEntity> requeueFromDlq(UUID jobId) {
+        AnalysisDlqEntity entry = dlq.findById(jobId).orElse(null);
+        if (entry == null) return java.util.Optional.empty();
+        AnalysisJobEntity job = jobs.findById(jobId).orElse(null);
+        if (job == null) {
+            // 任务行已经随练习一起删掉了，只留了死信记录，直接清掉即可。
+            dlq.delete(entry);
+            return java.util.Optional.empty();
+        }
+        job.setStatus(STATUS_PENDING);
+        job.setAttempts(0);
+        job.setLastError(null);
+        job.setNextAttemptAt(Instant.now());
+        job.setUpdatedAt(Instant.now());
+        jobs.save(job);
+        dlq.delete(entry);
+        metrics.recordRetry();
+        log.info("死信任务重新入队 job={} session={} answer={}", job.getId(), job.getSessionId(), job.getAnswerId());
+        return java.util.Optional.of(job);
+    }
+
+    /** 列出指定会话集合的死信条目；sessionIds 为空时按归属过滤后自然为空。 */
+    @Transactional(readOnly = true)
+    public List<AnalysisDlqEntity> listDlq(Collection<UUID> sessionIds, int limit) {
+        int capped = Math.min(Math.max(limit, 1), 200);
+        if (sessionIds.isEmpty()) return List.of();
+        return dlq.findAllBySessionIdInOrderByMovedAtDesc(sessionIds, PageRequest.of(0, capped));
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<AnalysisDlqEntity> findDlq(UUID jobId) {
+        return dlq.findById(jobId);
     }
 
     /**
@@ -171,29 +234,88 @@ public class AnalysisJobService {
             int attempts = stuck.getAttempts() + 1;
             stuck.setAttempts(attempts);
             stuck.setLastError("处理超时或进程中断，已重新排队");
-            stuck.setStatus(attempts >= maxAttempts ? STATUS_FAILED : STATUS_PENDING);
             stuck.setUpdatedAt(Instant.now());
-            jobs.save(stuck);
+            if (attempts >= maxAttempts) {
+                stuck.setStatus(STATUS_FAILED);
+                stuck.setNextAttemptAt(null);
+                jobs.save(stuck);
+                moveToDlq(stuck);
+                metrics.recordFailed(0);
+            } else {
+                stuck.setStatus(STATUS_PENDING);
+                stuck.setNextAttemptAt(Instant.now());
+                jobs.save(stuck);
+                metrics.recordRetry();
+            }
             log.warn("回收卡住的分析任务 {}，attempts={}", stuck.getId(), attempts);
         }
     }
 
     private void run(AnalysisJobEntity job) {
         if (STATUS_COMPLETED.equals(job.getStatus())) return;
+        long startedAt = System.currentTimeMillis();
         try {
             runProviders(job);
             job.setStatus(STATUS_COMPLETED);
             job.setLastError(null);
+            job.setNextAttemptAt(null);
             job.setUpdatedAt(Instant.now());
             jobs.save(job);
+            long elapsed = System.currentTimeMillis() - startedAt;
+            metrics.recordCompleted(elapsed);
+            log.info("分析任务完成 job={} session={} answer={} attempts={} 耗时={}ms",
+                    job.getId(), job.getSessionId(), job.getAnswerId(), job.getAttempts(), elapsed);
         } catch (RuntimeException exception) {
-            job.setAttempts(job.getAttempts() + 1);
+            int attempts = job.getAttempts() + 1;
+            job.setAttempts(attempts);
             job.setLastError(trimError(exception));
-            job.setStatus(job.getAttempts() >= maxAttempts ? STATUS_FAILED : STATUS_PENDING);
             job.setUpdatedAt(Instant.now());
-            jobs.save(job);
+            if (attempts >= maxAttempts) {
+                // 重试到上限：标记终态并转存死信队列，等待人工重新入队。
+                job.setStatus(STATUS_FAILED);
+                job.setNextAttemptAt(null);
+                jobs.save(job);
+                moveToDlq(job);
+                metrics.recordFailed(System.currentTimeMillis() - startedAt);
+                log.error("分析任务达到最大重试次数 {}，已移入死信队列 job={} session={} answer={}: {}",
+                        maxAttempts, job.getId(), job.getSessionId(), job.getAnswerId(), job.getLastError());
+            } else {
+                long delayMs = backoffMillis(attempts);
+                job.setStatus(STATUS_PENDING);
+                job.setNextAttemptAt(Instant.now().plusMillis(delayMs));
+                jobs.save(job);
+                metrics.recordRetry();
+                log.warn("分析任务第 {}/{} 次失败，{}ms 后重试 job={} session={} answer={}: {}",
+                        attempts, maxAttempts, delayMs, job.getId(), job.getSessionId(), job.getAnswerId(),
+                        job.getLastError());
+            }
             throw exception;
         }
+    }
+
+    /** 把终态失败的任务转存进死信队列。id 沿用任务 id，便于直接重新入队。 */
+    private void moveToDlq(AnalysisJobEntity job) {
+        if (dlq.existsById(job.getId())) return;
+        AnalysisDlqEntity entry = new AnalysisDlqEntity();
+        entry.setId(job.getId());
+        entry.setSessionId(job.getSessionId());
+        entry.setAnswerId(job.getAnswerId());
+        entry.setAttempts(job.getAttempts());
+        entry.setLastError(job.getLastError());
+        entry.setOriginalCreatedAt(job.getCreatedAt());
+        entry.setMovedAt(Instant.now());
+        dlq.save(entry);
+        metrics.recordMovedToDlq();
+    }
+
+    /** 指数退避：retryBackoffMs × 2^(attempts-1)，上限 retryBackoffMaxMs。 */
+    private long backoffMillis(int attempts) {
+        if (retryBackoffMs <= 0) return 0;
+        long delay = retryBackoffMs;
+        for (int i = 1; i < attempts && delay < retryBackoffMaxMs; i++) {
+            delay = delay > retryBackoffMaxMs / 2 ? retryBackoffMaxMs : delay * 2;
+        }
+        return Math.min(delay, retryBackoffMaxMs);
     }
 
     private void runProviders(AnalysisJobEntity job) {
