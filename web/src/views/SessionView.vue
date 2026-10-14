@@ -32,7 +32,16 @@ const currentQuestion = computed(() => questions.value[currentIndex.value]);
 const answeredQuestions = computed(() => new Set(draft?.answers.map((answer) => answer.questionIndex) || []));
 const progress = computed(() => draft ? Math.round((answeredQuestions.value.size / questions.value.length) * 100) : 0);
 const formattedTime = computed(() => `${String(Math.floor(elapsed.value / 60)).padStart(2, '0')}:${String(elapsed.value % 60).padStart(2, '0')}`);
-const narrationCaption = computed(() => narration.value?.text || '请仔细阅读问题，准备好后开始回答');
+// 数字人字幕只显示「朗读状态」。问题正文统一放在下方的问题卡片里：
+// 之前这里绑定的是整段问题文本，长句会溢出画面、压在小人身上被裁掉，
+// 用户看到的就是同一句问题出现两遍、而且上面那遍还看不全。
+const narrationCaption = computed(() => {
+  if (narrationLoading.value) return '正在准备这道题…';
+  if (speaking.value) return '正在朗读这道题…';
+  if (narrationAudioFailed.value) return '语音暂不可用，请阅读下方问题';
+  if (narration.value?.audioAvailable) return '可点击重播再听一遍';
+  return '请阅读下方问题';
+});
 const mouthStyle = computed(() => (amplitudeActive.value
   ? { transform: `scaleY(${(1 + mouthLevel.value * 2.4).toFixed(2)})` }
   : null));
@@ -401,4 +410,12 @@ onBeforeUnmount(() => {
 @keyframes avatar-pulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
 @media(max-width: 920px) { .session-layout { grid-template-columns: 205px minmax(0,1fr); gap: 10px; }.question-nav { gap: 6px; padding: 10px 8px; }.session-meta { justify-content: center; }.interviewer-screen { height: 170px; }.avatar-frame { left: 15%; transform: scale(.85); transform-origin: bottom center; }.interviewer-caption { right: 5%; }.interviewer-caption strong { font-size: 9px; } }
 @media(max-width: 700px) { .session-top { flex-wrap: wrap; }.session-top .back-button { order: 0; }.session-meta { order: 2; width: 100%; justify-content: flex-start; }.end-button { order: 1; }.session-layout { grid-template-columns: 1fr; }.question-rail { position: static; padding-bottom: 5px; }.rail-header { padding: 0 12px; }.question-nav { display: none; }.question-nav.active { display: flex; }.rail-note { display: none; }.overall-progress { margin-bottom: 4px; }.interviewer-screen { height: 145px; }.avatar-frame { left: 8%; transform: scale(.72); }.interviewer-caption { right: 5%; bottom: 23px; max-width: 55%; }.interviewer-caption strong { font-size: 8px; }.speech-lines { left: 42%; }.recording-panel { align-items: stretch; flex-direction: column; }.self-preview { width: 100%; height: auto; aspect-ratio: 16/9; }.record-controls { align-items: flex-start; }.session-bottom > span { max-width: 45%; line-height: 1.5; } }
+/* 数字人动画：待机时轻微上下浮动 + 偶尔眨眼，朗读时嘴型动画（avatar-talk）和声波一起动。
+   这里用独立的 translate 属性而不是 transform，避免覆盖响应式里的 transform: scale(...)。 */
+.avatar-frame { animation: avatar-float 4.6s ease-in-out infinite; }
+.interviewer-scene.asking .avatar-frame { animation-duration: 3.2s; }
+.eye { animation: avatar-blink 5.4s ease-in-out infinite; }
+@keyframes avatar-float { 0%,100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+@keyframes avatar-blink { 0%,92%,100% { transform: scaleY(1); } 95%,97% { transform: scaleY(.2); } }
+@media (prefers-reduced-motion: reduce) { .avatar-frame, .eye { animation: none; } }
 </style>
