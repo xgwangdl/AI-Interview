@@ -34,7 +34,8 @@ class CodeJudgeServiceTest {
     void choicePassesOnlyWhenTheSelectedSetMatches() {
         CodeQuestionEntity question = question(QuestionType.CHOICE, null);
         question.setOptionsJson("[{\"key\":\"A\",\"text\":\"a\"},{\"key\":\"B\",\"text\":\"b\"},{\"key\":\"C\",\"text\":\"c\"}]");
-        question.setAnswerJson("[\"A\",\"C\"]");
+        // 必须用线上真实的存储格式：参考答案是对象 {"keys":[...]}，不是裸数组。
+        question.setAnswerJson("{\"keys\":[\"A\",\"C\"]}");
 
         assertEquals(JudgeOutcome.PASSED, judge.judge(question, "A,C", false).status());
         assertEquals(JudgeOutcome.PASSED, judge.judge(question, "c, a", false).status(), "顺序与大小写不影响");
@@ -59,7 +60,7 @@ class CodeJudgeServiceTest {
     @Test
     void shortAnswerUsesTheGraderScore() {
         CodeQuestionEntity question = question(QuestionType.SHORT_ANSWER, null);
-        question.setAnswerJson("[\"要点A\",\"要点B\"]");
+        question.setAnswerJson("{\"points\":[\"要点A\",\"要点B\"]}");
 
         JudgeOutcome outcome = judge.judge(question, "我的回答", false);
 

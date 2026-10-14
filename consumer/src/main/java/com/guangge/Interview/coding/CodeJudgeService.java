@@ -1,6 +1,7 @@
 package com.guangge.Interview.coding;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.guangge.Interview.coding.dto.Blank;
 import com.guangge.Interview.coding.dto.CaseResult;
 import com.guangge.Interview.coding.dto.JudgeOutcome;
@@ -214,7 +215,9 @@ public class CodeJudgeService {
     // ---------- 选择题 ----------
 
     private JudgeOutcome judgeChoice(CodeQuestionEntity question, String answer) {
-        Set<String> expected = new LinkedHashSet<>(readList(question.getAnswerJson(), String.class).stream()
+        // 参考答案存成 {"keys":["A","D"]} 对象（提示词里定的 schema），不是裸数组——
+        // 之前直接按 List<String> 解析，一提交选择题就报「题目数据损坏」。
+        Set<String> expected = new LinkedHashSet<>(answerArray(question, "keys").stream()
                 .map(item -> item.trim().toUpperCase()).toList());
         Set<String> actual = new LinkedHashSet<>(Arrays.stream(answer.split("[,，\\s]+"))
                 .map(String::trim).filter(item -> !item.isEmpty())
@@ -237,13 +240,30 @@ public class CodeJudgeService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "回答不能为空");
         }
         JudgeOutcome.ShortAnswerReview review =
-                shortAnswerGrader.grade(question.getStatement(), question.getAnswerJson(), answer);
+                shortAnswerGrader.grade(question.getStatement(),
+                        String.join("\n", answerArray(question, "points")), answer);
         boolean ok = review.score() >= SHORT_ANSWER_PASS_SCORE;
         return new JudgeOutcome(ok ? JudgeOutcome.PASSED : JudgeOutcome.FAILED,
                 ok ? 1 : 0, 1, 0L, "", "", "", List.of(), review);
     }
 
     // ---------- 工具 ----------
+
+    /** 从参考答案对象里取数组字段（keys / points）。 */
+    private List<String> answerArray(CodeQuestionEntity question, String field) {
+        if (question.getAnswerJson() == null || question.getAnswerJson().isBlank()) return List.of();
+        try {
+            JsonNode node = objectMapper.readTree(question.getAnswerJson());
+            if (node == null || !node.hasNonNull(field)) return List.of();
+            JsonNode array = node.get(field);
+            if (!array.isArray()) return List.of();
+            List<String> values = new ArrayList<>();
+            array.forEach(item -> values.add(item.asText()));
+            return values;
+        } catch (Exception exception) {
+            return List.of();
+        }
+    }
 
     private <T> List<T> readList(String json, Class<T> type) {
         if (json == null || json.isBlank()) return List.of();
