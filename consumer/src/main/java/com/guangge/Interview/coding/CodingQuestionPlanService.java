@@ -33,6 +33,7 @@ public class CodingQuestionPlanService {
     private static final Logger log = LoggerFactory.getLogger(CodingQuestionPlanService.class);
 
     private final ChatClient chatClient;
+    private final ChatClient testcaseChatClient;
     private final ObjectMapper objectMapper;
     private final CodeJudgeService judge;
     private final CodeRunnerService runner;
@@ -44,8 +45,11 @@ public class CodingQuestionPlanService {
             CodeJudgeService judge,
             CodeRunnerService runner,
             @Value("classpath:prompt/coding-question-plan-system-prompt.st") Resource systemPrompt,
+            @Value("classpath:prompt/coding-testcase-system-prompt.st") Resource testcasePrompt,
             @Value("${practice.coding.plan-max-attempts:3}") int maxAttempts) {
         this.chatClient = chatClientBuilder.defaultSystem(systemPrompt).build();
+        // 第二步单独用一个 system prompt：把参考解发回去，只让它照着代码配输入。
+        this.testcaseChatClient = chatClientBuilder.defaultSystem(testcasePrompt).build();
         this.objectMapper = objectMapper;
         this.judge = judge;
         this.runner = runner;
@@ -129,7 +133,7 @@ public class CodingQuestionPlanService {
             case CODING -> {
                 if (isBlank(entity.getStarterCode())) throw new IllegalStateException(prefix + " 缺少 starterCode");
                 if (reference(entity).isBlank()) throw new IllegalStateException(prefix + " 缺少参考解 answer.code");
-                if (readNode(entity.getTestCasesJson()).isEmpty()) throw new IllegalStateException(prefix + " 缺少测试用例");
+                // 测试用例由第二步（拿到参考解之后）单独生成，这里不检查。
             }
             case SQL -> {
                 if (isBlank(entity.getSqlSetup())) throw new IllegalStateException(prefix + " 缺少 sqlSetup");
@@ -163,7 +167,9 @@ public class CodingQuestionPlanService {
         if (type == QuestionType.CODING) {
             CodeLanguage language = CodeLanguage.fromId(entity.getLanguage())
                     .orElseThrow(() -> new IllegalStateException("语言无效：" + entity.getLanguage()));
-            List<TestCase> cases = readCases(entity.getTestCasesJson());
+            // 第二步：把参考解发回给模型，让它照着代码的读取方式配输入。
+            // 这样「代码怎么读」和「输入长什么样」由同一次判断产出，不再是两处各写各的。
+            List<TestCase> cases = requestTestInputs(entity);
             List<TestCase> derived = new ArrayList<>();
             boolean hasOutput = false;
             String lastFailure = null;
@@ -205,6 +211,29 @@ public class CodingQuestionPlanService {
             }
             entity.setTestCasesJson(json(objectMapper.valueToTree(List.of(new TestCase(first.name(), "（题目自带数据）", output, false)))));
         }
+    }
+
+    /** 第二步：只看题面与参考解，产出与之匹配的输入。 */
+    private List<TestCase> requestTestInputs(CodeQuestionEntity entity) {
+        String raw = testcaseChatClient.prompt()
+                .user("""
+                        题面：
+                        %s
+
+                        参考解（%s）：
+                        %s
+                        """.formatted(entity.getStatement(), entity.getLanguage(), reference(entity)))
+                .call()
+                .content();
+        JsonNode node = parseArray(raw);
+        List<TestCase> cases = new ArrayList<>();
+        for (JsonNode item : node) {
+            String name = item.hasNonNull("name") ? item.get("name").asText() : "用例 " + (cases.size() + 1);
+            String stdin = item.hasNonNull("stdin") ? item.get("stdin").asText() : "";
+            boolean hidden = item.hasNonNull("hidden") && item.get("hidden").asBoolean();
+            cases.add(new TestCase(name, stdin, null, hidden));
+        }
+        return cases;
     }
 
     private List<TestCase> readCases(String json) {
