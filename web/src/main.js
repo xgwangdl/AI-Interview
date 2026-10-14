@@ -7,7 +7,9 @@ import './styles.css';
 import App from './App.vue';
 import router from './router';
 import { installAuthGuard } from './authGuard';
+import { bootstrapTheme } from './services/theme';
 
+bootstrapTheme();
 const app = createApp(App);
 Object.entries(ElementPlusIconsVue).forEach(([name, component]) => app.component(name, component));
 installAuthGuard(router);

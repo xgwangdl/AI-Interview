@@ -3,15 +3,46 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from './stores/practice';
+import { getPreferences, savePreferences } from './services/api';
+import { THEMES, applyTheme, bootstrapTheme, rememberTheme } from './services/theme';
 
 const route = useRoute();
 const router = useRouter();
 const practice = usePracticeStore();
 const menuOpen = ref(false);
 const profileName = ref(localStorage.getItem('userName') || '练习者');
+// 主题先按本地记录渲染（避免闪一下默认色），登录后再用服务端的偏好覆盖。
+const theme = ref(bootstrapTheme());
+
+async function chooseTheme(name) {
+  theme.value = name;
+  applyTheme(name);
+  rememberTheme(name);
+  try {
+    await savePreferences({ theme: name });
+  } catch {
+    // 没登录或离线时只记在本地，不打断用户。
+  }
+}
+
+async function loadThemePreference() {
+  try {
+    const preference = await getPreferences();
+    if (preference?.theme) {
+      theme.value = preference.theme;
+      applyTheme(preference.theme);
+      rememberTheme(preference.theme);
+    }
+  } catch {
+    // 拉不到就用本地记录的主题。
+  }
+}
 watch(() => route.name, (name, previous) => {
   profileName.value = localStorage.getItem('userName') || '练习者';
-  if (name !== 'login' && previous === 'login') void refreshPractice();
+  if (name !== 'login' && previous === 'login') {
+    void refreshPractice();
+    void loadThemePreference();
+  }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
 const pageTitle = computed(() => ({ dashboard: '训练总览', setup: '创建训练', 'device-check': '设备检测', session: '模拟面试', report: '练习报告', history: '练习记录', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告' }[route.name] || '面试练习室'));
@@ -59,6 +90,21 @@ function accountCommand(command) {
         <button :class="{ active: activeKey === 'history' }" @click="navigate('/history')"><el-icon><Clock /></el-icon><span>练习记录</span></button>
       </nav>
       <div class="sidebar-bottom">
+        <div class="theme-picker" role="group" aria-label="页面主题色">
+          <span class="theme-label">主题色</span>
+          <button
+            v-for="(item, key) in THEMES"
+            :key="key"
+            type="button"
+            class="theme-dot"
+            :class="{ active: theme === key }"
+            :style="{ background: item.swatch }"
+            :title="item.label"
+            :aria-label="item.label"
+            :aria-pressed="theme === key"
+            @click="chooseTheme(key)"
+          ></button>
+        </div>
         <div class="privacy-note"><el-icon><Lock /></el-icon><span>录制内容仅保留 7 天<small>可随时删除练习数据</small></span></div>
         <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
       </div>

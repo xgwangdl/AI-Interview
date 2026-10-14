@@ -71,6 +71,15 @@ export function tryRegister(name, code, email) {
   return postCredentials('/register', payload, '注册失败，请换一个用户名。');
 }
 
+/** 个人偏好（目前只有主题色）。 */
+export function getPreferences() {
+  return apiRequest('/me/preferences');
+}
+
+export function savePreferences(payload) {
+  return apiRequest('/me/preferences', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
 export function getSessions() {
   return apiRequest('/practice-sessions');
 }

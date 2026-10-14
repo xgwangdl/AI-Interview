@@ -42,6 +42,10 @@ public class Candidates {
     @Column(name = "picture_url", nullable = true)
     private String pictureUrl;
 
+    // 个人页面主题色（green / blue / amber），为空表示用默认色。
+    @Column(name = "theme", nullable = true, length = 32)
+    private String theme;
+
     public Long getId() {
         return id;
     }
@@ -104,5 +108,13 @@ public class Candidates {
 
     public void setPictureUrl(String pictureUrl) {
         this.pictureUrl = pictureUrl;
+    }
+
+    public String getTheme() {
+        return theme;
+    }
+
+    public void setTheme(String theme) {
+        this.theme = theme;
     }
 }
