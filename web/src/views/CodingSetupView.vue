@@ -6,6 +6,8 @@ import { createCodingSession, deleteCodingSession, getCodingCapabilities, listCo
 
 const router = useRouter();
 const busy = ref(false);
+const elapsed = ref(0);
+let elapsedTimer;
 const loading = ref(true);
 const sessions = ref([]);
 const capabilities = ref({ codeRunnerEnabled: false, languages: [] });
@@ -67,6 +69,8 @@ async function create() {
     return;
   }
   busy.value = true;
+  elapsed.value = 0;
+  elapsedTimer = window.setInterval(() => { elapsed.value += 1; }, 1000);
   try {
     const session = await createCodingSession({
       role: form.role.trim(),
@@ -81,6 +85,7 @@ async function create() {
     ElMessage.error(error.message || '出题失败，请稍后重试');
   } finally {
     busy.value = false;
+    window.clearInterval(elapsedTimer);
   }
 }
 
@@ -156,11 +161,11 @@ async function remove(session) {
           </div>
         </div>
         <el-button class="primary-button create-button" :loading="busy" @click="create">
-          生成题目并开始 <el-icon><ArrowRight /></el-icon>
+          {{ busy ? `生成中… 已等待 ${elapsed} 秒` : '生成题目并开始' }} <el-icon v-if="!busy"><ArrowRight /></el-icon>
         </el-button>
         <p class="runner-note">
-          出题时会先用模型给的参考解在沙箱里跑一遍用例，全部通过才会发给你；
-          因此生成可能需要十几秒到一分钟。
+          出题时会用模型给的参考解在沙箱里跑一遍用例，全部通过才会发给你；没通过会换一批重试（最多 3 次），
+          所以可能要等 20 秒到 2 分钟。左侧按钮上的秒数是真实等待时间，不是卡住了。
         </p>
       </section>
     </div>

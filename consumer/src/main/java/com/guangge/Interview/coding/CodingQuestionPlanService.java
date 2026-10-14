@@ -166,14 +166,26 @@ public class CodingQuestionPlanService {
             List<TestCase> cases = readCases(entity.getTestCasesJson());
             List<TestCase> derived = new ArrayList<>();
             boolean hasOutput = false;
+            String lastFailure = null;
             for (TestCase testCase : cases) {
                 CodeRunResult run = runner.run(language, reference(entity), testCase.stdin());
                 if (!run.ok()) {
-                    throw new IllegalStateException("参考解跑不通（用例 " + testCase.name() + "）：" + failureBrief(run));
+                    // 模型偶尔会给出参考解读不了的输入（最常见的是隐藏边界用例的 stdin 为空，
+                    // 而程序要读一行 → NoSuchElementException）。与其因为一个坏用例废掉整道题，
+                    // 不如把这个用例丢掉——只要还剩下可用的可见示例。
+                    lastFailure = testCase.name() + "：" + failureBrief(run);
+                    log.warn("丢弃参考解跑不通的用例（{}）：{}", testCase.name(), failureBrief(run));
+                    continue;
                 }
                 String output = CodeJudgeService.normalizeOutput(run.stdout());
                 if (!output.isBlank()) hasOutput = true;
                 derived.add(new TestCase(testCase.name(), testCase.stdin(), output, testCase.hidden()));
+            }
+            if (derived.stream().noneMatch(testCase -> !testCase.hidden())) {
+                throw new IllegalStateException("参考解没有任何可用的可见示例（最后失败：" + lastFailure + "）");
+            }
+            if (derived.size() < 2) {
+                throw new IllegalStateException("可用用例不足 2 个（最后失败：" + lastFailure + "）");
             }
             if (!hasOutput) {
                 throw new IllegalStateException("参考解对所有用例都没有输出，题目没有意义");
