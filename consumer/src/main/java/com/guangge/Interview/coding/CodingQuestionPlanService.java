@@ -47,9 +47,12 @@ public class CodingQuestionPlanService {
             @Value("classpath:prompt/coding-question-plan-system-prompt.st") Resource systemPrompt,
             @Value("classpath:prompt/coding-testcase-system-prompt.st") Resource testcasePrompt,
             @Value("${practice.coding.plan-max-attempts:3}") int maxAttempts) {
-        this.chatClient = chatClientBuilder.defaultSystem(systemPrompt).build();
+        // 注意：ChatClient.Builder 的 defaultSystem() 是**修改自身并返回同一个实例**，
+        // 所以两个客户端必须各 clone 一份——否则第二个 prompt 会把第一个覆盖掉，
+        // 出题客户端会拿着「配测试输入」的提示词去出题（踩过这个坑）。
+        this.chatClient = chatClientBuilder.clone().defaultSystem(systemPrompt).build();
         // 第二步单独用一个 system prompt：把参考解发回去，只让它照着代码配输入。
-        this.testcaseChatClient = chatClientBuilder.defaultSystem(testcasePrompt).build();
+        this.testcaseChatClient = chatClientBuilder.clone().defaultSystem(testcasePrompt).build();
         this.objectMapper = objectMapper;
         this.judge = judge;
         this.runner = runner;
@@ -74,20 +77,32 @@ public class CodingQuestionPlanService {
 
     private List<CodeQuestionEntity> generateOnce(UUID sessionId, CodingPlanRequest request) {
         String raw = chatClient.prompt().user(userMessage(request)).call().content();
-        JsonNode root = parseArray(raw);
-        if (root.size() != request.questions().size()) {
-            throw new IllegalStateException("题目数量与要求不一致：期望 "
-                    + request.questions().size() + "，实际 " + root.size());
-        }
+        try {
+            JsonNode root = parseArray(raw);
+            if (root.size() != request.questions().size()) {
+                throw new IllegalStateException("题目数量与要求不一致：期望 "
+                        + request.questions().size() + "，实际 " + root.size());
+            }
 
-        List<CodeQuestionEntity> questions = new ArrayList<>();
-        for (int index = 0; index < root.size(); index++) {
-            CodingPlanRequest.QuestionSpec spec = request.questions().get(index);
-            CodeQuestionEntity entity = toEntity(sessionId, index, spec, root.get(index));
-            deriveExpectedOutputs(entity);
-            questions.add(entity);
+            List<CodeQuestionEntity> questions = new ArrayList<>();
+            for (int index = 0; index < root.size(); index++) {
+                CodingPlanRequest.QuestionSpec spec = request.questions().get(index);
+                CodeQuestionEntity entity = toEntity(sessionId, index, spec, root.get(index));
+                deriveExpectedOutputs(entity);
+                questions.add(entity);
+            }
+            return questions;
+        } catch (RuntimeException exception) {
+            // 校验失败时把模型原始返回的前一段记下来：否则只能看到「缺少 title/statement」
+            // 这种结论，根本不知道模型到底返回了什么结构。
+            log.warn("出题结果校验失败：{}；模型返回前 600 字：{}", exception.getMessage(), truncate(raw, 600));
+            throw exception;
         }
-        return questions;
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return "(空)";
+        return value.length() <= max ? value : value.substring(0, max) + "…";
     }
 
     private CodeQuestionEntity toEntity(UUID sessionId, int index,

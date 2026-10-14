@@ -161,12 +161,15 @@ public class CodeJudgeService {
 
     /** 出题阶段也要用它把参考查询跑一遍，所以放开包级可见。 */
     String sqlScript(String setup, String query) {
-        String setupLiteral = jsonLiteral(setup);
-        String queryLiteral = jsonLiteral(query);
+        // 用 base64 传 SQL，而不是把 JSON 转义后的文本塞进 Python 字面量：
+        // Python 会先把它还原（\n 变成真实换行），json.loads 再收到带换行的非法 JSON 直接报错。
+        // base64 全是 ASCII，没有转义歧义。
+        String setupLiteral = base64(setup);
+        String queryLiteral = base64(query);
         return """
-                import json, sqlite3, sys
-                setup = json.loads(%s)
-                query = json.loads(%s)
+                import base64, sqlite3, sys
+                setup = base64.b64decode("%s").decode("utf-8")
+                query = base64.b64decode("%s").decode("utf-8")
                 con = sqlite3.connect(":memory:")
                 try:
                     con.executescript(setup)
@@ -179,13 +182,9 @@ public class CodeJudgeService {
                 """.formatted(setupLiteral, queryLiteral);
     }
 
-    /** 生成可以安全嵌进 Python 源码的字符串字面量（JSON 的转义与 Python 兼容）。 */
-    private String jsonLiteral(String value) {
-        try {
-            return objectMapper.writeValueAsString(value == null ? "" : value);
-        } catch (Exception exception) {
-            throw new IllegalStateException("无法生成 SQL 脚本", exception);
-        }
+    private static String base64(String value) {
+        return java.util.Base64.getEncoder().encodeToString(
+                (value == null ? "" : value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     // ---------- 编程填空 ----------
