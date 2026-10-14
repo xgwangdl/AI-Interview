@@ -260,8 +260,51 @@ audio 元素触发 `error` → 前端把 `narrationAudioFailed` 置为 true。
 待机时缓慢呼吸；`prefers-reduced-motion` 下全部关闭。
 
 说明：这台环境里的内置图像生成工具不可用（CLI 回退需要 `OPENAI_API_KEY`），
-所以这一版是**矢量矢量形象**而不是 AI 真人照片。想换成写实照片时，替换
+  所以这一版是**矢量形象**而不是 AI 真人照片。想换成写实照片时，替换
 `.portrait-frame` 里的 `<svg>` 为 `<img>` 即可，布局与动画都不受影响。
+
+### 2026-10-14 新模块：笔试（第一阶段：沙箱与数据模型）
+
+按确认后的方案开工（本机 Docker 沙箱 / Java+Python+C+++JS+Go / 以运行结果为准 /
+AI 出题带自检 / 独立模块 / 五种题型 / 学习场景不做防作弊 / 编译 10s·运行 5s·256MB·禁网·并发 2 /
+隐藏用例只报"第 N 个未通过" / 与视频一样保留 7 天）。
+
+**已完成并验证**
+
+1. **代码沙箱** `coding/CodeRunnerService`：在本机 Docker 里执行，安全边界全部落在
+   `docker run` 参数上——`--network none`、`--memory/--memory-swap`、`--cpus 0.5`、
+   `--pids-limit 64`、`--read-only` + `--tmpfs /tmp`、只挂载当次临时目录、`ulimit -f` 限制写盘、
+   整体超时后 `docker kill`。编译与运行分别用 `timeout` 限时（只做容器级总超时的话，
+   一个死循环会一直耗到总超时才被杀）。输出写文件而不是读管道，避免缓冲区写满死锁，
+   超时也能拿到部分输出。
+2. **语言矩阵** `coding/CodeLanguage`：
+
+   | 语言 | 镜像 | 体积 |
+   | --- | --- | --- |
+   | Java | `eclipse-temurin:21-jdk-alpine` | 364MB（已拉取） |
+   | Python | `python:3.12-slim` | 119MB（已拉取） |
+   | JavaScript | `node:20-alpine` | 136MB（已拉取） |
+   | C++ | `gcc:13` | 约 1.4GB（首次执行时拉取） |
+   | Go | `golang:1.22-alpine` | 约 250MB（首次执行时拉取） |
+
+3. **真实执行验证**：`mvn -pl consumer test -Dtest=CodeRunnerServiceTest -Dcode.runner.integration=true`
+   → **7/7 通过**，包含 Python 读 stdin、JavaScript、Java 编译错误单独回显、
+   **死循环被判超时**、**沙箱内联网被阻断**（用例里尝试连 1.1.1.1:53，结果为 BLOCKED）。
+   默认不跑这些用例（CI 没有 Docker daemon），用 `-Dcode.runner.integration=true` 打开。
+4. **数据模型** `V6__coding_assessment.sql`：`coding_sessions` / `code_questions` /
+   `code_submissions` 三张表，五种题型共用一张题目表，靠 `type` 区分各题型用到的列。
+   已在真实库上应用成功（schema v6）。
+5. **开关**：`practice.code-runner.enabled` 默认 **false**（会在本机执行任意代码，
+   默认关闭避免误部署到公网）；本机 `.env` 已显式打开。
+
+**决策记录（在你确认的范围内做的两个补充）**
+
+- **SQL 题用 SQLite 执行**，复用已拉取的 Python 镜像（内置 `sqlite3`），不额外引入
+  MySQL/Postgres 镜像；题目里会声明方言是 SQLite。需要真 Postgres 语义时再换。
+- **题目/提交分表存储**，题目的参考解与测试用例都落库，便于复现与重判。
+
+**下一阶段**（未开始）：判题服务（五种题型）、AI 出题 + 参考解自检闭环、REST 接口、
+前端 Monaco IDE 与答题/报告页面。
 
 ### 当前环境状态
 
