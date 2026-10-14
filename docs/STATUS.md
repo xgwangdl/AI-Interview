@@ -218,6 +218,33 @@
    | STAR / 逻辑 | 0 / 0 | 0 / 0 |
    | 改进建议 | 「直接回答问题…」（泛泛） | 「这类回答拿不到分，应先给出可迁移的经验或解题思路」 |
 
+### 2026-10-14 修复：面试官语音一直「暂不可用」
+
+**症状**：进入面试页，数字人字幕显示「语音暂不可用，请阅读下方问题」，小人也不动。
+
+**根因**：`<audio src="/api/v1/.../narration/audio">` 这样直接播放时，浏览器**不会**
+给 audio/video 元素带 `Authorization` 头，而这个接口要求 Bearer Token，所以稳定返回 401；
+audio 元素触发 `error` → 前端把 `narrationAudioFailed` 置为 true。
+
+注意：这不是这次改动引入的。之前验证 TTS 时用的是带 header 的 HTTP 调用
+（冒烟脚本、直接 `Invoke-WebRequest -Headers`），浏览器播放这条路其实一直是坏的；
+直到这次字幕改成显示朗读状态才把它暴露出来。
+
+**实测证据**（同一个会话、同一个音频地址）：
+
+| 请求方式 | 结果 |
+| --- | --- |
+| 不带 Authorization（等价于 `<audio src>`） | **401** |
+| 带 Authorization：`Bearer <token>` | **200，188444 字节，`audio/wav`** |
+
+**修复**：新增 `api.js#getNarrationAudio`，用 `fetch` 带上 token 取回音频 Blob，
+再用 `URL.createObjectURL` 生成 `blob:` 地址交给 audio 播放（离开页面或切题时 revoke）。
+接口本身继续保持鉴权，不动权限模型。
+
+**顺带把动画做明显**：待机浮动从 4px/4.6s 调到 6px/3.6s，说话时声波线条也跟着脉动；
+朗读中的口型动画（`avatar-talk`）本来就存在，只是之前因为没有音频、`speaking` 一直为 false
+才看不到。添加了 `prefers-reduced-motion` 兜底。
+
 ### 当前环境状态
 
 - **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，

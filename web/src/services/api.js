@@ -144,6 +144,27 @@ export function getQuestionNarration(sessionId, questionIndex) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/narration`);
 }
 
+/**
+ * 拉取面试官语音。
+ *
+ * 不能用 <audio src="/..."> 直接播：浏览器给 audio/video 发请求时**不会带 Authorization 头**，
+ * 这个接口要求 Bearer Token，结果是 401 → audio 触发 error → 前端只能显示「语音暂不可用」。
+ * 所以这里用 fetch 带 token 取回 Blob，再交给 audio 播放。
+ */
+export async function getNarrationAudio(sessionId, questionIndex) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(
+    `${apiBase}/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/narration/audio`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取面试官语音（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.blob();
+}
+
 export function planQuestions(payload) {
   return apiRequest('/practice-sessions/question-plan', { method: 'POST', body: JSON.stringify(payload) });
 }

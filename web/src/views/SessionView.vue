@@ -6,7 +6,7 @@ import { usePracticeStore } from '../stores/practice';
 import { getActiveStream, stopActiveStream, supportedRecorderType } from '../services/mediaCapture';
 import { getMedia, saveMedia } from '../services/mediaStore';
 import { buildQuestions, styleLabels } from '../data/questions';
-import { getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer } from '../services/api';
+import { getNarrationAudio, getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer } from '../services/api';
 import { uploadAnswerMediaWithFallback } from '../services/chunkedUpload';
 
 const route = useRoute();
@@ -18,6 +18,7 @@ const currentIndex = ref(0);
 const elapsed = ref(0);
 const savedAnswer = ref(false);
 const audio = ref();
+const narrationBlobUrl = ref('');
 const narration = ref(null);
 const narrationLoading = ref(false);
 const avatarState = ref('asking');
@@ -76,6 +77,7 @@ watch(currentIndex, () => { loadNarration(); });
 
 async function loadNarration() {
   stopNarration();
+  releaseNarrationAudio();
   narration.value = null;
   narrationAudioFailed.value = false;
   if (!draft?.id) return;
@@ -85,7 +87,9 @@ async function loadNarration() {
     const result = await getQuestionNarration(draft.id, currentIndex.value);
     narration.value = result;
     avatarState.value = result.state || 'asking';
-    if (result.audioAvailable && result.audioUrl) playNarration(result.audioUrl);
+    if (result.audioAvailable && result.audioUrl && await prepareNarrationAudio()) {
+      await playNarration();
+    }
   } catch {
     narration.value = null;
     avatarState.value = 'asking';
@@ -94,10 +98,34 @@ async function loadNarration() {
   }
 }
 
-async function playNarration(url) {
-  if (!audio.value) return;
+/**
+ * 取回语音并用 blob: URL 交给 <audio>。
+ *
+ * 之前直接把受保护的接口地址塞进 audio.src，而 <audio> 发请求时不会带
+ * Authorization 头，于是稳定拿到 401 —— 用户看到的就是「语音暂不可用」。
+ */
+async function prepareNarrationAudio() {
   try {
-    audio.value.src = url;
+    const blob = await getNarrationAudio(draft.id, currentIndex.value);
+    narrationBlobUrl.value = URL.createObjectURL(blob);
+    if (audio.value) audio.value.src = narrationBlobUrl.value;
+    return true;
+  } catch {
+    narrationAudioFailed.value = true;
+    return false;
+  }
+}
+
+function releaseNarrationAudio() {
+  if (narrationBlobUrl.value) {
+    URL.revokeObjectURL(narrationBlobUrl.value);
+    narrationBlobUrl.value = '';
+  }
+}
+
+async function playNarration() {
+  if (!audio.value || !narrationBlobUrl.value) return;
+  try {
     audio.value.currentTime = 0;
     await audio.value.play();
   } catch {
@@ -107,8 +135,7 @@ async function playNarration(url) {
 }
 
 async function replayNarration() {
-  const url = narration.value?.audioUrl;
-  if (!url || !audio.value) return;
+  if (!narrationBlobUrl.value || !audio.value) return;
   if (speaking.value) { stopNarration(); return; }
   try {
     audio.value.currentTime = 0;
@@ -370,6 +397,7 @@ function selectQuestion(index) {
 
 onBeforeUnmount(() => {
   stopNarration();
+  releaseNarrationAudio();
   if (audioContext) audioContext.close();
   window.clearInterval(elapsedTimer);
   if (recorder && (recorder.state === 'recording' || recorder.state === 'paused')) recorder.stop();
@@ -412,10 +440,11 @@ onBeforeUnmount(() => {
 @media(max-width: 700px) { .session-top { flex-wrap: wrap; }.session-top .back-button { order: 0; }.session-meta { order: 2; width: 100%; justify-content: flex-start; }.end-button { order: 1; }.session-layout { grid-template-columns: 1fr; }.question-rail { position: static; padding-bottom: 5px; }.rail-header { padding: 0 12px; }.question-nav { display: none; }.question-nav.active { display: flex; }.rail-note { display: none; }.overall-progress { margin-bottom: 4px; }.interviewer-screen { height: 145px; }.avatar-frame { left: 8%; transform: scale(.72); }.interviewer-caption { right: 5%; bottom: 23px; max-width: 55%; }.interviewer-caption strong { font-size: 8px; }.speech-lines { left: 42%; }.recording-panel { align-items: stretch; flex-direction: column; }.self-preview { width: 100%; height: auto; aspect-ratio: 16/9; }.record-controls { align-items: flex-start; }.session-bottom > span { max-width: 45%; line-height: 1.5; } }
 /* 数字人动画：待机时轻微上下浮动 + 偶尔眨眼，朗读时嘴型动画（avatar-talk）和声波一起动。
    这里用独立的 translate 属性而不是 transform，避免覆盖响应式里的 transform: scale(...)。 */
-.avatar-frame { animation: avatar-float 4.6s ease-in-out infinite; }
-.interviewer-scene.asking .avatar-frame { animation-duration: 3.2s; }
+.avatar-frame { animation: avatar-float 3.6s ease-in-out infinite; }
+.interviewer-scene.asking .avatar-frame { animation-duration: 2.8s; }
+.interviewer-scene.asking .speech-lines i { animation: avatar-pulse 1.2s ease-in-out infinite; }
 .eye { animation: avatar-blink 5.4s ease-in-out infinite; }
-@keyframes avatar-float { 0%,100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+@keyframes avatar-float { 0%,100% { translate: 0 0; } 50% { translate: 0 -6px; } }
 @keyframes avatar-blink { 0%,92%,100% { transform: scaleY(1); } 95%,97% { transform: scaleY(.2); } }
-@media (prefers-reduced-motion: reduce) { .avatar-frame, .eye { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .avatar-frame, .eye, .interviewer-scene.asking .speech-lines i { animation: none; } }
 </style>
