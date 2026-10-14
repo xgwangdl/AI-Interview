@@ -1,30 +1,61 @@
-# Light-Interview
+# 🎯 Light-Interview —— 开源 AI 面试训练系统
 
-求职者的**面试训练与复盘**工具，两条独立主线：
+**视频面试 + 笔试上机，一条龙跑完：AI 出题 → 浏览器录制 → 语音转写 → 结构化评分 → 可回放的复盘报告。**
+而且它**真的会运行你写的代码** —— 跑不过用例，就是不过。
 
-- **视频模拟面试**：选择岗位、逐题录制回答，后台完成转写与结构化评分，
-  最后给出带视频时间轴证据的逐题报告；
-- **笔试练习**：AI 出题（上机编程 / 数据库 / 编程填空 / 选择 / 简答），
-  在网页 IDE 里作答，代码**在本机 Docker 沙箱里真实运行**并按用例判分。
+[English](docs/README.md) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [部署说明](docs/DEPLOYMENT.md) · [实施状态](docs/STATUS.md)
 
-[English](docs/README.md) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [部署说明](docs/DEPLOYMENT.md) · [实施状态](docs/STATUS.md) · Apache License 2.0
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-6DB33F.svg)](https://spring.io/projects/spring-boot)
+[![Spring AI](https://img.shields.io/badge/Spring%20AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
+[![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)
 
-## 功能
+## 😰 是不是也遇到过这些
 
-- **练习配置**：目标岗位、公司、JD、简历文件名，面试类型 / 面试官风格 / 难度 / 题量与时长。
-- **设备检测**：摄像头、麦克风授权与实时预览，环境音量检查通过后才允许进入面试。
-- **AI 出题**：解析上传的 PDF / Word 简历，结合目标岗位、公司、JD 生成逐题提问；模型不可用时
-  静默回退到内置题库，不会因为出题失败而卡住练习创建。简历正文只用于出题，不落库。
-- **模拟面试**：数字人面试官播报问题（支持口型动画与纯文字降级），每题独立录制、可暂停、可重录。
-- **AI 复盘**：回答转写 → 结构化评分（相关性 / 完整性 / 专业性 / STAR / 逻辑 / 语速 / 停顿 / 口头禅）→
-  逐题报告，评分结果带可跳转的视频时间点证据。
-- **保留与删除**：录像默认保留 7 天，可随时手动删除，删除会同时清理媒体、转写与评分数据。
-- **笔试练习**：AI 出题并**自检**（参考解先在沙箱跑通全部用例才发题）；Monaco 网页 IDE，
-  支持 Java / Python / C++ / JavaScript / Go；「运行示例」只跑可见样例且不留记录，
-  「提交本题」跑全部用例（含隐藏）并按通过比例计分；数据库题在临时 SQLite 上执行。
-  代码执行默认关闭（`CODE_RUNNER_ENABLED`），因为它会在本机运行任意用户代码。
+- 题刷了几百道，一问到「讲讲你主导的项目」就卡壳
+- 想练手，但没人给你出题，更没人给你反馈
+- 试过的 AI 面试工具只能聊天，**不敢真跑你的代码** —— 写错了也看不出来
 
-## 技术栈
+## ✨ 这个项目不一样在哪
+
+| | |
+| --- | --- |
+| 🎥 **能录下来，也能被真实评分** | 浏览器逐题录制作答 → Paraformer 转写 → 大模型按**固定 JSON 结构**打分（相关性 / 完整性 / 专业性 / STAR / 逻辑 + 语速 / 停顿 / 口头禅）。报告里每条结论都能**点回视频对应的时间点** |
+| 💻 **笔试不自欺：代码真的会跑** | Java / Python / C++ / JavaScript / Go 在**本机 Docker 沙箱**里编译执行：禁网、限内存、限 CPU、限时、只读文件系统。跑不过用例就是不过 |
+| 🧠 **出题先自检，不糊弄你** | AI 出的每道题，都会先拿**参考解**在沙箱里把用例跑一遍，全过才发给你；跑不通就换一批重试。不会出现「标准答案自己都编译不过」 |
+| 🧩 **五种题型一次配齐** | 上机编程、数据库题（临时 SQLite 真实执行）、编程填空、选择题、简答题 |
+| 🎨 **界面配色随你** | 松绿 / 藏青 / 赭橙三套配色，选择按账号保存 |
+| 📊 **不只是能跑，还要能运维** | 分析队列带 Prometheus 指标、指数退避重试与死信队列；录像上传支持分片与断点续传 |
+
+> **没有 API Key 也能跑**：两个本地兜底供应商可以让整条链路先跑通（转写与评分给占位结果），
+> 拿到 Key 再换成真实模型即可。
+
+## 🚀 核心功能
+
+| 模块 | 说明 |
+| --- | --- |
+| 练习配置 | 目标岗位、公司、JD、简历文件，面试类型 / 面试官风格 / 难度 / 题量与时长 |
+| 设备检测 | 摄像头、麦克风授权与实时预览，音量检查通过才允许进入面试 |
+| AI 出题 | 上传 PDF / Word 解析简历正文，结合岗位与 JD 生成逐题提问；模型不可用时回退内置题库，简历正文不落库 |
+| 模拟面试 | 数字人面试官播报题目（口型动画 + 纯文字降级），每题独立录制、可暂停、可重录 |
+| AI 复盘 | 转写 → 结构化评分 → 逐题报告，带可跳转的视频时间点证据 |
+| 笔试练习 | Monaco 网页 IDE 写代码；「运行示例」不计分、「提交本题」跑全部用例（含隐藏）并按通过比例计分 |
+| 数据保留 | 录像与笔试默认保留 7 天，可随时手动删除，删除会同时清理媒体、转写与评分 |
+
+## 🎬 项目演示
+
+仓库里带着几次迭代的录屏，可以直接看效果：
+
+| 迭代 | 内容 |
+| --- | --- |
+| [step1.mp4](docs/step1.mp4) | 项目搭建：登录、练习配置、题目生成 |
+| [step2.mp4](docs/step2.mp4) | 模拟面试：数字人播报与逐题录制 |
+| [step3.mp4](docs/step3.mp4) | 复盘报告与时间轴证据 |
+| [step4.mp4](docs/step4.mp4) | 完整流程演示 |
+
+## 🛠 技术栈
 
 | 层 | 选型 |
 | --- | --- |
@@ -33,7 +64,7 @@
 | 存储 | PostgreSQL 16 + pgvector · Redis 7 · S3 兼容对象存储（本地磁盘 / MinIO / AWS S3） |
 | 媒体 | 浏览器 `MediaRecorder` 录制 · ffmpeg 抽取音轨 · Paraformer 转写 · Sambert 合成 |
 
-## 快速开始
+## ⚡ 快速开始
 
 ```bash
 # 1. 环境变量
@@ -57,7 +88,7 @@ cd web && npm install && npm run dev
 上手流程见 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)，代码结构与扩展点见
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，完整变量与对象存储切换见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
-## 测试
+## 🧪 测试
 
 ```bash
 mvn -B clean package                                    # 单元测试，外部依赖自动跳过
@@ -96,7 +127,7 @@ PRACTICE_ASR_PROVIDER=stub PRACTICE_EVALUATION_PROVIDER=stub \
   java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar
 ```
 
-## 目录结构
+## 📁 目录结构
 
 ```
 consumer/    后端应用（practice / analysis / avatar / coding 笔试与代码沙箱 / storage / security 等模块 + Flyway 迁移）
@@ -107,7 +138,7 @@ docs/        部署说明与英文 README
 docker-compose.yml
 ```
 
-## 接口
+## 🔌 接口
 
 ```text
 POST   /login                                          登录（姓名 + 邀请码）
@@ -135,7 +166,7 @@ GET    /api/v1/coding-sessions/{id}/report                 笔试报告
 DELETE /api/v1/practice-sessions/{id}                   删除练习及其全部媒体
 ```
 
-## 验证状态
+## ✅ 验证状态（这个项目有多诚实）
 
 已实测：
 
@@ -183,8 +214,18 @@ DELETE /api/v1/practice-sessions/{id}                   删除练习及其全部
 真实供应商已于 2026-10-10 用有效 `Ali_API_KEY` 逐条跑通，详见
 [docs/STATUS.md](docs/STATUS.md) 的「真实供应商验证结果」。
 
-## 致谢与许可
+## 📄 致谢与许可
 
 基于 [guangge](https://github.com/xgwangdl) 的 AI-Interview 重构而来，采用 Apache License 2.0。
 
 感谢 Spring Boot、Spring AI、Spring AI Alibaba、Vue、Element Plus、PostgreSQL / pgvector 等开源项目。
+
+---
+
+## ⭐ 如果这个项目对你有帮助
+
+- 点个 **Star** —— 这是对开源作者最直接的鼓励，也能让更多正在准备面试的人看到它
+- 提 **Issue** 说说你想要的功能，或者你在使用中踩到的坑
+- **PR** 一律欢迎（新的题型、新的语言沙箱、更好的提示词都算）
+
+> 面试是练出来的，不是背出来的。祝拿到心仪的 offer 🎉
