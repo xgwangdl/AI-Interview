@@ -10,6 +10,9 @@ const router = createRouter({
     { path: '/practice/:id/session', name: 'session', component: () => import('./views/SessionView.vue') },
     { path: '/practice/:id/report', name: 'report', component: () => import('./views/ReportView.vue') },
     { path: '/history', name: 'history', component: () => import('./views/HistoryView.vue') },
+    { path: '/coding', name: 'coding-setup', component: () => import('./views/CodingSetupView.vue') },
+    { path: '/coding/:id', name: 'coding-exam', component: () => import('./views/CodingExamView.vue') },
+    { path: '/coding/:id/report', name: 'coding-report', component: () => import('./views/CodingReportView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

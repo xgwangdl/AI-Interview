@@ -12,6 +12,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
     "element-plus": "2.14.4",
+    "monaco-editor": "^0.52.2",
     "pinia": "2.3.1",
     "vue": "3.5.41",
     "vue-router": "4.6.4"
