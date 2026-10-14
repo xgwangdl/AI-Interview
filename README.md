@@ -12,6 +12,23 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)
 
+## 📸 看看它长什么样
+
+| 登录与注册 | 训练总览 |
+| --- | --- |
+| ![登录与注册](docs/images/01-login.png) | ![训练总览](docs/images/02-dashboard.png) |
+
+| 练习配置（AI 出题） | 笔试出题（选题型与语言） |
+| --- | --- |
+| ![练习配置](docs/images/03-practice-setup.png) | ![笔试出题](docs/images/04-coding-setup.png) |
+
+| 笔试作答（网页 IDE） | 笔试报告（按用例计分） |
+| --- | --- |
+| ![笔试作答](docs/images/05-coding-exam.png) | ![笔试报告](docs/images/06-coding-report.png) |
+
+> 截图由 `web/scripts/capture-screenshots.mjs` 用真实浏览器访问本机服务自动生成，
+> 界面改版后重跑一次就能更新，不会出现「图跟代码对不上」。
+
 ## 😰 是不是也遇到过这些
 
 - 题刷了几百道，一问到「讲讲你主导的项目」就卡壳
