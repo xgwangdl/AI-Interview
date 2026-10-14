@@ -1,7 +1,11 @@
 # Light-Interview
 
-求职者的**视频模拟面试训练与复盘**工具：选择岗位、逐题录制回答，后台完成转写与结构化评分，
-最后给出带视频时间轴证据的逐题报告。
+求职者的**面试训练与复盘**工具，两条独立主线：
+
+- **视频模拟面试**：选择岗位、逐题录制回答，后台完成转写与结构化评分，
+  最后给出带视频时间轴证据的逐题报告；
+- **笔试练习**：AI 出题（上机编程 / 数据库 / 编程填空 / 选择 / 简答），
+  在网页 IDE 里作答，代码**在本机 Docker 沙箱里真实运行**并按用例判分。
 
 [English](docs/README.md) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [部署说明](docs/DEPLOYMENT.md) · [实施状态](docs/STATUS.md) · Apache License 2.0
 
@@ -15,6 +19,10 @@
 - **AI 复盘**：回答转写 → 结构化评分（相关性 / 完整性 / 专业性 / STAR / 逻辑 / 语速 / 停顿 / 口头禅）→
   逐题报告，评分结果带可跳转的视频时间点证据。
 - **保留与删除**：录像默认保留 7 天，可随时手动删除，删除会同时清理媒体、转写与评分数据。
+- **笔试练习**：AI 出题并**自检**（参考解先在沙箱跑通全部用例才发题）；Monaco 网页 IDE，
+  支持 Java / Python / C++ / JavaScript / Go；「运行示例」只跑可见样例且不留记录，
+  「提交本题」跑全部用例（含隐藏）并按通过比例计分；数据库题在临时 SQLite 上执行。
+  代码执行默认关闭（`CODE_RUNNER_ENABLED`），因为它会在本机运行任意用户代码。
 
 ## 技术栈
 
@@ -70,6 +78,12 @@ CI（`.github/workflows/build.yml`）会重复跑上面三条：后端干净构�
 pwsh scripts/e2e-real-providers.ps1                       # 或用 -MediaPath 指定真人录制的素材
 ```
 
+笔试模块的代码沙箱需要 Docker（会在临时容器里真跑代码，含禁网与超时用例）：
+
+```bash
+mvn -B -pl consumer test -Dtest=CodeRunnerServiceTest -Dcode.runner.integration=true
+```
+
 分析队列的指标走 `/actuator/prometheus`（`analysis_queue_length`、`analysis_failure_rate`、
 `analysis_dlq_size` 等）；重试到上限的任务进入死信队列，可通过
 `GET /api/v1/analysis/dlq` 查看、`POST /api/v1/analysis/dlq/{jobId}/requeue` 重新入队。
@@ -85,7 +99,7 @@ PRACTICE_ASR_PROVIDER=stub PRACTICE_EVALUATION_PROVIDER=stub \
 ## 目录结构
 
 ```
-consumer/    后端应用（practice / analysis / avatar / storage / security 等模块 + Flyway 迁移）
+consumer/    后端应用（practice / analysis / avatar / coding 笔试与代码沙箱 / storage / security 等模块 + Flyway 迁移）
 common/      共享工具：统一响应、业务异常、JWT、CORS 配置
 web/         Vue 3 单页应用
 scripts/     端到端冒烟脚本
@@ -110,6 +124,14 @@ POST   /api/v1/practice-sessions/{id}/analysis/retry    分析失败后重新排
 GET    /api/v1/media/{id}/signed-url                    签发限时播放地址
 GET    /api/v1/media/{id}?expires=&signature=           按签名播放录像
 GET    /api/v1/practice-sessions/{id}/questions/{n}/narration  面试官播报文本与音频
+
+# 笔试模块（AI 出题 + 本机 Docker 沙箱判题）
+GET    /api/v1/coding-sessions/capabilities                沙箱是否启用、可用语言与题型
+POST   /api/v1/coding-sessions                             出题并建场（含参考解自检，耗时较长）
+GET    /api/v1/coding-sessions/{id}                        题目（不含任何答案）与提交概要
+POST   /api/v1/coding-sessions/{id}/questions/{q}/run      只跑可见示例，不落库
+POST   /api/v1/coding-sessions/{id}/questions/{q}/submit   跑全部用例（含隐藏）并计分
+GET    /api/v1/coding-sessions/{id}/report                 笔试报告
 DELETE /api/v1/practice-sessions/{id}                   删除练习及其全部媒体
 ```
 

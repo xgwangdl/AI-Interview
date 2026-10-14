@@ -125,6 +125,34 @@ MEDIA_S3_PATH_STYLE=true
 - 重试达到 `PRACTICE_ANALYSIS_MAX_ATTEMPTS` 的任务会写入 `analysis_jobs_dlq`；
   `GET /api/v1/analysis/dlq` 查看、`POST /api/v1/analysis/dlq/{jobId}/requeue` 重新入队。
 
+### 代码沙箱（笔试模块）
+
+笔试模块会在**本机 Docker** 里执行用户提交的代码，因此默认**关闭**：
+
+```dotenv
+CODE_RUNNER_ENABLED=true          # 默认 false；打开前确认机器可控、不对公网暴露
+CODE_RUNNER_MAX_CONCURRENCY=2     # 同时最多跑几个容器
+CODE_RUNNER_COMPILE_TIMEOUT_SECONDS=10
+CODE_RUNNER_RUN_TIMEOUT_SECONDS=5
+CODE_RUNNER_MEMORY_MB=256
+```
+
+执行时的隔离参数（禁网、内存/CPU/进程数上限、只读根文件系统、单文件大小上限、
+按容器名强杀超时任务）写在 `CodeRunnerService` 的类注释里，修改前请先读那段。
+
+各语言的镜像与体积：
+
+| 语言 | 镜像 | 体积 | 状态 |
+| --- | --- | --- | --- |
+| Java | `eclipse-temurin:21-jdk-alpine` | 364MB | 已拉取 |
+| Python | `python:3.12-slim` | 119MB | 已拉取（**SQL 题也复用它**，内置 sqlite3） |
+| JavaScript | `node:20-alpine` | 136MB | 已拉取 |
+| C++ | `gcc:13` | 约 1.4GB | 首次执行该语言时自动拉取 |
+| Go | `golang:1.22-alpine` | 约 250MB | 首次执行该语言时自动拉取 |
+
+> 公网部署时不要把代码执行放在应用同一台机器上：这套实现面向「自己机器上跑自己的代码」，
+> 真要多租户使用，应换成独立的执行节点（或接 Judge0 之类的判题服务）并加更严格的隔离。
+
 ### 关于 Redis
 
 compose 里带了 Redis，`spring-boot-starter-data-redis` 也在依赖里，但**当前实现并没有用到它**：

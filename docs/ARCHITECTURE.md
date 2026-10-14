@@ -220,6 +220,83 @@ pending ──claim──▶ processing ──成功──▶ completed
 
 ---
 
+### 5.7 `coding` —— 笔试模块
+
+独立于视频面试的一套完整链路：AI 出题 → 沙箱判题 → 报告。**执行用户代码是这个模块最大的风险点**，
+所以安全边界集中在 `CodeRunnerService` 一个类里。
+
+| 类 | 职责 |
+| --- | --- |
+| `CodeLanguage` | 语言矩阵：`java` / `python` / `cpp` / `javascript` / `go` 各自的镜像、文件名、编译与运行命令 |
+| `CodeRunnerService` | 在一次性 Docker 容器里执行代码，见下方「沙箱安全边界」 |
+| `CodeRunResult` | 单次执行结果：退出码、stdout / stderr、编译输出、耗时、是否超时 |
+| `QuestionType` | 五种题型：`coding` / `sql` / `fill_blank` / `choice` / `short_answer`，其中前两种需要执行 |
+| `CodeJudgeService` | 五种题型的判分：执行型跑用例，填空/选择确定性比对，简答交给模型 |
+| `ShortAnswerGrader` / `SpringAiShortAnswerGrader` | 简答题评分（唯一没有客观答案的题型），强制 JSON 结构校验 |
+| `CodingQuestionPlanService` | AI 出题 + 自检闭环，见下方「两步生成」 |
+| `CodingSessionService` | 会话生命周期、判分入口、报告组装、7 天保留期清理 |
+| `CodingController` | `/api/v1/coding-sessions` 下的接口 |
+
+**沙箱安全边界**（参数就是唯一的安全边界，改动前请想清楚）：
+
+```
+docker run --rm -i
+  --network none                      # 禁网：防外联、防挖矿
+  --memory 256m --memory-swap 256m    # 内存上限，且不允许用 swap 绕过
+  --cpus 0.5 --pids-limit 64          # 防 fork 炸弹与 CPU 抢占
+  --read-only --tmpfs /tmp:rw,size=64m
+  -v <临时目录>:/work                 # 只挂当次目录，进程结束即删
+  <language image> sh -c "<编译/运行脚本>"
+```
+
+脚本里还有两道限制：`ulimit -f 4096`（单文件最多 2MB，防写爆磁盘）、编译与运行各自用
+`timeout` 限时（只做容器级总超时的话，一个死循环会一直耗到总超时才被杀）。
+输出**写进挂载目录里的文件**而不是读管道——管道缓冲区写满会把子进程卡死，
+而且超时后还能拿到部分输出。整体超时后按容器名 `docker kill`，
+否则只杀掉客户端进程、容器仍在跑。
+
+**两步生成（AI 出题 + 自检）**：这个设计是被现实打出来的，值得记住为什么。
+
+1. 第一问：只出「题面 + 起始代码 + **能直接运行的参考解**」，测试用例留空。
+2. 第二问：把参考解**发回给模型**，用单独的 system prompt 只让它配输入
+   （照着参考解的读取方式给几行、给什么格式）。
+3. **期望输出一律由参考解在沙箱里跑出来**，不采用模型手算的结果。
+
+为什么不是一次生成：最初让模型同时给出参考解和手算的期望输出，连续三次自检全挂——
+模型没法把 stdout 逐字符算准。改成「只给输入 + 一个能跑的参考解」之后，
+用例与参考解天然一致，自检只需要回答「参考解能不能跑完」；
+跑不通的单个用例会被丢弃（保留可见示例即可），整批不可用才重试（默认 3 次）。
+
+**两个必须记住的实现约束**（都踩过坑）：
+
+1. `ChatClient.Builder.defaultSystem()` 是**修改自身并返回同一实例**。同一份 builder 上建两个
+   客户端，第二个 system prompt 会覆盖第一个 → 出题客户端拿着「配测试输入」的提示词去出题。
+   每个客户端都必须 `.clone()`（遗留代码 `ProgramAssistant` 也是这么做的）。
+2. 下发给前端的题目视图 `CodeQuestionView` **不能带任何答案**：填空只给 `hint` 不给 `accepted`，
+   隐藏用例只给名字，`answerJson`（参考解 / 正确选项 / 参考要点）永不出服务端。
+
+**接口**（均在 `/api/v1/coding-sessions` 下，鉴权与数据隔离沿用 `OwnerResolver`）：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /capabilities` | 是否启用代码沙箱、可用语言与题型 |
+| `POST /` | 出题并建场（内部走 AI 出题 + 自检，耗时较长） |
+| `GET /`、`GET /{id}` | 列表 / 详情（题目 + 每题最近一次提交概要） |
+| `POST /{id}/questions/{qid}/run` | 只跑可见示例，**不落库** |
+| `POST /{id}/questions/{qid}/submit` | 跑全部用例（含隐藏）并计分落库 |
+| `GET /{id}/report` | 笔试报告 |
+| `DELETE /{id}` | 删除会话（级联删除题目与提交） |
+
+**判分口径**：
+
+| 题型 | 判分方式 |
+| --- | --- |
+| 上机编程 | 跑测试用例，比对 stdout（忽略行尾空白与首尾空行） |
+| 数据库题 | 参考查询/作答查询都在临时 SQLite 上执行，比对结果集（复用 Python 镜像，无额外镜像） |
+| 编程填空 | 按空比对候选答案（忽略首尾与内部多余空白，**保留大小写**——Java 关键字大小写有意义） |
+| 选择题 | 比对选项集合（顺序与大小写不敏感，少选/多选都算错） |
+| 简答题 | 模型按参考要点评分，强制 JSON 结构（`score` / `summary` / `matched` / `missing`） |
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -277,6 +354,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V3__candidate_login.sql` | `candidates` | 登录账号（姓名 + 邀请码） |
 | `V4__analysis_queue_observability.sql` | `analysis_jobs` / `analysis_jobs_dlq` | 退避字段 `next_attempt_at` + 死信表 |
 | `V5__candidate_registration.sql` | `candidates` | 用户名唯一索引（开放注册），口令改存 BCrypt 哈希 |
+| `V6__coding_assessment.sql` | `coding_sessions` / `code_questions` / `code_submissions` | 笔试模块：会话、题目（五种题型共用一张表）、提交与判分结果 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -301,6 +379,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 分析调度 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` / `_PROVIDER_TIMEOUT_MS` / `_POLL_INTERVAL_MS` / `_INITIAL_DELAY_MS` | 3 / 120000 / 15000 / 30000 |
 | 重试退避 | `PRACTICE_ANALYSIS_RETRY_BACKOFF_MS` / `_RETRY_BACKOFF_MAX_MS` | 5000 / 300000 |
 | 可观测性 | `management.endpoints.web.exposure.include`（health / info / prometheus） | 见 application.properties |
+| 代码沙箱 | `CODE_RUNNER_ENABLED` / `_MAX_CONCURRENCY` / `_COMPILE_TIMEOUT_SECONDS` / `_RUN_TIMEOUT_SECONDS` / `_MEMORY_MB` | false / 2 / 10 / 5 / 256 |
+| 笔试 | `practice.coding.retention-days` / `practice.coding.plan-max-attempts` | 7 / 3 |
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
@@ -319,6 +399,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history` |
 | `authGuard.js` | 路由守卫：未登录跳登录页 |
 | `views/` | 7 个页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView` |
+| `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |
+| `components/CodeEditor.vue` + `services/monaco.js` | Monaco 封装：**懒加载**（只有打开笔试页才拉那几 MB），含 Java/Python/C++/JS/Go/SQL 高亮；只需核心 worker，因为这些语言是主线程 Monarch 词法高亮 |
 | `stores/practice.js` | Pinia store：会话列表与草稿、`localStorage` 持久化、过期清理、断网补传 |
 | `services/api.js` | 后端 API 封装，统一注入 token、错误归一化 |
 | `services/mediaCapture.js` | `MediaRecorder` 封装：权限、开始/停止、分片、时长 |
@@ -392,3 +474,11 @@ curl http://localhost:8088/actuator/prometheus | Select-String analysis_
 7. **分片合并读两遍**：为保证「校验失败不落库」，合并前先算一遍整段 SHA-256 再拼流写入；
    在 S3 下意味着分片会被读两次，文件很大时要注意流量成本。
 8. **DLQ 无独立管理员角色**：`/api/v1/analysis/dlq` 按数据归属过滤，只能看到自己的死信任务。
+9. **代码沙箱默认关闭**：`CODE_RUNNER_ENABLED=false`。它会在宿主机执行任意用户代码，
+   只应在自己可控的机器上打开；公网部署需要换成独立执行节点并加更严格的隔离。
+10. **C++ / Go 镜像未预拉**：Java（364MB）、Python（119MB）、Node（136MB）已拉取；
+    C++ 用的 `gcc:13` 约 1.4GB，Go 约 250MB，首次执行该语言时会自动拉取，会等几分钟。
+11. **出题耗时**：一次出题要跑「生成 → 参考解沙箱自检 →（失败则换一批重试，默认 3 次）」，
+    实测三题一批约 92 秒，最坏可能到 2 分钟以上；前端会显示真实等待秒数。
+12. **SQL 方言是 SQLite**：数据库题在内存 SQLite 上执行（复用 Python 镜像，不引入额外镜像），
+    需要真 Postgres/MySQL 语义时要另接执行环境。

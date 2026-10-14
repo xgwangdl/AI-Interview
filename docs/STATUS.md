@@ -338,6 +338,28 @@ AI 出题带自检 / 独立模块 / 五种题型 / 学习场景不做防作弊 /
 
 测试规模：后端 **126 个**（新增判题 6 个；Docker 用例默认跳过）、前端 **38 个** + 构建通过。
 
+### 2026-10-14 笔试模块（第三阶段：真实使用中暴露的 5 个缺陷，全部已修）
+
+从「点一下就转圈」到「多选题报错」，实际点界面又挖出 5 个 bug，根因**全是「模型产出格式」与
+「代码消费格式」对不上**——这也是这个模块最容易出错的地方，记录下来备查。
+
+| # | 现象 | 根因 | 修复 |
+| --- | --- | --- | --- |
+| 1 | 出题一直转圈 | Java 源码固定写入 `Main.java`，但提示词从没说过，模型写 `public class Solution` → javac 直接报「class Solution is public, should be declared in a file named Solution.java」 | 提示词写死每种语言的文件名与入口约定（`Main.java`+`class Main`、`main.cpp`、`package main`+`func main` 等） |
+| 2 | 单个坏用例废掉整道题 | 模型给的隐藏边界用例 stdin 为空，而参考解要读一行 → `NoSuchElementException` | 参考解跑不通的**单个**用例直接丢弃，前提是仍保留可见示例且可用用例 ≥ 2 |
+| 3 | 出题客户端不按 schema 输出 | `ChatClient.Builder.defaultSystem()` **修改自身并返回同一实例**，两个客户端共用一个 builder 时第二个提示词覆盖了第一个 | 两个客户端各 `clone()` 一份（旧代码 `ProgramAssistant` 正是这么做的） |
+| 4 | SQL 参考查询跑不通 | 把 JSON 转义后的 SQL 塞进 Python 字面量，Python 先还原 `\n` 成真实换行，`json.loads` 收到非法 JSON | SQL 改用 **base64** 传递，无转义歧义 |
+| 5 | 提交多选题报「题目数据损坏」 | 参考答案在库里是对象 `{"keys":[...],"points":[...]}`（提示词定的 schema），判题却按**裸数组**解析 | 判题改为从对象里取 `keys` / `points`；单元测试也改成与线上一致的格式（原来用裸数组，所以没拦住） |
+
+另外补了两个可观测性改进，正是它们让上面几个问题能被定位：
+
+- **校验失败时打印模型原始返回**（前 600 字）——#3 就是靠这个才看到模型返回的是
+  `{"name":"coding / java","description":...}` 而不是约定 schema。
+- **前端显示真实等待秒数**，并说明「最多重试 3 次，可能要等 20 秒到 2 分钟」，避免误以为卡死。
+
+**端到端复验**：Java 上机 + SQL + 选择题三题一批，**92 秒**生成成功，两类需要执行的题都通过了沙箱自检；
+选择题用夹具实测「正确 `A,D` → passed 100 分」「错误 `A,B,C` → failed 0 分并提示正确选项」。
+
 ### 当前环境状态
 
 - **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，
