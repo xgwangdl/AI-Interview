@@ -419,6 +419,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 前端 | Vitest | 33 个用例（API 客户端、路由守卫、媒体捕获、分片上传、store、内置题库） |
 | 端到端 | `scripts/smoke-test.ps1` | 24 项断言，覆盖登录 → 出题 → 上传 → 分析 → 报告 → 签名播放 → Range → 删除 |
 | 真实链路端到端 | `scripts/e2e-real-providers.ps1` | 真实凭据 + 真实音轨，产出 `artifacts/e2e/report-*.json` |
+| 界面截图 | `web/scripts/capture-screenshots.mjs` | 真实浏览器登录后逐页截图，输出到 `docs/images/`（README 配图来源）；UI 改版后重跑即可，避免配图与代码脱节。用系统 Chrome（`CHROME_PATH` 可覆盖），因为 Playwright 自带的 Chromium 在内网常常下不动 |
 
 ```bash
 # 全部后端测试（含需要 Postgres / S3 的集成用例）

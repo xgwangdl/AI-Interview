@@ -26,10 +26,6 @@ And it **actually runs the code you write** — if your program fails the test c
 | --- | --- |
 | ![Coding exam](images/05-coding-exam.png) | ![Coding report](images/06-coding-report.png) |
 
-> The screenshots are captured by `web/scripts/capture-screenshots.mjs`, which drives a real browser
-> against a locally running stack, so they can be regenerated after any UI change instead of drifting
-> away from the code.
-
 ## 😰 Sound familiar?
 
 - You solved hundreds of problems, but "tell me about a project you led" still stalls you
@@ -46,9 +42,6 @@ And it **actually runs the code you write** — if your program fails the test c
 | 🧩 **Five question types** | Hands-on coding, database questions (executed against a temporary SQLite), fill-in-the-blank, multiple choice, short answer |
 | 🎨 **Pick your palette** | Three themes — pine green, navy, ochre — saved per account |
 | 📊 **Operable, not just runnable** | Prometheus metrics, exponential back-off retries and a dead-letter queue for the analysis pipeline; resumable chunked uploads for recordings |
-
-> **No API key required to try it.** Two local stub providers let the whole pipeline run end to end
-> (with placeholder transcription and scoring); swap in a real key when you have one.
 
 ## 🚀 Core features
 
@@ -103,6 +96,10 @@ cd web && npm install && npm run dev
 Open <http://localhost:5173>, click **注册 (Register)** on the login page and create an account —
 the demo account is `smoke / 123456`. The backend reads `.env` from the repository root automatically.
 
+**No DashScope key yet?** Set `PRACTICE_ASR_PROVIDER` and `PRACTICE_EVALUATION_PROVIDER` to `stub`
+and the whole flow still runs end to end with placeholder transcription and scoring; add `Ali_API_KEY`
+to `.env` when you have one to switch to the real models.
+
 To enable the coding sandbox, set `CODE_RUNNER_ENABLED=true` (it executes arbitrary user code on your
 machine, so it is off by default). See [DEPLOYMENT.md](DEPLOYMENT.md) for the full variable reference.
 
@@ -153,8 +150,6 @@ GET    /api/v1/coding-sessions/{id}/report                          Coding repor
 ```
 
 ## ✅ Verification status
-
-We would rather tell you what is not proven yet than pretend everything is done.
 
 Verified: clean builds, 126 backend tests (plus 7 sandbox tests that need Docker), 38 frontend tests, a
 24-assertion end-to-end smoke script, the real model chain (question planning, Paraformer transcription,

@@ -26,9 +26,6 @@
 | --- | --- |
 | ![笔试作答](docs/images/05-coding-exam.png) | ![笔试报告](docs/images/06-coding-report.png) |
 
-> 截图由 `web/scripts/capture-screenshots.mjs` 用真实浏览器访问本机服务自动生成，
-> 界面改版后重跑一次就能更新，不会出现「图跟代码对不上」。
-
 ## 😰 是不是也遇到过这些
 
 - 题刷了几百道，一问到「讲讲你主导的项目」就卡壳
@@ -45,9 +42,6 @@
 | 🧩 **五种题型一次配齐** | 上机编程、数据库题（临时 SQLite 真实执行）、编程填空、选择题、简答题 |
 | 🎨 **界面配色随你** | 松绿 / 藏青 / 赭橙三套配色，选择按账号保存 |
 | 📊 **不只是能跑，还要能运维** | 分析队列带 Prometheus 指标、指数退避重试与死信队列；录像上传支持分片与断点续传 |
-
-> **没有 API Key 也能跑**：两个本地兜底供应商可以让整条链路先跑通（转写与评分给占位结果），
-> 拿到 Key 再换成真实模型即可。
 
 ## 🚀 核心功能
 
@@ -102,6 +96,9 @@ cd web && npm install && npm run dev
 打开 <http://localhost:5173>，在登录页点「注册」自己建账号（用户名 + 至少 6 位密码），
 注册成功会直接进入工作台。演示账号是 `smoke / 123456`。
 需要批量造账号时也可以直接往 `candidates` 表插一行，明文口令首次登录后会自动升级成哈希。
+
+**暂时没有百炼 API Key 也能试**：把 `PRACTICE_ASR_PROVIDER` 与 `PRACTICE_EVALUATION_PROVIDER`
+都设为 `stub`，整条流程照常跑完（转写与评分给占位结果）；拿到 Key 后填进 `.env` 即可切换成真实模型。
 上手流程见 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)，代码结构与扩展点见
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，完整变量与对象存储切换见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
@@ -183,7 +180,7 @@ GET    /api/v1/coding-sessions/{id}/report                 笔试报告
 DELETE /api/v1/practice-sessions/{id}                   删除练习及其全部媒体
 ```
 
-## ✅ 验证状态（这个项目有多诚实）
+## ✅ 测试与验证状态
 
 已实测：
 
