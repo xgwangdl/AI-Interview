@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTACK, RELEASE, frameForLevel, levelFromAmplitude, levelWithHysteresis,
-  nextFallbackFrame, smoothAmplitude,
+  nextFallbackFrame, revealedSentenceCount, smoothAmplitude, splitSentences,
 } from './mouthAnimation';
 import { TALK_ROTATION } from './avatarAssets';
 
@@ -94,5 +94,48 @@ describe('levelWithHysteresis', () => {
   it('档位不会越界', () => {
     expect(levelWithHysteresis(3, 10)).toBe(3);
     expect(levelWithHysteresis(0, 0)).toBe(0);
+  });
+});
+
+describe('splitSentences（示范回答拆成字幕句）', () => {
+  it('按句末标点切分，标点留在前一句', () => {
+    const parts = splitSentences('第一句内容。第二句内容。第三句内容。');
+    expect(parts).toHaveLength(3);
+    expect(parts[0]).toBe('第一句内容。');
+    expect(parts[2]).toBe('第三句内容。');
+  });
+
+  it('过短的残句并入上一句，避免一个字单独弹出一行', () => {
+    const parts = splitSentences('前面是完整的一句话。嗯。后面还有内容。');
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toBe('前面是完整的一句话。嗯。');
+  });
+
+  it('没有标点时整段作为一句，不会丢内容', () => {
+    const text = '这是一段没有任何句末标点的示范回答内容';
+    expect(splitSentences(text)).toEqual([text]);
+  });
+});
+
+describe('revealedSentenceCount（按播放进度决定显示到第几句）', () => {
+  const sentences = ['一。', '二。', '三。', '四。'];   // 每句 2 字
+
+  it('没在播放（进度 -1）时全部显示', () => {
+    expect(revealedSentenceCount(sentences, -1)).toBe(4);
+  });
+
+  it('进度 0 至少显示第一句，避免开头字幕是空的', () => {
+    expect(revealedSentenceCount(sentences, 0)).toBe(1);
+  });
+
+  it('随进度递增，播完显示全部', () => {
+    const counts = [0.1, 0.3, 0.6, 0.9, 1].map((p) => revealedSentenceCount(sentences, p));
+    expect(counts).toEqual([1, 2, 3, 4, 4]);
+    // 单调不减
+    for (let i = 1; i < counts.length; i += 1) expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]);
+  });
+
+  it('空数组返回 0，不会越界', () => {
+    expect(revealedSentenceCount([], 0.5)).toBe(0);
   });
 });

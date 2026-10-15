@@ -6,6 +6,9 @@
  */
 import { TALK_ROTATION } from './avatarAssets';
 
+/** 短于这个长度的"句子"（"嗯。""好。"）并进上一句，避免一个字单独弹一行。 */
+const MIN_SENTENCE_CHARS = 4;
+
 /** 各档位对应的基准嘴型（0=闭唇 … 3=较大张嘴）。 */
 export const LEVEL_FRAMES = ['mouth-m', 'mouth-e', 'mouth-normal', 'mouth-a'];
 
@@ -36,6 +39,51 @@ export function frameForLevel(level, rotation = 0) {
 /** 没有音量分析器时的降级：按固定节奏在循环表里推进。 */
 export function nextFallbackFrame(index) {
   return TALK_ROTATION[index % TALK_ROTATION.length];
+}
+
+/**
+ * 把一段示范回答切成"字幕句"。
+ *
+ * 按中文/英文的句末标点切，标点留在前一句末尾；过短的残句并进上一句，
+ * 否则一个字也会单独弹出一行，看起来像卡顿。
+ */
+export function splitSentences(text) {
+  if (!text) return [];
+  const parts = (text.match(/[^。！？!?；;\n]+[。！？!?；;]?/g) || [text])
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const merged = [];
+  for (const part of parts) {
+    const previous = merged[merged.length - 1];
+    // 判的是**当前这句**太短（例如"嗯。""好。"），把它并进上一句，
+    // 而不是判上一句短 —— 否则连续几个短句会被并成一整段。
+    if (previous && part.length < MIN_SENTENCE_CHARS) {
+      merged[merged.length - 1] = previous + part;
+    } else {
+      merged.push(part);
+    }
+  }
+  return merged;
+}
+
+/**
+ * 按播放进度决定"已经念到第几句"。
+ *
+ * 用字符数占比近似时间占比：中文 TTS 里两者相关性够高，且不需要词级时间戳。
+ * 至少显示第一句，避免开头一段时间字幕是空的。
+ */
+export function revealedSentenceCount(sentences, progress) {
+  if (!sentences.length) return 0;
+  if (!Number.isFinite(progress) || progress < 0) return sentences.length;  // 没在播：整段显示
+  if (progress >= 0.999) return sentences.length;
+  const total = sentences.reduce((sum, item) => sum + item.length, 0);
+  const target = total * progress;
+  let cumulative = 0;
+  for (let index = 0; index < sentences.length; index += 1) {
+    cumulative += sentences[index].length;
+    if (cumulative >= target) return index + 1;
+  }
+  return sentences.length;
 }
 
 /**

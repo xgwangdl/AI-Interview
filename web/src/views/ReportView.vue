@@ -8,6 +8,7 @@ import { getAnswerMedia, getPracticeReport, retryPracticeAnalysis } from '../ser
 import { buildQuestions, styleLabels, typeLabels } from '../data/questions';
 import DigitalHuman from '../components/DigitalHuman.vue';
 import { createAvatarAudio } from '../services/avatarAudio';
+import { revealedSentenceCount, splitSentences } from '../services/mouthAnimation';
 import {
   AVATAR_STATE, resetAvatarState, setAvatarError, setAvatarState, useAvatarState,
 } from '../services/avatarState';
@@ -41,14 +42,31 @@ const sampleAudioUrl = ref('');
 const sampleSpeaking = ref(false);
 const sampleLoading = ref(false);
 const sampleTruncated = ref(false);
+/** 当前显示到第几句；null 表示"全部显示"（未播放或已播完） */
+const revealedCount = ref(null);
+
+const sampleSentences = computed(() => splitSentences(currentEvaluation.value?.sampleAnswer || ''));
+/** 字幕文本：不播放时给完整内容，播放中按进度逐句出现 */
+const visibleSampleText = computed(() => {
+  const sentences = sampleSentences.value;
+  if (revealedCount.value === null) return sentences.join('');
+  return sentences.slice(0, Math.max(1, revealedCount.value)).join('');
+});
 
 avatarAudio.on('ended', () => {
   sampleSpeaking.value = false;
+  revealedCount.value = null;       // 念完 → 文字显示完全
   setAvatarState(AVATAR_STATE.IDLE);
+});
+
+avatarAudio.on('timeupdate', ({ currentTime, duration }) => {
+  if (!duration) return;
+  revealedCount.value = revealedSentenceCount(sampleSentences.value, currentTime / duration);
 });
 
 avatarAudio.on('error', (error) => {
   sampleSpeaking.value = false;
+  revealedCount.value = null;
   setAvatarError(error?.message);
 });
 
@@ -63,6 +81,7 @@ async function speakSampleAnswer() {
   if (sampleSpeaking.value) {
     avatarAudio.stop();
     sampleSpeaking.value = false;
+    revealedCount.value = null;      // 手动停止 → 直接给完整文字，方便阅读
     setAvatarState(AVATAR_STATE.IDLE);
     return;
   }
@@ -76,6 +95,7 @@ async function speakSampleAnswer() {
     const blob = await getSampleAnswerAudio(route.params.id, currentIndex.value);
     sampleAudioUrl.value = URL.createObjectURL(blob);
     avatarAudio.load(sampleAudioUrl.value);
+    revealedCount.value = 0;         // 从空开始，随朗读逐句出现
     setAvatarState(AVATAR_STATE.SPEAKING);
     const outcome = await avatarAudio.play();
     if (outcome === 'needs-gesture') {
@@ -88,6 +108,7 @@ async function speakSampleAnswer() {
     sampleSpeaking.value = true;
   } catch (error) {
     sampleSpeaking.value = false;
+    revealedCount.value = null;
     if (error?.status === 503) ElMessage.warning('语音合成暂不可用，可以直接看下面的文字示范。');
     else ElMessage.error(error?.message || '无法播放示范回答');
     setAvatarState(AVATAR_STATE.IDLE);
@@ -264,7 +285,7 @@ onBeforeUnmount(() => {
     <div class="report-layout">
       <section class="review-section"><div class="section-title">逐题回放 <small>{{ session.answers.length }} 段视频 · 点击问题可切换片段</small></div><div class="player-panel panel"><div class="player-frame"><video v-if="mediaUrl" ref="video" :src="mediaUrl" controls playsinline></video><div v-else class="player-empty"><el-icon v-if="mediaLoading" class="loading"><Loading /></el-icon><template v-else><el-icon><VideoCamera /></el-icon><strong>{{ currentAnswer ? '这段视频暂时无法读取' : '本题尚未录制' }}</strong><span>{{ currentAnswer ? '本地媒体文件可能已被清理。' : '本轮练习未完成全部问题。' }}</span></template></div><div class="player-label">{{ String(currentIndex + 1).padStart(2,'0') }} / {{ String(questions.length).padStart(2,'0') }}</div></div><div class="transcript-panel"><div class="transcript-header"><strong>回答转写</strong><el-tag :class="currentReport?.transcriptText ? 'tag-ready' : 'tag-muted'" size="small">{{ currentReport?.transcriptText ? '已生成' : '尚未生成' }}</el-tag></div><p v-if="currentReport?.transcriptText" class="transcript-text">{{ currentReport.transcriptText }}</p><p v-else>ASR 服务配置后，回答转写和时间戳会显示在这里，并可点击时间跳转到对应视频片段。</p><div v-if="currentAnswer" class="answer-meta"><span><el-icon><Timer /></el-icon>回答时长 {{ formatDuration(currentAnswer.durationSeconds) }}</span><span><el-icon><Files /></el-icon>{{ (currentAnswer.bytes / 1024 / 1024).toFixed(1) }} MB</span></div></div></div>
       <div class="question-list"><button v-for="(question,index) in questions" :key="question.id" class="question-card panel" :class="{ active: currentIndex === index }" @click="selectQuestion(index)"><span class="question-number">{{ String(index + 1).padStart(2,'0') }}</span><span class="question-info"><small>{{ question.category }}</small><strong>{{ question.text }}</strong></span><span class="question-duration">{{ session.answers.find((answer) => answer.questionIndex === index) ? formatDuration(session.answers.find((answer) => answer.questionIndex === index).durationSeconds) : '未回答' }}</span><el-icon v-if="currentIndex === index"><ArrowRight /></el-icon></button></div></section>
-      <aside class="score-section"><div class="section-title">回答分析 <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? '已生成' : (reportLoading ? '分析中' : '等待接入') }}</el-tag></div><div class="score-panel panel"><template v-if="currentEvaluation"><div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>综合得分</span></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div><div class="delivery-list"><div><span>语速</span><i>{{ Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }} 字/分</i></div><div><span>停顿</span><i>{{ currentEvaluation.delivery.pauseCount }} 次 · 共 {{ currentEvaluation.delivery.totalPauseSeconds }} 秒</i></div><div><span>口头禅</span><i>{{ currentEvaluation.delivery.fillerWordCount }} 次</i></div></div></template><template v-else><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>{{ reportLoading ? '正在读取分析结果' : (report?.analysis?.status === 'failed' ? '分析失败' : '分析结果尚未生成') }}</strong><p>练习完成后台会自动转写并评分，完成后此处会展示逐题反馈。</p><el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">重试分析</el-button></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div></template><div class="rubric-legend"><div class="legend-title">评分口径</div><ul><li><strong>80-100</strong> 表现良好：切题、有细节与结果</li><li><strong>60-79</strong> 基本合格：答到了，但缺细节</li><li><strong>40-59</strong> 需要加强：泛泛而谈</li><li><strong>0-39</strong> 明显不足：几乎没有有效信息</li></ul><p>分数衡量的是这一段回答本身，不代表对你的整体评价。</p></div><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel"><div class="section-title">改进建议</div><ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul></div><div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel"><div class="sample-head"><div class="section-title">优秀回答示例</div><button class="sample-play" :class="{ playing: sampleSpeaking }" :disabled="sampleLoading" :title="sampleSpeaking ? '停止朗读' : '让面试官把这段示范念出来'" @click="speakSampleAnswer"><el-icon><VideoPause v-if="sampleSpeaking" /><Microphone v-else /></el-icon><span>{{ sampleSpeaking ? '停止朗读' : (sampleLoading ? '合成中…' : '让面试官念一遍') }}</span></button></div><p class="sample-text">{{ currentEvaluation.sampleAnswer }}</p><p v-if="sampleTruncated" class="sample-note">示范回答较长，语音只念了前半段；完整内容见上面的文字。</p><div class="sample-speaker" :class="{ active: sampleSpeaking }"><div class="sample-avatar"><DigitalHuman :speaking="sampleSpeaking" :amplitude="avatarAudio.amplitude" /></div><p v-if="avatarError" class="sample-note error">{{ avatarError }}</p></div></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="evidenceList.length" class="evidence-list"><div v-for="(item, index) in evidenceList" :key="index" class="evidence-row"><button class="timeline-play" :aria-label="`播放证据 ${index + 1}`" :title="`播放证据 ${formatDuration(item.startSeconds)}`" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button><div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div><span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span></div></div><div v-else-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
+      <aside class="score-section"><div class="section-title">回答分析 <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? '已生成' : (reportLoading ? '分析中' : '等待接入') }}</el-tag></div><div class="score-panel panel"><template v-if="currentEvaluation"><div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>综合得分</span></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div><div class="delivery-list"><div><span>语速</span><i>{{ Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }} 字/分</i></div><div><span>停顿</span><i>{{ currentEvaluation.delivery.pauseCount }} 次 · 共 {{ currentEvaluation.delivery.totalPauseSeconds }} 秒</i></div><div><span>口头禅</span><i>{{ currentEvaluation.delivery.fillerWordCount }} 次</i></div></div></template><template v-else><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>{{ reportLoading ? '正在读取分析结果' : (report?.analysis?.status === 'failed' ? '分析失败' : '分析结果尚未生成') }}</strong><p>练习完成后台会自动转写并评分，完成后此处会展示逐题反馈。</p><el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">重试分析</el-button></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div></template><div class="rubric-legend"><div class="legend-title">评分口径</div><ul><li><strong>80-100</strong> 表现良好：切题、有细节与结果</li><li><strong>60-79</strong> 基本合格：答到了，但缺细节</li><li><strong>40-59</strong> 需要加强：泛泛而谈</li><li><strong>0-39</strong> 明显不足：几乎没有有效信息</li></ul><p>分数衡量的是这一段回答本身，不代表对你的整体评价。</p></div><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel"><div class="section-title">改进建议</div><ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul></div><div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel"><div class="section-title">优秀回答示例</div><div class="sample-row"><div class="sample-avatar"><DigitalHuman :speaking="sampleSpeaking" :amplitude="avatarAudio.amplitude" /></div><div class="sample-side"><button class="sample-play" :class="{ playing: sampleSpeaking }" :disabled="sampleLoading" @click="speakSampleAnswer"><el-icon><VideoPause v-if="sampleSpeaking" /><Microphone v-else /></el-icon><span>{{ sampleSpeaking ? '停止' : (sampleLoading ? '准备中…' : '让它回答') }}</span></button><small v-if="!sampleSpeaking && !sampleLoading">点这里，面试官会把这段示范答一遍</small><small v-else-if="sampleSpeaking">正在回答，字幕会跟着出现</small></div></div><p class="sample-text" :class="{ speaking: sampleSpeaking }">{{ visibleSampleText }}</p><p v-if="sampleTruncated" class="sample-note">示范回答较长，语音只念了前半段；点「停止」或播完后会显示完整文字。</p><p v-if="avatarError" class="sample-note error">{{ avatarError }}</p></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="evidenceList.length" class="evidence-list"><div v-for="(item, index) in evidenceList" :key="index" class="evidence-row"><button class="timeline-play" :aria-label="`播放证据 ${index + 1}`" :title="`播放证据 ${formatDuration(item.startSeconds)}`" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button><div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div><span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span></div></div><div v-else-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
     </div>
   </section>
 </template>
@@ -290,7 +311,10 @@ onBeforeUnmount(() => {
 .delivery-list i { color: #4d6f5b; font-style: normal; }
 .sample-panel { padding: 14px; box-shadow: none; }
 .sample-panel .section-title { margin-bottom: 8px; }
-.sample-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* 左：数字人；右：按钮与说明；下面：字幕 */
+.sample-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.sample-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sample-side small { color: #8a958e; font-size: 11px; line-height: 1.5; }
 .sample-play { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid #d8e5dc; border-radius: 6px; background: #fff; color: var(--green-dark); font-family: inherit; font-size: 14px; cursor: pointer; }
 .sample-play:hover:not(:disabled) { border-color: var(--green); background: var(--green-soft); }
 .sample-play:disabled { color: #9aa6a0; cursor: default; }
@@ -298,12 +322,13 @@ onBeforeUnmount(() => {
 .sample-note { margin: 8px 0 0; color: #8a958e; font-size: 14px; line-height: 1.6; }
 .sample-note.error { color: #a4483a; }
 /* 示范回答旁边的"说话人"：小尺寸数字人，只为让口型动起来，不抢正文 */
-.sample-speaker { display: flex; align-items: flex-end; gap: 10px; margin-top: 10px; }
 .sample-avatar { width: 96px; flex: none; }
 /* 面试间里的舞台尺寸由父组件给；这里要自己指定，否则加载中会撑成 160px 高 */
 .sample-avatar :deep(.dh-stage) { aspect-ratio: 340 / 260; }
 .sample-avatar :deep(.dh-placeholder) { min-height: 0; }
-.sample-text { margin: 0; color: #6d7972; font-size: 12px; line-height: 1.8; }
+.sample-text { margin: 8px 0 0; color: #6d7972; font-size: 12px; line-height: 1.8; }
+/* 朗读中的字幕：给一点左侧强调，让人一眼看出"这段正在被念" */
+.sample-text.speaking { padding-left: 10px; border-left: 2px solid var(--green); color: #4a5650; }
 .evidence-list { display: grid; gap: 9px; }
 .evidence-list .evidence-row { align-items: flex-start; }
 @media(max-width: 900px) { .report-layout { grid-template-columns: minmax(0,1.1fr) minmax(220px,.8fr); gap: 11px; }.player-frame { min-height: 185px; } }

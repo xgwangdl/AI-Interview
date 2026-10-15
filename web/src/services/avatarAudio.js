@@ -29,7 +29,18 @@ export function createAvatarAudio() {
     element.crossOrigin = 'anonymous';
     element.addEventListener('ended', () => emit('ended'));
     element.addEventListener('error', () => emit('error', elementError()));
+    // 字幕要跟着播放进度走（报告页的"示范回答"是逐句出现的）
+    element.addEventListener('timeupdate', () => emit('timeupdate', {
+      currentTime: element.currentTime,
+      duration: Number.isFinite(element.duration) ? element.duration : null,
+    }));
     return element;
+  }
+
+  /** 播放进度 0..1；时长还没解析出来时返回 -1。 */
+  function progress() {
+    if (!element || !Number.isFinite(element.duration) || element.duration <= 0) return -1;
+    return Math.max(0, Math.min(1, element.currentTime / element.duration));
   }
 
   function elementError() {
@@ -153,6 +164,7 @@ export function createAvatarAudio() {
     },
 
     amplitude,
+    progress,
     hasAnalyser: () => Boolean(analyser),
     isPlaying: () => Boolean(element) && !element.paused && !element.ended,
     currentTime: () => element?.currentTime ?? 0,

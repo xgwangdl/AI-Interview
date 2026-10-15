@@ -47,10 +47,28 @@ try {
   const before = await page.evaluate(() => ({
     hasButton: Boolean(document.querySelector('.sample-play')),
     buttonText: document.querySelector('.sample-play')?.textContent?.trim() || null,
-    hasAvatar: Boolean(document.querySelector('.sample-speaker .digital-human')),
+    hasAvatar: Boolean(document.querySelector('.sample-avatar .digital-human')),
     sampleLength: document.querySelector('.sample-text')?.textContent?.length || 0,
   }));
   console.log('点击前:', JSON.stringify(before));
+
+  // 结构检查：小人应在按钮左侧，字幕应在两者下方
+  const layout = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    return { avatar: box('.sample-avatar'), button: box('.sample-play'), caption: box('.sample-text') };
+  });
+  if (layout.avatar && layout.button && layout.caption) {
+    console.log('布局检查:', JSON.stringify({
+      小人: layout.avatar, 按钮: layout.button, 字幕: layout.caption,
+      小人在按钮左侧: layout.avatar.x + layout.avatar.w <= layout.button.x + 1,
+      字幕在两者下方: layout.caption.y >= Math.max(layout.avatar.y, layout.button.y),
+    }));
+  }
 
   if (!before.hasButton) {
     console.error('报告页没找到「让面试官念一遍」按钮 —— 可能是报告还没评分完成，或这个会话没有示范回答');
@@ -70,17 +88,20 @@ try {
   console.log('点击后:', JSON.stringify(afterClick));
 
   const frames = [];
+  const captionLengths = [];
   let sawSpeaking = false;
   let shot = false;
   for (let i = 0; i < 120; i += 1) {
     const snapshot = await page.evaluate(() => {
-      const img = document.querySelector('.sample-speaker img.dh-frame');
+      const img = document.querySelector('.sample-avatar img.dh-frame');
       return {
         frame: (img?.getAttribute('src') || '').split('/').pop() || null,
         playing: Boolean(document.querySelector('.sample-play.playing')),
+        caption: document.querySelector('.sample-text')?.textContent?.length || 0,
       };
     });
     if (snapshot.frame) frames.push(snapshot.frame);
+    captionLengths.push(snapshot.caption);
     if (snapshot.playing && !sawSpeaking) sawSpeaking = true;
     if (snapshot.playing && !shot) {
       shot = true;
@@ -94,6 +115,9 @@ try {
     samples: frames.length,
     sawSpeaking,
     distinctFrames: [...new Set(frames)],
+    captionFrom: captionLengths[0],
+    captionMid: captionLengths[Math.floor(captionLengths.length / 2)],
+    captionEnd: captionLengths[captionLengths.length - 1],
   }));
   if (shot) console.log(`截图：${OUT}/11-report-sample-answer.png`);
 } finally {
