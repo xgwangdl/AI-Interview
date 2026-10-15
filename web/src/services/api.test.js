@@ -129,3 +129,40 @@ describe('登录与注册', () => {
     await expect(tryLogin('alice', 'secret123')).rejects.toThrow('用户名或密码不正确。');
   });
 });
+
+describe('令牌过期（401）的统一处理', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * 之前 401 只弹一句 "Invalid or expired token"，用户被晾在页面上、后续请求全部失败。
+   * 现在要清掉本地凭证（并跳登录页；node 环境没有 window.location，靠内部判断跳过）。
+   */
+  it('401 时清掉本地登录信息', async () => {
+    localStorage.setItem('token', 'expired');
+    localStorage.setItem('userId', '7');
+    localStorage.setItem('userName', 'alice');
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      fakeResponse(401, JSON.stringify({ code: 401, message: 'Invalid or expired token', data: null })),
+    );
+
+    await expect(apiRequest('/practice-sessions')).rejects.toMatchObject({ status: 401 });
+
+    expect(localStorage.getItem('token')).toBeNull();
+    expect(localStorage.getItem('userId')).toBeNull();
+    expect(localStorage.getItem('userName')).toBeNull();
+  });
+
+  it('403 不当成令牌过期处理，本地凭证保留', async () => {
+    localStorage.setItem('token', 'still-good');
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      fakeResponse(403, JSON.stringify({ code: 403, message: '用户名或密码错误', data: null })),
+    );
+
+    await expect(apiRequest('/x')).rejects.toMatchObject({ status: 403 });
+
+    expect(localStorage.getItem('token')).toBe('still-good');
+  });
+});

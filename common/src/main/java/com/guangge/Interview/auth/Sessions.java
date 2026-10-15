@@ -16,18 +16,14 @@ public class Sessions {
     public static String loginUser(String name,
                                  boolean rememberMe,
                                  String secret) {
-        long duration;
-        int maxAge;
+        // 这里原来算出了 duration / maxAge 却**没有传给 getToken**，
+        // 于是令牌实际用的是 Sign 里硬编码的 10 分钟有效期。现在按参数生效。
+        return loginUser(name, rememberMe ? LONG_SESSION : SHORT_SESSION, secret);
+    }
 
-        if (rememberMe) {
-            // "Remember me"
-            duration = LONG_SESSION;
-        } else {
-            duration = SHORT_SESSION;
-        }
-        maxAge = (int) (duration / 1000);
-
-        return Sign.getToken(name, secret);
+    /** 指定有效期签发令牌（由 auth.token.ttl-hours 配置传入）。 */
+    public static String loginUser(String name, long durationMillis, String secret) {
+        return Sign.getToken(name, secret, durationMillis);
     }
 
     public static String getToken(HttpServletRequest request) {

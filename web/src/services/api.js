@@ -1,5 +1,20 @@
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
 
+/**
+ * 令牌失效时的统一处理。
+ *
+ * 之前 401 只是弹一句 "Invalid or expired token" 就把用户晾在当前页面，
+ * 之后每个请求继续失败，看起来像"网站坏了"。现在清掉本地凭证并回到登录页，
+ * 登录后还能跳回原来那一页。
+ */
+export function handleUnauthorized() {
+  ['token', 'userId', 'userName', 'username'].forEach((key) => localStorage.removeItem(key));
+  if (typeof window === 'undefined' || !window.location) return;
+  if (window.location.pathname.startsWith('/login')) return;   // 已经在登录页，别反复跳
+  const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.replace(`/login?redirect=${redirect}`);
+}
+
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('token');
   const response = await fetch(`${apiBase}/api/v1${path}`, {
@@ -18,6 +33,7 @@ export async function apiRequest(path, options = {}) {
     }
     const error = new Error(message || `请求失败 (${response.status})`);
     error.status = response.status;
+    if (response.status === 401) handleUnauthorized();
     throw error;
   }
   if (response.status === 204) return null;
@@ -167,6 +183,7 @@ export async function getNarrationAudio(sessionId, questionIndex) {
     { headers: token ? { Authorization: `Bearer ${token}` } : {} },
   );
   if (!response.ok) {
+    if (response.status === 401) handleUnauthorized();
     const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取面试官语音（${response.status}）`);
     error.status = response.status;
     throw error;
@@ -191,6 +208,7 @@ export async function getSampleAnswerAudio(sessionId, questionIndex) {
     { headers: token ? { Authorization: `Bearer ${token}` } : {} },
   );
   if (!response.ok) {
+    if (response.status === 401) handleUnauthorized();
     const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取示范回答语音（${response.status}）`);
     error.status = response.status;
     throw error;
@@ -213,6 +231,9 @@ export async function getAnswerMedia(answerId) {
   const response = await fetch(`${apiBase}/api/v1/answers/${encodeURIComponent(answerId)}/media`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!response.ok) throw new Error('无法读取这段视频');
+  if (!response.ok) {
+    if (response.status === 401) handleUnauthorized();
+    throw new Error('无法读取这段视频');
+  }
   return response.blob();
 }

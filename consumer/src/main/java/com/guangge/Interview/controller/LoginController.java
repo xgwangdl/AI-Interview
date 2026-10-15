@@ -28,6 +28,10 @@ public class LoginController {
     @Value("${auth.token.secret}")
     private String secret;
 
+    /** 令牌有效期（小时）。默认 12 小时：一轮练习 20 分钟左右，原来的 10 分钟会在中途过期。 */
+    @Value("${auth.token.ttl-hours:12}")
+    private long tokenTtlHours;
+
     public LoginController(CandidatesService interviewerService, LoginAttemptGuard loginAttempts) {
         this.candidatesService = interviewerService;
         this.loginAttempts = loginAttempts;
@@ -56,7 +60,7 @@ public class LoginController {
         }
         this.loginAttempts.clear(attemptKey);
         String token = Sessions.loginUser(candidates.getName(),
-                true,
+                java.util.concurrent.TimeUnit.HOURS.toMillis(Math.max(1, tokenTtlHours)),
                 secret);
         UserResponse userResponse = new UserResponse();
         userResponse.setUserId(candidates.getId());

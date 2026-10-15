@@ -25,6 +25,9 @@ public class RegistrationController {
     @Value("${auth.token.secret}")
     private String secret;
 
+    @Value("${auth.token.ttl-hours:12}")
+    private long tokenTtlHours;
+
     public RegistrationController(CandidatesService candidatesService) {
         this.candidatesService = candidatesService;
     }
@@ -34,7 +37,8 @@ public class RegistrationController {
                                                @RequestParam("code") String code,
                                                @RequestParam(value = "email", required = false) String email) {
         Candidates candidate = candidatesService.register(name, code, email);
-        String token = Sessions.loginUser(candidate.getName(), true, secret);
+        String token = Sessions.loginUser(candidate.getName(),
+                java.util.concurrent.TimeUnit.HOURS.toMillis(Math.max(1, tokenTtlHours)), secret);
         UserResponse userResponse = new UserResponse();
         userResponse.setUserId(candidate.getId());
         userResponse.setUserName(candidate.getName());

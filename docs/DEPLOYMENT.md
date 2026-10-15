@@ -104,6 +104,7 @@ MEDIA_S3_PATH_STYLE=true
 | `MEDIA_MAX_REQUEST_SIZE` | `250MB` | 单个 multipart 请求体上限 |
 | `PRACTICE_FLYWAY_ENABLED` | `true` | 启动时是否执行 Flyway 迁移 |
 | `AUTH_TOKEN_SECRET` | 开发占位值 | JWT 与媒体签名密钥，**生产必须替换** |
+| `AUTH_TOKEN_TTL_HOURS` | `12` | 令牌有效期（小时）。一轮练习约 20 分钟，别设太短 |
 | `AUTH_LOGIN_MAX_ATTEMPTS` | `10` | 同一用户名允许的连续登录失败次数 |
 | `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | `15` | 超过阈值后的锁定与计数窗口 |
 | `Ali_API_KEY` | 空 | DashScope：对话、ASR、TTS、图像 |

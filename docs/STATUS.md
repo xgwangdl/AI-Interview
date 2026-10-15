@@ -941,3 +941,52 @@ pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
 | 播放中字幕 | **41 → 81 → 128**（完整示范回答 128 字） |
 | 点击后 | 按钮变「停止」，嘴型 4 种帧 |
 | 念完 | 字幕显示完整 |
+
+
+### 2026-10-15 修复：练习中途「Invalid or expired token」
+
+用户截图报错 `Invalid or expired token`。查下来是**两个真缺陷**，第一个是功能性的：
+
+**缺陷 1：令牌只有 10 分钟，而且配置是死的**
+
+```java
+// Sign.getToken() 硬编码 600000ms
+.withExpiresAt(new Date(System.currentTimeMillis() + 600000))
+```
+
+```java
+// Sessions.loginUser() 算出 12 小时/30 天，然后**把结果丢掉了**
+duration = LONG_SESSION;              // 算了
+maxAge = (int) (duration / 1000);     // 也算完没用
+return Sign.getToken(name, secret);   // ← 实际仍是 10 分钟
+```
+
+一轮模拟面试约 20 分钟，**10 分钟的令牌会在面试中途过期**——录到一半所有请求开始 401。
+
+修复：
+
+- `Sign.getToken` 增加 `ttlMillis` 参数并真正生效（保留 2 参重载，兜底 1 小时）；
+- `Sessions.loginUser` 把算好的时长传下去，`rememberMe` 逻辑不再是死代码；
+- 新增配置 `auth.token.ttl-hours`（默认 **12 小时**），登录与注册都按它签发。
+
+**缺陷 2：前端不处理 401**，只弹一句 `Invalid or expired token` 把用户晾在当前页面，
+之后每个请求继续失败，看起来像"网站坏了"。
+
+修复：`api.js` 增加统一的 `handleUnauthorized()` —— 清掉本地凭证并跳回登录页，
+带上 `redirect` 参数，登录后回到原来那一页；登录页本身不重复跳。
+三处裸 `fetch`（面试官语音、示范回答语音、录像）也接上同样的处理。
+
+**验证**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 令牌有效期 | 解码 JWT：签发 12:49:18 → 过期次日 00:49:18，**12 小时**（原来 600 秒） |
+| 坏令牌触发请求 | 自动跳到 `/login?redirect=%2Fpractice%2F...%2Freport` |
+| 本地凭证 | `{"token":null,"userName":null}` 已清空 |
+| 403 不被误判 | 单测确认 403 时本地凭证保留 |
+
+测试：前端 67 → **69 个**（新增 401 清凭证、403 不误判两条）；
+后端 **129 个**。新增 `web/scripts/check-token-expiry.mjs` 作为可复现的验证脚本。
+
+**权衡**：12 小时的令牌存在 localStorage 且服务端没有吊销机制，属于"够用的开发期方案"；
+真要多租户上线，建议换成「短访问令牌 + 刷新令牌」或服务端会话表。
