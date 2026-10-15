@@ -4,9 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/AI-Interview.iml" filepath="$PROJECT_DIR$/AI-Interview.iml" />
       <module fileurl="file://$PROJECT_DIR$/frontend/admin.iml" filepath="$PROJECT_DIR$/frontend/admin.iml" />
-      <module fileurl="file://$PROJECT_DIR$/common/common.iml" filepath="$PROJECT_DIR$/common/common.iml" />
       <module fileurl="file://$PROJECT_DIR$/community/community.iml" filepath="$PROJECT_DIR$/community/community.iml" />
-      <module fileurl="file://$PROJECT_DIR$/consumer/consumer.iml" filepath="$PROJECT_DIR$/consumer/consumer.iml" />
       <module fileurl="file://$PROJECT_DIR$/consumer-api/consumer-api.iml" filepath="$PROJECT_DIR$/consumer-api/consumer-api.iml" />
       <module fileurl="file://$PROJECT_DIR$/../faceRecognition/.idea/faceRecognition.iml" filepath="$PROJECT_DIR$/../faceRecognition/.idea/faceRecognition.iml" />
     </modules>

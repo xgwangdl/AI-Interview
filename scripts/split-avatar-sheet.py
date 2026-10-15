@@ -37,15 +37,25 @@ PREVIEW = REPO / "docs/images/avatar-crop-preview.png"
 
 # --- 版面（由探测得到；卡片等宽，行高略有差异）---
 CARD_X = [731, 959, 1187, 1414, 1642]      # 5 条竖边界 = 4 张卡，宽约 228
-ROW_BANDS = [(60, 307), (360, 599), (672, 906)]
+# 第 3 行的标签是一条**整卡宽度的不透明白条**，从 y≈828 一直铺到卡片底边，
+# 人物的身体是画在它**上面**的（中间露西装、两侧露白底）。所以这一行只能截在标签之前（827），
+# 再多裁就会把白条带进画面 —— 界面上表现为人物下方多一条「聆听状态」白条。
+# 不能靠"把白色抠掉"绕过：人物胸前是浅色衬衫（≈(247,247,249)），抠白会在胸口打洞。
+# 代价是这 4 张状态帧只到胸口；人脸仍按同一锚点对齐，切换时不会跳动。
+ROW_BANDS = [(60, 307), (360, 599), (672, 827)]
 PORTRAIT_BOX = (0, 40, 731, 940)           # 左侧大图
 
 # 卡片底 → 透明；人物 → 保留（中间线性过渡，保留边缘抗锯齿）
 FILL_ALPHA_MAX = 150
 SOLID_ALPHA_MIN = 250
 
-CANVAS = (360, 300)
-TARGET_HEAD_HEIGHT = 130                   # 统一人脸高度 → 各帧大小一致
+# 画布高度与「状态帧被说明标签截断的位置」对齐：状态帧的身体只能到 y≈242（再往下就是标签），
+# 嘴型帧本来能到 300。若沿用 300，说完话切到聆听时会看到身体缩回去 55px，
+# 比白条更显眼。统一裁到 248，12 帧都成胸像，切换时身体长度不再跳。
+CANVAS = (360, 248)
+TARGET_HEAD_HEIGHT = 130
+# 只在裁剪最上面这么多行里找脸（见 head_limit 的说明）；左侧半身像尺度不同，传 None 走比例
+HEAD_WINDOW = 145
 ANCHOR = (180, 72)                         # 缩放后「人脸顶边 x=躯干中心」落点
 
 
@@ -106,6 +116,39 @@ def skin_mask(cell: np.ndarray) -> np.ndarray:
     return (cell[:, :, 3] > 200) & (r > 170) & (g > 120) & (b > 100) & ((r - b) > 20) & ((r - g) > 10)
 
 
+def looks_like_label(frame: np.ndarray, band: int = 14) -> bool:
+    """裁剪结果底部是否混进了卡片标签。
+
+    判断依据：标签是"整片不透明白底"，人物底部不会出现这种东西。
+    """
+    if frame.shape[0] < band:
+        return False
+    bottom = frame[-band:, :, :].astype(int)
+    near_white = (
+        (bottom[:, :, 3] > 200)
+        & (bottom[:, :, 0] > 246)
+        & (bottom[:, :, 1] > 246)
+        & (bottom[:, :, 2] > 246)
+    )
+    return bool(near_white.sum(axis=1).max() > frame.shape[1] * 0.5)
+
+
+def head_limit(height: int, window: int | None) -> int:
+    """在裁剪结果里搜索人脸时，只看最上面多少行。
+
+    两个坑都踩过，所以这里必须用**固定像素窗口**而不是"高度的比例"：
+      * 窗口太小：第 3 行为了避开说明标签把裁剪改短后，0.62×149=92 会把脸截断，
+        测出的脸高从 96 掉到 66，缩放翻倍，人物在界面上突然变大；
+      * 窗口太大：含进脖子，脸高被测成 113-123，而状态帧的裁剪根本到不了脖子（只有 96），
+        两者不一致 → 说话时人物缩小 25%。
+    卡片里的人脸都在离卡片顶 30-136px 的范围内，取 145px 刚好覆盖整张脸而不含脖子。
+    左侧那张半身像尺度完全不同，用 window=None 走比例。
+    """
+    if window is None:
+        return int(height * 0.62)
+    return min(height, window)
+
+
 def keep_face_component(solid: np.ndarray, seed: tuple[int, int]) -> np.ndarray:
     """只保留包含人脸的那一团连续像素，用来甩掉左侧大图伸进来的手臂。
 
@@ -142,7 +185,8 @@ def keep_face_component(solid: np.ndarray, seed: tuple[int, int]) -> np.ndarray:
     return out
 
 
-def extract(cell: np.ndarray, label: str, log: list[str]) -> Image.Image:
+def extract(cell: np.ndarray, label: str, log: list[str], head_window: int | None = HEAD_WINDOW,
+            shared_scale: float | None = None, scale_sink: list | None = None) -> Image.Image:
     clean = strip_card_background(cell)
     solid = clean[:, :, 3] > 150
     skin = skin_mask(clean)
@@ -150,8 +194,9 @@ def extract(cell: np.ndarray, label: str, log: list[str]) -> Image.Image:
         raise ValueError(f"{label}: 找不到人脸（肤色像素太少）")
 
     ys, xs = np.nonzero(skin)
-    head_limit = clean.shape[0] * 0.62      # 只取上半部分，避免把手也算进头
-    keep = ys < head_limit
+    keep = ys < head_limit(clean.shape[0], head_window)
+    if keep.sum() < 50:
+        raise ValueError(f"{label}: 找不到人脸（肤色像素太少）")
     ys, xs = ys[keep], xs[keep]
     face_top, face_bottom = int(ys.min()), int(ys.max())
     face_height = face_bottom - face_top + 1
@@ -166,18 +211,32 @@ def extract(cell: np.ndarray, label: str, log: list[str]) -> Image.Image:
     masked[person] = clean[person]
     trimmed = masked[by0:by1 + 1, bx0:bx1 + 1]
 
+    # 换素材时行带很容易取多，把卡片下方的说明标签一起裁进来。
+    # 标签的特征是"大面积不透明白底"，人物底下不会有，所以在这里直接拦下来，
+    # 免得装到界面上才发现人物下面多出一条白条（第 3 行踩过这个坑）。
+    if looks_like_label(trimmed):
+        raise ValueError(
+            f"{label}: 裁剪底部疑似包含卡片标签（大片不透明白底），请把对应行的下限往上调"
+        )
+
     # 躯干中心作为水平锚点：比人脸中心稳（头部转动时脸心会漂，躯干不会）
     local_skin = skin_mask(trimmed)
-    sys_, sxs_ = np.nonzero(local_skin)
-    if len(sys_) < 50:
+    s_ys, _ = np.nonzero(local_skin)
+    keep_local = s_ys < head_limit(trimmed.shape[0], head_window)
+    if keep_local.sum() < 50:
         raise ValueError(f"{label}: 裁剪后找不到人脸")
-    face_bottom_local = int(sys_.max())
+    s_ys = s_ys[keep_local]
+    face_top_local, face_bottom_local = int(s_ys.min()), int(s_ys.max())
     torso_start = face_bottom_local + int((trimmed.shape[0] - face_bottom_local) * 0.25)
     torso = np.nonzero(trimmed[torso_start:, :, 3] > 150)
     torso_cx = float(np.median(torso[1])) if len(torso[1]) else trimmed.shape[1] / 2.0
-    face_top_local = int(sys_.min())
 
-    scale = TARGET_HEAD_HEIGHT / face_height
+    # 统一缩放：同一个人物在所有帧里必须一样大，否则说话时会在两张图之间"呼吸"。
+    # 逐帧测脸高会有 ±10% 噪声（张嘴会改变肤色区域），所以默认用外部传进来的统一值。
+    measured_scale = TARGET_HEAD_HEIGHT / face_height
+    if scale_sink is not None:
+        scale_sink.append(measured_scale)
+    scale = shared_scale if shared_scale else measured_scale
     resized = Image.fromarray(trimmed).resize(
         (max(1, round(trimmed.shape[1] * scale)), max(1, round(trimmed.shape[0] * scale))),
         Image.LANCZOS,
@@ -191,7 +250,7 @@ def extract(cell: np.ndarray, label: str, log: list[str]) -> Image.Image:
 
     log.append(
         f"{label:<18} 卡片内人物 {trimmed.shape[1]:>3}x{trimmed.shape[0]:<3} "
-        f"脸高 {face_height:>3}  缩放 {scale:4.2f}  躯干中心 {torso_cx:6.1f}"
+        f"实测脸高 {face_height:>3}  使用缩放 {scale:4.2f}  躯干中心 {torso_cx:6.1f}"
     )
     return canvas
 
@@ -205,18 +264,36 @@ def main() -> int:
     log: list[str] = []
     outputs: dict[str, Image.Image] = {}
 
+    # 第一遍：只为了量出"人物应该多大"。逐帧测脸高有 ±10% 噪声（张嘴会改变肤色区域），
+    # 直接用会让说话时人物在两张图之间忽大忽小，所以取所有帧的中位数当统一缩放。
+    measured_scales: list[float] = []
     for frame in FRAMES:
         y0, y1 = ROW_BANDS[frame.row]
         x0, x1 = CARD_X[frame.col], CARD_X[frame.col + 1]
         try:
-            outputs[frame.name] = extract(arr[y0:y1, x0:x1], frame.name, log)
+            extract(arr[y0:y1, x0:x1], frame.name, [], scale_sink=measured_scales)
+        except ValueError as exc:
+            print(f"× {exc}")
+            return 1
+    measured_scales.sort()
+    shared_scale = measured_scales[len(measured_scales) // 2]
+    print(f"统一缩放（12 帧中位数）：{shared_scale:.3f}"
+          f"（逐帧实测 {min(measured_scales):.3f}..{max(measured_scales):.3f}）\n")
+
+    # 第二遍：用统一缩放正式输出
+    for frame in FRAMES:
+        y0, y1 = ROW_BANDS[frame.row]
+        x0, x1 = CARD_X[frame.col], CARD_X[frame.col + 1]
+        try:
+            outputs[frame.name] = extract(arr[y0:y1, x0:x1], frame.name, log,
+                                          shared_scale=shared_scale)
         except ValueError as exc:
             print(f"× {exc}")
             return 1
 
     px0, py0, px1, py1 = PORTRAIT_BOX
     try:
-        outputs["portrait"] = extract(arr[py0:py1, px0:px1], "portrait", log)
+        outputs["portrait"] = extract(arr[py0:py1, px0:px1], "portrait", log, head_window=None)
     except ValueError as exc:
         print(f"! 左侧大图跳过：{exc}")
 

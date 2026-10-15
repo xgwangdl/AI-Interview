@@ -133,6 +133,26 @@ try {
     }));
     console.log('结束后的状态:', JSON.stringify(after, null, 2));
     if (shotWhileSpeaking) log(`截图：${OUT}/08-session-avatar-speaking.png`);
+
+    // 等朗读结束、切回「聆听」状态帧再截一张：说明标签的残留问题就出在这一类状态帧上
+    for (let i = 0; i < 60; i += 1) {
+      const speaking = await page.evaluate(() => Boolean(document.querySelector('.voice-bars.active')));
+      if (!speaking) break;
+      await page.waitForTimeout(200);
+    }
+    await page.waitForTimeout(800);
+    const idle = await page.evaluate(() => ({
+      frame: (document.querySelector('.digital-human img.dh-frame')?.getAttribute('src') || '').split('/').pop(),
+      box: (() => {
+        const el = document.querySelector('.digital-human img.dh-frame');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      })(),
+    }));
+    console.log('聆听态:', JSON.stringify(idle));
+    await page.screenshot({ path: `${OUT}/09-session-avatar-listening.png` });
+    log(`截图：${OUT}/09-session-avatar-listening.png`);
   }
 } finally {
   await browser.close();

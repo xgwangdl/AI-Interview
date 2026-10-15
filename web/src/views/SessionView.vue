@@ -408,7 +408,8 @@ onBeforeUnmount(() => {
 /* 面试官舞台：左侧真人数字人，右侧身份与朗读状态。
    素材是照片切帧（web/public/assets/avatar），组件是 components/DigitalHuman.vue。 */
 .interviewer-screen { display: grid; height: auto; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); align-items: center; gap: 20px; padding: 16px 20px; overflow: visible; border-radius: 8px 8px 0 0; background: linear-gradient(100deg,#e7f1eb 0%,#eef5f1 48%,#e6f0ea 100%); }
-.interviewer-screen :deep(.dh-stage) { aspect-ratio: 6 / 5; }
+/* 与素材画布 360x248 一致，避免 object-fit 留出额外空白 */
+.interviewer-screen :deep(.dh-stage) { aspect-ratio: 360 / 248; }
 .interviewer-info { display: grid; min-width: 0; gap: 9px; }
 .interviewer-role { color: #5d7a68; font-size: 11px; font-weight: 600; }
 .interviewer-status { display: flex; align-items: center; gap: 8px; color: #33443b; font-size: 13px; font-weight: 600; }
