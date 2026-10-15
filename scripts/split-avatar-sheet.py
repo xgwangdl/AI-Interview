@@ -52,11 +52,15 @@ SOLID_ALPHA_MIN = 250
 # 画布高度与「状态帧被说明标签截断的位置」对齐：状态帧的身体只能到 y≈242（再往下就是标签），
 # 嘴型帧本来能到 300。若沿用 300，说完话切到聆听时会看到身体缩回去 55px，
 # 比白条更显眼。统一裁到 248，12 帧都成胸像，切换时身体长度不再跳。
-CANVAS = (360, 248)
-TARGET_HEAD_HEIGHT = 130
+CANVAS = (340, 260)
+# 用**人脸宽度**统一大小，不要用人脸高度：
+# 行 3 的人物在源图里是缩小版（脸宽 79 vs 行 1/2 的 118，约 0.67 倍），
+# 但"脸高"测出来是 96 vs 88（只差 9%）—— 因为高度会把脖子算进去，把真实差异吃掉。
+# 早先按脸高统一缩放时，表现为"说话时头很大、切到聆听人物突然变小 30%"。
+TARGET_FACE_WIDTH = 110
 # 只在裁剪最上面这么多行里找脸（见 head_limit 的说明）；左侧半身像尺度不同，传 None 走比例
 HEAD_WINDOW = 145
-ANCHOR = (180, 72)                         # 缩放后「人脸顶边 x=躯干中心」落点
+ANCHOR = (170, 72)                         # 缩放后「人脸顶边 x=躯干中心」落点
 
 
 @dataclass
@@ -236,7 +240,9 @@ def extract(cell: np.ndarray, label: str, log: list[str], head_window: int | Non
         raise ValueError(f"{label}: 找不到人脸（肤色像素太少）")
     ys, xs = ys[keep], xs[keep]
     face_top, face_bottom = int(ys.min()), int(ys.max())
-    face_height = face_bottom - face_top + 1
+    face_width = int(xs.max() - xs.min() + 1)
+    if face_width < 20:
+        raise ValueError(f"{label}: 人脸宽度的测量值异常（{face_width}px）")
     seed = (int(np.median(ys)), int(np.median(xs)))
 
     person = keep_face_component(solid, seed)
@@ -270,7 +276,7 @@ def extract(cell: np.ndarray, label: str, log: list[str], head_window: int | Non
 
     # 统一缩放：同一个人物在所有帧里必须一样大，否则说话时会在两张图之间"呼吸"。
     # 逐帧测脸高会有 ±10% 噪声（张嘴会改变肤色区域），所以默认用外部传进来的统一值。
-    measured_scale = TARGET_HEAD_HEIGHT / face_height
+    measured_scale = TARGET_FACE_WIDTH / face_width
     if scale_sink is not None:
         scale_sink.append(measured_scale)
     scale = shared_scale if shared_scale else measured_scale
@@ -287,7 +293,7 @@ def extract(cell: np.ndarray, label: str, log: list[str], head_window: int | Non
 
     log.append(
         f"{label:<18} 卡片内人物 {trimmed.shape[1]:>3}x{trimmed.shape[0]:<3} "
-        f"实测脸高 {face_height:>3}  使用缩放 {scale:4.2f}  躯干中心 {torso_cx:6.1f}"
+        f"实测脸宽 {face_width:>3}  使用缩放 {scale:4.2f}  躯干中心 {torso_cx:6.1f}"
     )
     return canvas
 
@@ -301,29 +307,41 @@ def main() -> int:
     log: list[str] = []
     outputs: dict[str, Image.Image] = {}
 
-    # 第一遍：只为了量出"人物应该多大"。逐帧测脸高有 ±10% 噪声（张嘴会改变肤色区域），
-    # 直接用会让说话时人物在两张图之间忽大忽小，所以取所有帧的中位数当统一缩放。
-    measured_scales: list[float] = []
+    # 第一遍：量每帧的人脸宽度，用来定缩放。
+    # 为什么按"行"而不是按"帧"：同一行的人物尺度本来就一样，逐帧量会有 ±7% 噪声
+    # （张嘴会改变肤色区域），直接用会让说话时人物忽大忽小。取每行的中位数即可。
+    measured: dict[str, float] = {}
     for frame in FRAMES:
         y0, y1 = ROW_BANDS[frame.row]
         x0, x1 = CARD_X[frame.col], CARD_X[frame.col + 1]
+        sink: list[float] = []
         try:
-            extract(arr[y0:y1, x0:x1], frame.name, [], scale_sink=measured_scales)
+            extract(arr[y0:y1, x0:x1], frame.name, [], scale_sink=sink)
         except ValueError as exc:
             print(f"× {exc}")
             return 1
-    measured_scales.sort()
-    shared_scale = measured_scales[len(measured_scales) // 2]
-    print(f"统一缩放（12 帧中位数）：{shared_scale:.3f}"
-          f"（逐帧实测 {min(measured_scales):.3f}..{max(measured_scales):.3f}）\n")
+        measured[frame.name] = sink[0]
 
-    # 第二遍：用统一缩放正式输出
+    def row_scale(row_index: int) -> float:
+        values = sorted(measured[f.name] for f in FRAMES if f.row == row_index)
+        return values[len(values) // 2]
+
+    # 行 1、2 是同一套渲染；行 3（状态缩略图）在源图里是缩小版，必须单独定缩放
+    scale_top_rows = row_scale(0)
+    scale_state_row = row_scale(2)
+    print(f"按人脸宽度定缩放：行1/2 = {scale_top_rows:.3f}，行3 = {scale_state_row:.3f}"
+          f"（两者差 {scale_state_row / scale_top_rows:.2f} 倍，即源图里状态帧人物更小）\n")
+
+    def scale_for(frame: "Frame") -> float:
+        return scale_state_row if frame.row == 2 else scale_top_rows
+
+    # 第二遍：正式输出
     for frame in FRAMES:
         y0, y1 = ROW_BANDS[frame.row]
         x0, x1 = CARD_X[frame.col], CARD_X[frame.col + 1]
         try:
             outputs[frame.name] = extract(arr[y0:y1, x0:x1], frame.name, log,
-                                          shared_scale=shared_scale)
+                                          shared_scale=scale_for(frame))
         except ValueError as exc:
             print(f"× {exc}")
             return 1
@@ -339,7 +357,7 @@ def main() -> int:
     try:
         outputs["eyes-closed"] = extract(
             closed_sheet[ROW_BANDS[0][0]:ROW_BANDS[0][1], CARD_X[0]:CARD_X[1]],
-            "eyes-closed", log, shared_scale=shared_scale)
+            "eyes-closed", log, shared_scale=scale_top_rows)
     except ValueError as exc:
         print(f"! 闭眼帧跳过：{exc}")
 
