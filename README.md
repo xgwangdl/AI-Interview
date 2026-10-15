@@ -3,7 +3,7 @@
 **视频面试 + 笔试上机，一条龙跑完：AI 出题 → 浏览器录制 → 语音转写 → 结构化评分 → 可回放的复盘报告。**
 而且它**真的会运行你写的代码** —— 跑不过用例，就是不过。
 
-[English](docs/README.md) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [部署说明](docs/DEPLOYMENT.md) · [实施状态](docs/STATUS.md)
+[English](docs/README.md) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [部署说明](docs/DEPLOYMENT.md) · [实施状态](docs/STATUS.md) · [简历功能需求](docs/RESUME-REQUIREMENTS.md)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)

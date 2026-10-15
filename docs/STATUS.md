@@ -8,6 +8,10 @@
 
 复现命令见文末。
 
+> **新需求（待确认）**：简历功能（存入 + 按 JD 优化 + 导出 + 与练习打通）的需求文档已写好：
+> [RESUME-REQUIREMENTS.md](RESUME-REQUIREMENTS.md)。里面有现状盘点（项目里已有一套**遗留**简历改写，
+> 但数据表没纳入 Flyway 所以调不通）、10 条验收标准、分期建议，以及 6 个需要你拍板的问题。
+
 > **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
 > 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
