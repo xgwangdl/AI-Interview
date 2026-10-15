@@ -33,16 +33,22 @@ export const STATE_FRAMES = {
   IDLE: 'mouth-closed',
   PREPARING: 'mouth-closed',
   SPEAKING: 'mouth-normal',
-  LISTENING: 'state-listening',
-  RECORDING: 'state-recording',
-  FOLLOW_UP: 'state-followup',
+  // 以下状态**故意只用第 1/2 行的嘴型帧**，不用组合图第 3 行那 4 张"状态图"。
+  // 原因：第 3 行的人物与第 1/2 行不是等比关系 —— 脸宽 110-113 时肩宽 260-270%
+  // （第 1/2 行只有 173-189%），头和肩的比例本身就不同。
+  // 也就是说"对齐脸就肩宽一半、对齐肩就脸小一圈"，靠缩放无法两全，
+  // 用户看到的就是"说话和人静止时人物大小不一样"。
+  // 好在这几张的差异本来就极小（同一个人、同一姿势），状态用文案与指示灯表达即可，
+  // 这里用不同嘴型给出需要的那点表情差异。
+  LISTENING: 'mouth-m',
+  RECORDING: 'mouth-closed',
+  FOLLOW_UP: 'mouth-smile',
   ERROR: 'mouth-closed',
 };
 
 export const ALL_FRAMES = [
   'mouth-closed', 'mouth-m', 'mouth-e', 'mouth-normal', 'mouth-o', 'mouth-a', 'mouth-smile',
-  'eyes-closed', 'head-nod', 'state-asking', 'state-listening', 'state-recording', 'state-followup',
-  'portrait',
+  'eyes-closed', 'head-nod', 'portrait',
 ];
 
 export function frameSrc(name) {

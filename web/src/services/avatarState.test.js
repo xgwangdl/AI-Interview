@@ -17,13 +17,28 @@ describe('avatarState（数字人状态的唯一来源）', () => {
     const { state, restFrame } = useAvatarState();
     setAvatarState(AVATAR_STATE.LISTENING);
     expect(state.value).toBe(AVATAR_STATE.LISTENING);
-    expect(restFrame.value).toBe('state-listening');
+    expect(restFrame.value).toBe('mouth-m');
 
     setAvatarState(AVATAR_STATE.RECORDING);
-    expect(restFrame.value).toBe('state-recording');
+    expect(restFrame.value).toBe('mouth-closed');
 
     setAvatarState(AVATAR_STATE.FOLLOW_UP);
-    expect(restFrame.value).toBe('state-followup');
+    expect(restFrame.value).toBe('mouth-smile');
+  });
+
+  /**
+   * 非说话状态**故意**只用第 1/2 行的嘴型帧，不用组合图第 3 行的"状态图"：
+   * 那 4 张与第 1/2 行不是等比关系（脸宽相同时肩宽达 260-270%，而第 1/2 行只有 173-189%），
+   * 对齐脸就肩宽近一倍、对齐肩就脸小一圈，靠缩放无法两全 ——
+   * 用户看到的就是"说话和不说话时人物大小不一样"。
+   */
+  it('非说话状态不使用第 3 行的状态图（尺寸无法与嘴型帧对齐）', () => {
+    const { restFrame } = useAvatarState();
+    for (const target of [AVATAR_STATE.IDLE, AVATAR_STATE.PREPARING, AVATAR_STATE.LISTENING,
+      AVATAR_STATE.RECORDING, AVATAR_STATE.FOLLOW_UP, AVATAR_STATE.ERROR]) {
+      setAvatarState(target);
+      expect(restFrame.value.startsWith('state-')).toBe(false);
+    }
   });
 
   it('拒绝未知状态，不会把状态改坏', () => {
