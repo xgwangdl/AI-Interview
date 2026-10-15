@@ -771,10 +771,12 @@ pwsh scripts/smoke-test.ps1 -Name demo -Code <邀请码> -ExpectAnalysisReady
 # 端到端（真实供应商：ASR 需要真实音轨，假字节过不了 ffmpeg）
 pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
   -MediaPath data/verify-clip.mp4 -AnalysisTimeoutSeconds 300
+
+# 简历导出（三种格式的响应头、文件魔数、非法格式、未授权）
+pwsh scripts/verify-resume-export.ps1 -ResumeId <简历 uuid> -Name smoke -Code 123456
 ```
 
-当前规模：后端 **90 个测试**（默认跳过 6 个需要容器/外部服务的用例）、前端 **25 个 Vitest 用例**
-（API 客户端 6 / 路由守卫 4 / 媒体捕获 5 / store 3 / 内置题库 7），
+当前规模：后端 **150 个测试**（默认跳过 11 个需要容器 / 外部服务 / 沙箱的用例）、前端 **72 个 Vitest 用例**，
 冒烟脚本 **24 项断言**（带 `-ExpectAnalysisReady`；不加该开关为 20 项），
 真实供应商模式下同样 24 项全过。
 
