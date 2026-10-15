@@ -994,3 +994,53 @@ return Sign.getToken(name, secret);   // ← 实际仍是 10 分钟
 
 **权衡**：12 小时的令牌存在 localStorage 且服务端没有吊销机制，属于"够用的开发期方案"；
 真要多租户上线，建议换成「短访问令牌 + 刷新令牌」或服务端会话表。
+
+### 2026-10-15 新功能：我的简历（简历库 + AI 优化 + 逐段采纳 + 导出 Word/PDF）
+
+需求与决策见 [RESUME-REQUIREMENTS.md](RESUME-REQUIREMENTS.md)。这一轮把**遗留的简历改写**
+推倒重建：旧链路依赖没纳入 Flyway 的 `resumes` / `resume_vectors` 表，调用即 500；新实现是
+Flyway V8 + 新表 + 新接口，Python 脚本（`extract_keywords.py` / `html2pdf.py` /
+`extract_text.py`）与旧控制器一并删除。
+
+**后端**（`com.guangge.Interview.resume`）：
+
+| 组件 | 作用 |
+| --- | --- |
+| `db/migration/V8__resume_library.sql` | `resumes`（正文 + 版本）与 `resume_optimizations`（每次优化的逐段改动） |
+| `ResumeLibraryService` / `ResumeLibraryController` | 简历增删改查、优化、采纳、导出；越权一律 404 |
+| `ResumeOptimizationValidator` | 校验模型输出的段落结构，并**只认正文里真实出现的占位符**（模型"嘴上说不编造"不算数） |
+| `SpringAiResumeOptimizationProvider` | Qwen 调用（重试 + 结构化输出） |
+| `export/ResumeLayout` | 把纯文本正文切块（小节名 / Markdown 标题 / 列表项）并切出占位符 |
+| `export/ResumeDocxExporter` | Apache POI 直接生成 `.docx`（A4、中文字体、悬挂缩进、占位符着色） |
+| `export/ResumePdfExporter` + `export/ResumePdfFonts` | PDFBox 直接排版（不经过 HTML 中转）；中文字体按候选路径自动查找，找不到就明确报错 |
+
+**导出**：`GET /api/v1/resumes/{id}/export?format=md|docx|pdf`，默认 `md`，**三种格式都带鉴权**。
+内容取当前版本正文；`【请补充：…】` 在三种格式里都标成琥珀色。
+
+| 格式 | 实现 | 说明 |
+| --- | --- | --- |
+| `.md` | `ResumeLayout.toMarkdown` | 便于继续编辑、再喂回优化链路 |
+| `.docx` | POI `poi-ooxml` 5.5.1 | 原生 OOXML，投递前可在 Word 里直接改 |
+| `.pdf` | PDFBox 3.0.7 | 自动翻页、行距与页边距固定，中文字体内嵌（子集化） |
+
+两个依赖都与 Tika 传递进来的版本对齐；`poi-ooxml` 显式排除 `poi-ooxml-lite`（与 Tika 一致，
+避免 lite/full 两份 schema 类重叠）。
+
+**验证**（可复现）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 单元测试 | 后端 137 → **149 个**（新增切块 5、docx 3、pdf 5，含"文字不越出页边距"）；前端 69 → **72 个**（导出文件名、后缀、错误消息） |
+| 真实导出（smoke 账号） | `md` 200 / 476B；`docx` 200 / 2885B（`PK` 头）；`pdf` 200 / 24641B（`%PDF` 头）；`Content-Disposition` 文件名是 `测试简历.docx` 这样的中文名 |
+| 鉴权与参数 | `format=xml` → **400** 且消息列出可选值；不带 token → **401** |
+| 版式目视 | PDF 与 docx 都渲染成图确认：标题居中、小节加粗、列表项悬挂缩进对齐、占位符琥珀色、无溢出（`data/preview-export-pdf.png`、`data/preview-export-word.png`） |
+
+**踩到的两个坑**（都已在代码注释里写明）：
+
+1. `PDType0Font.hasGlyph(int)` 收的是编码后的字形码而不是 Unicode，拿它探测中文字符会把
+   「简」「爱」「：」判成缺字 → 导出全变问号。改为用 `font.encode(...)` 试编码来判断。
+2. `getStringWidth` 返回的是 1/1000 字号单位，忘了除以 1000 会让每个字都"宽 10500"，
+   折行算法退化成一行一个字，PDF 直接变成两页。
+
+**没做的**：FR-6「创建练习时直接从简历库选一份」还没接（现在仍需上传文件或粘贴正文）；
+遗留的旧表 `resumes` / `resume_vectors` 仍在库里，本轮不动数据，只删代码。

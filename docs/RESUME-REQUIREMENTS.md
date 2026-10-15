@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| 状态 | **草案，待确认**（确认后按此开发） |
+| 状态 | 简历库 / 录入解析 / AI 优化 / 逐段采纳 / 三格式导出（md、docx、pdf）**已实现并验证**；仅剩 FR-6「创建练习时从简历库选一份」待做 |
 | 目标 | 用户可以把简历存进系统，按目标岗位让 AI 优化，并把结果用于面试练习 |
 | 关联 | `PLAN.md`、[STATUS.md](STATUS.md) 的「遗留接口迁移还是删除」待办 |
 
@@ -52,7 +52,7 @@
 2. **两种录入**：上传文件解析，或手动填写（表单 / 粘贴）
 3. **AI 优化**：按目标岗位与 JD 定向优化
 4. **对比采纳**：原文与优化后并排对比，逐段采纳
-5. **导出**：Markdown 与 PDF
+5. **导出**：Markdown / Word（.docx）/ PDF
 6. **与练习打通**：创建练习时从简历库选一份，自动带入正文出题
 
 ### 2.2 本期不做
@@ -124,9 +124,12 @@
 
 | 编号 | 需求 | 验收要点 |
 | --- | --- | --- |
-| FR-5.1 | 导出 Markdown | 直接下载 `.md` |
-| FR-5.2 | 导出 PDF | **不依赖本机 Python**：用 Java 侧方案生成（见 §8.3） |
-| FR-5.3 | 导出走鉴权 | 导出地址同样要带 token，不能是可猜的静态路径（遗留实现就是静态 `pdf/xxx.pdf`，要改） |
+| FR-5.1 | 导出 Markdown | 下载 `.md`，便于继续编辑或再喂给优化链路 |
+| FR-5.2 | 导出 Word | 下载 `.docx`，用 Apache POI 直接生成 OOXML，打开后还能改（投递前微调最方便） |
+| FR-5.3 | 导出 PDF | 下载 `.pdf`，用 PDFBox 在 Java 侧排版（**不依赖本机 Python**，见 §8.3） |
+| FR-5.4 | 三种格式同一接口 | `GET /{id}/export?format=md\|docx\|pdf`，内容都取当前版本的正文；非法格式返回 400 并说明可选值 |
+| FR-5.5 | 导出走鉴权 | 导出地址同样要带 token，不能是可猜的静态路径（遗留实现就是静态 `pdf/xxx.pdf`，要改） |
+| FR-5.6 | 待补充内容可见 | 正文里的 `【请补充：…】` 在三个格式里都用琥珀色标出，打印前一眼能看到没填的地方 |
 
 ### 4.6 与练习打通（FR-6）
 
@@ -200,7 +203,7 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 | `GET` | `/api/v1/resumes/{id}/optimizations` | 优化历史 |
 | `GET` | `/api/v1/resumes/{id}/optimizations/{optId}` | 单次结果与逐段改动 |
 | `POST` | `/api/v1/resumes/{id}/optimizations/{optId}/apply` | 采纳（body：`{sections:[...]}`，空数组=全部） |
-| `GET` | `/api/v1/resumes/{id}/export?format=md\|pdf` | 导出（带鉴权） |
+| `GET` | `/api/v1/resumes/{id}/export?format=md\|docx\|pdf` | 导出（带鉴权，默认 `md`） |
 
 沿用现有约定：Bearer Token、按 `owner_id` 隔离、越权 404、错误统一走 `RestExceptionAdvice`。
 
@@ -258,8 +261,14 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 | 遗留做法 | 替换方案 | 理由 |
 | --- | --- | --- |
 | `scripts/extract_keywords.py` 抽 JD 关键词 | 让模型在同一次调用里输出 `keywordCoverage` | 少一个外部进程、少一次往返，且关键词与改写出自同一判断 |
-| `scripts/html2pdf.py` 转 PDF | Java 侧生成（如 OpenPDF / Flying Saucer，或 HTML→PDF 服务） | 不再依赖本机装 Python 与 `PyMuPDF`，也便于容器化部署 |
+| `scripts/html2pdf.py` 转 PDF | Java 侧生成：Word 用 **Apache POI**（`poi-ooxml`），PDF 用 **PDFBox** 直接排版（`resume/export/ResumePdfExporter`） | 不再依赖本机装 Python 与 `PyMuPDF`，也便于容器化部署 |
 | 静态目录 `external/static/pdf/` 直接可下载 | 导出接口走鉴权 | 简历是隐私内容，不能放在可猜的静态路径上 |
+
+**关于 PDF 中文字体**：浏览器不会替我们内嵌字体，PDFBox 也不会自动找字体。`ResumePdfFonts`
+先按配置项 `resume.export.pdf-font` / `resume.export.pdf-font-bold` 找，再依次试
+Windows（SimHei / 微软雅黑）、macOS（PingFang）、Linux（Noto CJK / 文泉驿 / AR PL）的常见路径，
+一个都没有时**明确报错**并提示怎么配，而不是生成一份乱码 PDF。
+只支持 `.ttf` / `.ttc`（PDFBox 3 不支持 CFF 轮廓的 `.otf`）。
 
 ---
 
@@ -286,7 +295,7 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 | A4 | 优化（真实供应商） | 有 `Ali_API_KEY` 时，真实调用返回结构化结果，`sections` 与占位符校验通过 |
 | A5 | 不编造 | 构造一份"没有量化数据"的简历，优化结果必须出现占位符，且不出现凭空数字 |
 | A6 | 逐段采纳 | 只采纳其中一段后，简历正文只变那一段，版本 +1 |
-| A7 | 导出 | Markdown 与 PDF 都能下载且内容为当前版本；**不带 token 的导出请求被拒绝** |
+| A7 | 导出 | Markdown / Word / PDF 三种格式都能下载且内容为当前版本（`.md` 开头是 `#`、`.docx` 是 `PK` 开头的 zip、`.pdf` 是 `%PDF`）；非法 `format` 返回 400 并列出可选项；**不带 token 的导出请求被拒绝（401）** |
 | A8 | 与练习打通 | 创建练习时选择简历库里的简历，出题带上了该简历内容 |
 | A9 | 删除 | 删除后详情/导出/优化历史全部 404 |
 | A10 | 降级 | 模型不可用时返回明确错误，界面可重试，无"假成功" |
@@ -297,8 +306,8 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 
 | 阶段 | 内容 | 说明 |
 | --- | --- | --- |
-| **一（MVP）** | FR-1 简历库 + FR-2 录入解析 + FR-3 优化 + 导出 Markdown | 能存、能优化、能看结果 |
-| 二 | FR-4 逐段对比采纳 + PDF 导出 + FR-6 与练习打通 | 可用性完整 |
+| **一（MVP，已完成）** | FR-1 简历库 + FR-2 录入解析 + FR-3 优化 + FR-5 导出（Markdown / Word / PDF） | 能存、能优化、能拿到可直接投递的文件 |
+| 二（进行中） | FR-4 逐段对比采纳 ✅ + FR-6 与练习打通（待做：创建练习时从简历库选一份） | 可用性完整 |
 | 三 | 历史版本对比、按多个 JD 分别优化、投递跟踪 | 后话 |
 
 ---
@@ -308,7 +317,7 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 | # | 问题 | 我的建议 |
 | --- | --- | --- |
 | Q1 | 简历**保留期**：长期保存还是跟练习一样 7 天？ | **长期**（用户资产），删除权交给用户 |
-| Q2 | 导出格式：Markdown / PDF / 都要？ | 阶段一先 Markdown，阶段二补 PDF |
+| Q2 | 导出格式：Markdown / Word / PDF / 都要？ | **已定：三种都要**（用户 2026-10-15 明确要求 PDF/Word，已实现：`format=md\|docx\|pdf`，前端是「导出」下拉菜单） |
 | Q3 | 采纳方式：逐段采纳 vs 整体替换？ | **逐段**为主，整体替换放二次确认 |
 | Q4 | 遗留 `/resume/*` 与两个 Python 脚本：删除还是留着？ | **删除**（与 STATUS 待办 4 一起决定） |
 | Q5 | 是否要"结构化字段"（教育/工作/项目分栏）？ | 阶段一不做，只存正文 —— 分栏会让编辑与对比复杂一大截 |

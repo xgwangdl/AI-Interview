@@ -1,3 +1,0 @@
-{begin} ~ {end} {name}
-项目内容：{content}
-使用技术: {skills}

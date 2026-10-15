@@ -66,6 +66,33 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
+        <!--
+            简历导出：Word 用 POI，PDF 用 PDFBox。
+            两个版本都跟随 Tika（spring-ai-tika-document-reader）传递进来的版本，
+            显式声明是为了让"导出功能依赖谁"这件事在 pom 里一眼可见，也避免升级 Tika 时被悄悄换掉。
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.5.1</version>
+            <exclusions>
+                <!-- 与 Tika 保持一致：用完整 schema（poi-ooxml-full），不要 lite 与 full 两份重叠的类 -->
+                <exclusion>
+                    <groupId>org.apache.poi</groupId>
+                    <artifactId>poi-ooxml-lite</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml-full</artifactId>
+            <version>5.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.7</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-tika-document-reader</artifactId>
@@ -184,27 +211,6 @@
             <artifactId>okhttp</artifactId>
             <version>4.10.0</version>  <!-- 确保是 4.10+ -->
         </dependency>
-        <!-- https://mvnrepository.com/artifact/com.itextpdf/itext7-core -->
-        <dependency>
-            <groupId>com.itextpdf</groupId>
-            <artifactId>itext7-core</artifactId>
-            <version>9.0.0</version>
-            <type>pom</type>
-        </dependency>
-
-        <!-- Flexmark for Markdown to HTML -->
-        <dependency>
-            <groupId>com.vladsch.flexmark</groupId>
-            <artifactId>flexmark-all</artifactId>
-            <version>0.64.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.itextpdf</groupId>
-            <artifactId>html2pdf</artifactId>
-            <version>5.0.1</version> <!-- iText 9.x 的 html2pdf 模块 -->
-        </dependency>
-
     </dependencies>
 
     <build>

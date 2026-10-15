@@ -1,2 +1,0 @@
-{begin} ~ {end} {company}
-工作内容：{workContent}
