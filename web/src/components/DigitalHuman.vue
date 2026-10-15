@@ -241,7 +241,7 @@ defineExpose({ frame, ready, loadFailed });
 .dh-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(71, 112, 89, .25); }
 .dh-dots i.on { background: #4f8a6b; }
 
-.dh-warn { margin: 0; color: #a4483a; font-size: 11px; }
+.dh-warn { margin: 0; color: #a4483a; font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) { .dh-frame { animation: none; } .dh-video { display: none; } }
 </style>
