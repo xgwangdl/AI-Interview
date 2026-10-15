@@ -247,4 +247,7 @@ DELETE /api/v1/practice-sessions/{id}                   删除练习及其全部
 - 提 **Issue** 说说你想要的功能，或者你在使用中踩到的坑
 - **PR** 一律欢迎（新的题型、新的语言沙箱、更好的提示词都算）
 
+提交前请先看 [CONTRIBUTING.md](CONTRIBUTING.md)：改动先提到 `feature/practice-interview` 分支，
+确认后再合并到 master，并附上自测命令的输出。
+
 > 面试是练出来的，不是背出来的。祝拿到心仪的 offer 🎉

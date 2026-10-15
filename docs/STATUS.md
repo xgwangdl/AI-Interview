@@ -8,6 +8,9 @@
 
 复现命令见文末。
 
+> **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
+> 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+
 ## 下次继续（最后更新 2026-10-10）
 
 ### 本轮验证结果（2026-10-10 续做）
