@@ -297,6 +297,49 @@ docker run --rm -i
 | 选择题 | 比对选项集合（顺序与大小写不敏感，少选/多选都算错） |
 | 简答题 | 模型按参考要点评分，强制 JSON 结构（`score` / `summary` / `matched` / `missing`） |
 
+### 5.8 数字人（真人素材版）
+
+面试官头像从"矢量小人"换成了**同一张真人照片切出来的多帧素材**。
+
+| 类 / 文件 | 职责 |
+| --- | --- |
+| `scripts/split-avatar-sheet.py` | **素材处理脚本**：从组合图里定位 12 张卡片，去掉半透明卡片底，抠出人物，按人脸对齐后输出统一尺寸的帧 |
+| `web/public/assets/avatar/*.png` | 切好的 13 张帧（12 个表情/状态 + 1 张大图），360x300 透明 PNG |
+| `web/src/services/avatarAssets.js` | 帧清单、说话循环表、预加载 |
+| `web/src/services/avatarState.js` | **状态的唯一来源**：7 个状态 + 状态→静止帧的映射 + 错误/自动播放被拦的标记 |
+| `web/src/services/avatarAudio.js` | 配音播放器：单例 `HTMLAudioElement` + 一次性创建的 Web Audio 分析器 |
+| `web/src/services/mouthAnimation.js` | 音量→嘴型档位的纯函数（可单测） |
+| `web/src/components/DigitalHuman.vue` | 渲染帧并按音量切嘴型；只读状态，不写状态 |
+
+**能力边界（必须如实说明，不要对外宣称更多）**：
+
+1. 这是**图片切帧动画**；
+2. 嘴型由**音量大小**分档驱动（声音大 → 嘴张得大），**不识别音素**，
+   念 "a" 还是 "o" 对它没有区别；
+3. 真正的音素级口型同步（或基于专业模型的对口型）**本次没有实现**。
+
+音量分析拿不到时（跨域读不到音频、浏览器不支持 Web Audio）自动降级为固定节奏轮换嘴型，
+声音不受影响；这一点在 `avatarAudio.js` 与 `DigitalHuman.vue` 里都有注释说明。
+
+**素材处理里的三个坑**（换素材时会再遇到）：
+
+1. 组合图里的透明区是**真透明**（`(0,0,0,0)`），但卡片底是**半透明白**（alpha 60-140），
+   直接按 alpha 阈值裁会留一圈灰底 → 用线性重映射把这一段压成透明。
+2. **左侧大图的手臂在第 2、3 行会伸进第 1 张卡片的矩形内** → 必须按连通域抠出人物，
+   否则第 1 张卡会连着大图的手臂一起被裁（初版就是这样）。
+3. 各帧的**人脸位置随卡片不同**（卡片高度不同）→ 统一按"人脸高度"缩放、
+   按"人脸顶边 + 躯干中心"锚定，避免切换嘴型时人物跳动。
+   实测 12 帧的输出：人脸顶边极差 **2px**；说话循环用到的 4 帧脸心极差 9px。
+
+重新生成素材：
+
+```bash
+python scripts/split-avatar-sheet.py                # 输出素材 + 预览图
+python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效果再决定
+```
+
+预览图在 `docs/images/avatar-crop-preview.png`（放在棋盘格上，能一眼看出是否残留卡片底）。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -401,6 +444,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `views/` | 7 个页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView` |
 | `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |
 | `components/CodeEditor.vue` + `services/monaco.js` | Monaco 封装：**懒加载**（只有打开笔试页才拉那几 MB），含 Java/Python/C++/JS/Go/SQL 高亮；只需核心 worker，因为这些语言是主线程 Monarch 词法高亮 |
+| `components/DigitalHuman.vue` | 真人数字人：切帧动画 + 音量驱动嘴型，见 5.8 |
 | `stores/practice.js` | Pinia store：会话列表与草稿、`localStorage` 持久化、过期清理、断网补传 |
 | `services/api.js` | 后端 API 封装，统一注入 token、错误归一化 |
 | `services/mediaCapture.js` | `MediaRecorder` 封装：权限、开始/停止、分片、时长 |
@@ -415,11 +459,12 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 
 | 层 | 工具 | 规模 |
 | --- | --- | --- |
-| 后端单元/集成 | JUnit 5 + Spring Boot Test | 101 个用例（默认跳过 6 个需要容器/外部服务的） |
-| 前端 | Vitest | 33 个用例（API 客户端、路由守卫、媒体捕获、分片上传、store、内置题库） |
+| 后端单元/集成 | JUnit 5 + Spring Boot Test | 126 个用例（另有 6 个需要容器、5 个需要 Docker 沙箱的用例默认跳过） |
+| 前端 | Vitest | 52 个用例（API 客户端、路由守卫、媒体捕获、分片上传、数字人状态与嘴型、store、内置题库） |
 | 端到端 | `scripts/smoke-test.ps1` | 24 项断言，覆盖登录 → 出题 → 上传 → 分析 → 报告 → 签名播放 → Range → 删除 |
 | 真实链路端到端 | `scripts/e2e-real-providers.ps1` | 真实凭据 + 真实音轨，产出 `artifacts/e2e/report-*.json` |
 | 界面截图 | `web/scripts/capture-screenshots.mjs` | 真实浏览器登录后逐页截图，输出到 `docs/images/`（README 配图来源）；UI 改版后重跑即可，避免配图与代码脱节。用系统 Chrome（`CHROME_PATH` 可覆盖），因为 Playwright 自带的 Chromium 在内网常常下不动 |
+| 数字人 | `scripts/split-avatar-sheet.py`、`web/scripts/capture-session-avatar.mjs` | 前者从组合图切帧并生成预览；后者用假摄像头走完整流程截图，并采样说话过程中的嘴型，验证"嘴型确实在切换"（实测 40 次采样出现 6 种帧） |
 
 ```bash
 # 全部后端测试（含需要 Postgres / S3 的集成用例）
@@ -483,3 +528,8 @@ curl http://localhost:8088/actuator/prometheus | Select-String analysis_
     实测三题一批约 92 秒，最坏可能到 2 分钟以上；前端会显示真实等待秒数。
 12. **SQL 方言是 SQLite**：数据库题在内存 SQLite 上执行（复用 Python 镜像，不引入额外镜像），
     需要真 Postgres/MySQL 语义时要另接执行环境。
+13. **数字人不是音素级口型同步**：嘴型由音量分档驱动，识别不了具体发音；
+    音量为 0 时回到闭唇帧，音量分析不可用时降级为定时轮换。详见 5.8。
+14. **数字人素材依赖那张组合图**：`web/public/assets/avatar/avatar-expression-sheet.png`
+    既是运行素材也是切图脚本的输入（约 2.4MB）。换人物时必须重新跑脚本，
+    并检查 `docs/images/avatar-crop-preview.png`。
