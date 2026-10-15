@@ -173,6 +173,18 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `TtsProvider` / `DashScopeTtsProvider` | Sambert 语音合成 |
 | `SpeechAudio` | 音频字节 + MIME 类型 |
 
+播报有两条链路，复用同一套 Provider 与降级逻辑，靠 `AvatarNarrationRequest.audioPath` 区分：
+
+| 链路 | 文本来源 | 接口 |
+| --- | --- | --- |
+| 面试间念题目 | 会话里的题目原文 | `GET /{id}/questions/{n}/narration[/audio]` |
+| 报告页念示范回答 | **评分时已存下的 `sampleAnswer`**（不额外调用模型） | `GET /{id}/questions/{n}/sample-answer[/audio]` |
+
+两个细节：`audioPath` 必须由调用方给出 —— 早先这个地址在 Provider 里写死成 narration 路径，
+复用时会把示范回答指向"念题目"的音频；另外单次合成有长度上限，
+超长文本按**句子边界**截断（硬切会断在半句），并在响应里用 `truncated` 告诉前端"只念了前半段"。
+报告里的 `questions` **只包含有作答的题**，所以按题号查示范回答要按 `questionIndex` 字段找，不能用数组下标。
+
 合成失败会转成 **503** 而不是 500，客户端据此隐藏播报控件、保留字幕。
 
 ### 5.3 `practice` —— 练习面试主线

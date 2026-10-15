@@ -811,3 +811,35 @@ pwsh scripts/smoke-test.ps1 -Name smoke -Code 123456 -ExpectAnalysisReady \
 
 剩余 5% 来自源素材各帧裁剪本身的细微差别（例如 `mouth-o` 的包围盒比 `mouth-closed` 宽 13px），
 不是缩放问题。
+
+
+### 2026-10-15 新功能：报告页让面试官念出「示范回答」
+
+用户反馈：报告有分数但**没有例子**，不知道怎么改。评分里其实早就存了 `sampleAnswer`
+（报告页也一直显示文字），缺的是**把它念出来**。
+
+**实现**（复用现有播报链路，不新增模型调用）：
+
+- 后端新增 `GET /api/v1/practice-sessions/{id}/questions/{n}/sample-answer` 与 `.../sample-answer/audio`；
+  文本直接取评分时存下的 `sampleAnswer`，只做一次语音合成；合成不可用同样是 503。
+- `AvatarNarrationRequest` 增加 `audioPath` 字段：原来音频地址在 Provider 里写死成 narration 路径，
+  直接复用会把示范回答指向「念题目」的音频。
+- 单次合成有长度上限，超长文本按**句子边界**截断（硬切会断在半句），
+  响应里用 `truncated` 标记，前端提示「语音只念了前半段」。
+- 前端：优秀回答示例面板加「让面试官念一遍」按钮 + 96px 的小数字人，嘴型跟着音频动。
+
+**过程中发现并修掉一个真错误**：报告里的 `questions` **只包含有作答的题**（按题号排序），
+所以数组下标 ≠ 题号。我最初按 `report.questions().get(questionIndex)` 取值会取错题，
+改成按 `questionIndex` 字段查找。
+
+**验证**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 示意回答接口 | `audioAvailable=true`，`truncated=false`，`audioUrl` 指向 sample-answer 路径（不是 narration） |
+| 音频合成 | 200、**2.2MB `audio/wav`** |
+| 未带 token | **401**（音频仍然鉴权） |
+| 越界题号 / 他人会话 | **404 / 404** |
+| 浏览器实测 | 点击后进入播放态，小数字人在朗读过程中出现 **4 种嘴型**（normal/e/smile/m） |
+
+测试：后端 126 → **129 个**（新增播报路径、截断与不截断 3 条）。

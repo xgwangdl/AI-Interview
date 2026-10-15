@@ -12,4 +12,9 @@ public record AvatarNarration(
         String interviewerStyle,
         boolean audioAvailable,
         String audioUrl,
-        String voice) { }
+        String voice,
+        /**
+         * 文本超过单次合成上限、语音只念了前面一段时为 true。
+         * 客户端据此提示"语音只念了前半段"，而不是让人以为音频坏了。
+         */
+        boolean truncated) { }

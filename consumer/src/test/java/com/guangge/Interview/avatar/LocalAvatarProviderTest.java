@@ -16,7 +16,7 @@ class LocalAvatarProviderTest {
 
     @Test
     void narratesTheQuestionWithAnAudioUrlWhenSpeechIsEnabled() {
-        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1");
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1", 300);
 
         AvatarNarration narration = provider.narrate(request());
 
@@ -31,7 +31,7 @@ class LocalAvatarProviderTest {
 
     @Test
     void degradesToCaptionOnlyWhenSpeechIsDisabled() {
-        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), false, "sambert-zhixiang-v1");
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), false, "sambert-zhixiang-v1", 300);
 
         AvatarNarration narration = provider.narrate(request());
 
@@ -47,14 +47,14 @@ class LocalAvatarProviderTest {
                 text -> {
                     throw new AssertionError("speech synthesis must not run when disabled");
                 },
-                false, "sambert-zhixiang-v1");
+                false, "sambert-zhixiang-v1", 300);
 
         assertEquals(Optional.empty(), provider.speech(request()));
     }
 
     @Test
     void returnsSynthesizedAudioWhenEnabled() {
-        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1");
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1", 300);
 
         SpeechAudio audio = provider.speech(request()).orElseThrow();
 
@@ -62,8 +62,46 @@ class LocalAvatarProviderTest {
         assertEquals(3, audio.audio().length);
     }
 
+    @Test
+    void reportsTheSampleAnswerAudioPathInsteadOfTheQuestionOne() {
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1", 300);
+        AvatarNarration narration = provider.narrate(new AvatarNarrationRequest(
+                SESSION_ID, 1, "示范回答正文", "balanced", "Java 后端",
+                "/api/v1/practice-sessions/" + SESSION_ID + "/questions/1/sample-answer/audio"));
+
+        assertEquals("示范回答正文", narration.text());
+        assertEquals("/api/v1/practice-sessions/" + SESSION_ID + "/questions/1/sample-answer/audio",
+                narration.audioUrl());
+        assertFalse(narration.truncated());
+    }
+
+    @Test
+    void cutsLongTextAtSentenceBoundaryAndFlagsItAsTruncated() {
+        String sentence = "这是一句示范回答。";             // 9 字
+        String longText = sentence.repeat(20);              // 180 字，超过下面给的 40 字上限
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1", 40);
+
+        AvatarNarration narration = provider.narrate(new AvatarNarrationRequest(
+                SESSION_ID, 0, longText, "balanced", "Java 后端", "/x"));
+
+        // 播报文本保留完整示范回答（给用户看的），但 truncated 会告诉前端"语音只念了前面一段"
+        assertEquals(longText, narration.text());
+        assertTrue(narration.truncated());
+        String spoken = LocalAvatarProvider.truncateForSpeech(longText, 40);
+        assertTrue(spoken.length() <= 40, spoken);
+        assertTrue(spoken.endsWith("。"), spoken);
+    }
+
+    @Test
+    void doesNotFlagShortTextAsTruncated() {
+        LocalAvatarProvider provider = new LocalAvatarProvider(stubTts(), true, "sambert-zhixiang-v1", 300);
+        AvatarNarration narration = provider.narrate(request());
+        assertFalse(narration.truncated());
+    }
+
     private static AvatarNarrationRequest request() {
-        return new AvatarNarrationRequest(SESSION_ID, 2, "讲一个你主导的重构", "balanced", "Java 后端");
+        return new AvatarNarrationRequest(SESSION_ID, 2, "讲一个你主导的重构", "balanced", "Java 后端",
+                "/api/v1/practice-sessions/" + SESSION_ID + "/questions/2/narration/audio");
     }
 
     private static TtsProvider stubTts() {

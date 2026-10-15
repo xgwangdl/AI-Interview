@@ -174,6 +174,30 @@ export async function getNarrationAudio(sessionId, questionIndex) {
   return response.blob();
 }
 
+/**
+ * 示范回答的播报（报告页「让面试官念一遍」）。
+ *
+ * 文本来自评分时已经存好的 sampleAnswer，后端不再调用模型，只做一次语音合成。
+ * 音频同样要带 token 取回（原因见 getNarrationAudio）。
+ */
+export function getSampleAnswerNarration(sessionId, questionIndex) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/sample-answer`);
+}
+
+export async function getSampleAnswerAudio(sessionId, questionIndex) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(
+    `${apiBase}/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/sample-answer/audio`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取示范回答语音（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.blob();
+}
+
 export function planQuestions(payload) {
   return apiRequest('/practice-sessions/question-plan', { method: 'POST', body: JSON.stringify(payload) });
 }
