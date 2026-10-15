@@ -79,6 +79,36 @@ class ResumeLayoutTest {
     }
 
     @Test
+    @DisplayName("行首的 ● / • 也算条目符号（旧 PDF 抽出来的就是这个样子）")
+    void acceptsGlyphBullets() {
+        List<ResumeLayout.Block> blocks = ResumeLayout.parse("●\u200b 年龄：24岁\n• 手机：10000000000");
+
+        assertThat(blocks).allSatisfy(block -> assertThat(block.kind()).isEqualTo(ResumeLayout.Kind.BULLET));
+        assertThat(blocks).extracting(ResumeLayout.Block::text)
+                .containsExactly("年龄：24岁", "手机：10000000000");
+    }
+
+    @Test
+    @DisplayName("整篇被压成一行的旧数据，导出时按行内项目符号与小节名拆开，而不是排成一堵墙")
+    void splitsFlattenedLine() {
+        String flattened = "徐海生 求职目标：Android开发工程师 基本信息 ● 年龄：24岁 ● 地址：上海市浦东新区"
+                + " 项目经验 简易微博 ● 时间：2016.9 - 2016.10 ● 描述：为上海某公司委托开发一款类似58同城的APP。";
+
+        List<ResumeLayout.Block> blocks = ResumeLayout.parse(flattened);
+
+        assertThat(blocks.get(0).kind()).isEqualTo(ResumeLayout.Kind.PARAGRAPH);
+        assertThat(blocks.get(0).text()).startsWith("徐海生 求职目标");
+        assertThat(blocks.stream().filter(block -> block.kind() == ResumeLayout.Kind.BULLET))
+                .extracting(ResumeLayout.Block::text)
+                .containsExactly("年龄：24岁", "地址：上海市浦东新区", "时间：2016.9 - 2016.10",
+                        "描述：为上海某公司委托开发一款类似58同城的APP。");
+        assertThat(blocks.stream().filter(block -> block.kind() == ResumeLayout.Kind.HEADING))
+                .extracting(ResumeLayout.Block::text)
+                .containsExactly("基本信息", "项目经验");
+        assertThat(blocks).extracting(ResumeLayout.Block::text).contains("简易微博");
+    }
+
+    @Test
     @DisplayName("导出 Markdown 时标题与小节层级都在")
     void rendersMarkdown() {
         String markdown = ResumeLayout.toMarkdown("张伟的简历", RESUME);

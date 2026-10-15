@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -26,8 +25,6 @@ public class ResumeExtractionService {
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("pdf", "doc", "docx");
     private static final long MAX_BYTES = 8L * 1024 * 1024;
     private static final int MAX_CHARACTERS = 8000;
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-
     public ResumeExtractView extract(String fileName, long size, InputStream content) {
         if (size <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "简历文件为空");
@@ -51,7 +48,9 @@ public class ResumeExtractionService {
                     HttpStatus.UNPROCESSABLE_ENTITY, "无法解析这份简历，请换一份文件再试");
         }
 
-        String normalized = WHITESPACE.matcher(extracted).replaceAll(" ").trim();
+        // 注意：这里必须保留换行（见 ResumeTextNormalizer 的说明）。
+        // 早期实现把 \s+ 全压成空格，整份简历变成一行，后面所有环节都跟着毁掉。
+        String normalized = ResumeTextNormalizer.normalize(extracted);
         if (normalized.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY, "没有从这份简历里读到文字，请换一份可复制的文件");

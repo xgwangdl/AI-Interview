@@ -147,13 +147,20 @@ public class ResumePdfExporter {
             y -= 7f;
             rule();
             y -= 3f;
-            for (ResumeLayout.Block block : ResumeLayout.parse(text)) {
+            for (ResumeLayout.Block block : ResumeLayout.parse(text, title)) {
                 switch (block.kind()) {
                     case HEADING -> {
                         y -= HEADING_GAP;
                         writeBlock(block.text(), new Style(
                                 block.level() <= 2 ? HEADING_SIZE : SUB_HEADING_SIZE, true, 0f, false, false));
-                        y -= 1f;
+                        if (block.level() <= 2) {
+                            // 小节下面走一条细线：和常见简历模板一致，扫读时更容易分段
+                            y -= 4f;
+                            rule();
+                            y -= 3f;
+                        } else {
+                            y -= 1f;
+                        }
                     }
                     case BULLET -> writeBlock(block.text(),
                             new Style(BODY_SIZE, false, 0f, true, false));
@@ -232,17 +239,24 @@ public class ResumePdfExporter {
             while (start < text.length()) {
                 int end = start;
                 int lastSpace = -1;
+                float widthAtLastSpace = 0f;
                 float used = 0f;
                 while (end < text.length()) {
                     int codePoint = text.codePointAt(end);
                     float charWidth = advance(font, codePoint, size);
                     if (used + charWidth > maxWidth && end > start) break;
-                    if (codePoint == ' ') lastSpace = end;
+                    if (codePoint == ' ') {
+                        lastSpace = end;
+                        widthAtLastSpace = used;
+                    }
                     used += charWidth;
                     end += Character.charCount(codePoint);
                 }
-                // 拉丁文优先断在空格后，中文没有空格就按字断
-                int breakAt = end < text.length() && lastSpace >= start ? lastSpace + 1 : end;
+                // 拉丁文优先断在空格后，中文没有空格就按字断。
+                // 注意：必须要求那个空格已经过半行，否则中文条目行里唯一的空格
+                // （项目符号后面那个）会把整行切成"只剩一个 ●"。
+                boolean usefulSpace = lastSpace > start && widthAtLastSpace > maxWidth * 0.5f;
+                int breakAt = end < text.length() && usefulSpace ? lastSpace + 1 : end;
                 if (breakAt <= start) breakAt = start + Character.charCount(text.codePointAt(start));
                 lines.add(new Line(text.substring(start, breakAt), start));
                 start = breakAt;

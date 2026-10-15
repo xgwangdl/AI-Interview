@@ -1,6 +1,7 @@
 package com.guangge.Interview.resume.export;
 
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
+import org.apache.poi.xwpf.usermodel.Borders;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
@@ -43,16 +44,16 @@ public class ResumeDocxExporter {
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             pageSetup(document);
             writeParagraph(document, title == null || title.isBlank() ? "简历" : title.strip(),
-                    ParagraphAlignment.CENTER, TITLE_HALF_POINTS, true, 0, 220);
-            for (ResumeLayout.Block block : ResumeLayout.parse(text)) {
+                    ParagraphAlignment.CENTER, TITLE_HALF_POINTS, true, 0, 220, false);
+            for (ResumeLayout.Block block : ResumeLayout.parse(text, title)) {
                 switch (block.kind()) {
                     case HEADING -> writeParagraph(document, block.text(), ParagraphAlignment.LEFT,
                             block.level() <= 2 ? HEADING_HALF_POINTS : SUB_HEADING_HALF_POINTS,
-                            true, 0, 200);
+                            true, 0, 200, block.level() <= 2);
                     case BULLET -> writeParagraph(document, "• " + block.text(), ParagraphAlignment.LEFT,
-                            BODY_HALF_POINTS, false, BULLET_INDENT_TWIPS, 60);
+                            BODY_HALF_POINTS, false, BULLET_INDENT_TWIPS, 60, false);
                     case PARAGRAPH -> writeParagraph(document, block.text(), ParagraphAlignment.LEFT,
-                            BODY_HALF_POINTS, false, 0, 120);
+                            BODY_HALF_POINTS, false, 0, 120, false);
                 }
             }
             document.write(out);
@@ -61,9 +62,12 @@ public class ResumeDocxExporter {
     }
 
     private void writeParagraph(XWPFDocument document, String text, ParagraphAlignment alignment,
-                                int halfPoints, boolean bold, int indentTwips, int spaceAfterTwips) {
+                                int halfPoints, boolean bold, int indentTwips, int spaceAfterTwips,
+                                boolean sectionRule) {
         XWPFParagraph paragraph = document.createParagraph();
         paragraph.setAlignment(alignment);
+        // 小节标题下面走一条细线，和常见简历模板一致
+        if (sectionRule) paragraph.setBorderBottom(Borders.SINGLE);
         if (indentTwips > 0) {
             paragraph.setIndentationLeft(indentTwips);
             paragraph.setIndentationHanging(BULLET_HANGING_TWIPS);

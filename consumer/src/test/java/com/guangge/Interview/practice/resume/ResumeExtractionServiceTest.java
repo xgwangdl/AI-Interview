@@ -32,6 +32,17 @@ class ResumeExtractionServiceTest {
     }
 
     @Test
+    void keepsParagraphBreaksInsteadOfFlatteningTheResume() throws IOException {
+        byte[] resume = docx("教育背景\n上海科技大学\n\n工作经历\n负责后端接口开发，接口耗时从 800ms 降到 120ms。");
+
+        ResumeExtractView view = service.extract("resume.docx", resume.length, new ByteArrayInputStream(resume));
+
+        // 曾经这里会把所有换行压成空格，整份简历变成一行，后续优化与导出跟着一起毁掉
+        assertTrue(view.text().contains("教育背景\n上海科技大学"), view.text());
+        assertTrue(view.text().contains("工作经历\n负责后端接口开发"), view.text());
+    }
+
+    @Test
     void truncatesVeryLongResumes() throws IOException {
         byte[] resume = docx("经历 ".repeat(5000));
 

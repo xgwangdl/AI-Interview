@@ -43,30 +43,84 @@ public final class ResumeLayout {
     /** 与前端 ResumeDetailView 的高亮规则保持一致。 */
     private static final Pattern PLACEHOLDER = Pattern.compile("【[^】]{1,60}】");
 
+    /** 零宽字符（PDF 的点号后面常常跟一个），排版前先清掉。 */
+    private static final Pattern INVISIBLE = Pattern.compile("[\\u200B\\u200C\\u200D\\uFEFF\\u00AD]");
+    /** 行内的项目符号：早期解析把整篇压成一行，符号全留在行中间。 */
+    private static final Pattern INLINE_BULLET = Pattern.compile("\\s*[●•▪◆■]\\s*");
+    private static final String GLYPH_BULLETS = "●•▪◆■‣∙";
+    /** 行内的小节名（两边要有空格）：同样是"整篇压成一行"留下的痕迹。 */
+    private static final Pattern INLINE_SECTION = Pattern.compile(
+            "(?:(?<=[\\s)）|])|^)(?:" + String.join("|", SECTION_TITLES.stream()
+                    .sorted((left, right) -> right.length() - left.length()).toList()) + ")(?=\\s)");
+
     private ResumeLayout() { }
+
+    /**
+     * 切块，并去掉与文档标题重复的第一行。
+     *
+     * 简历正文几乎都以姓名开头，而标题也是这个姓名，不去掉的话导出/预览里名字会出现两次。
+     */
+    public static List<Block> parse(String text, String title) {
+        List<Block> blocks = parse(text);
+        if (blocks.isEmpty() || title == null || title.isBlank()) return blocks;
+        Block first = blocks.get(0);
+        if (first.kind() != Kind.HEADING && first.text().strip().equals(title.strip())) {
+            return blocks.subList(1, blocks.size());
+        }
+        return blocks;
+    }
 
     public static List<Block> parse(String text) {
         List<Block> blocks = new ArrayList<>();
         if (text == null || text.isBlank()) return blocks;
         for (String raw : text.split("\r?\n")) {
-            String line = raw.strip();
+            String line = INVISIBLE.matcher(raw).replaceAll("").strip();
             if (line.isEmpty()) continue;
-            int hashes = markdownHeadingLevel(line);
-            if (hashes > 0) {
-                blocks.add(new Block(Kind.HEADING, Math.min(hashes + 1, 3), line.substring(hashes).strip()));
-                continue;
+            for (String expanded : expandFlattenedLine(line)) {
+                blocks.add(classify(expanded));
             }
-            if (isBullet(line)) {
-                blocks.add(new Block(Kind.BULLET, 0, line.substring(2).strip()));
-                continue;
-            }
-            if (isSectionTitle(line)) {
-                blocks.add(new Block(Kind.HEADING, 2, stripTrailingColon(line)));
-                continue;
-            }
-            blocks.add(new Block(Kind.PARAGRAPH, 0, line));
         }
         return blocks;
+    }
+
+    /**
+     * 整篇被压成一行（早期解析的产物）时，在行内项目符号与小节名处断开，还原成多行。
+     * 只做版式还原，不改任何文字；正常的行原样返回。
+     */
+    private static List<String> expandFlattenedLine(String line) {
+        int bullets = countMatches(INLINE_BULLET, line);
+        int sections = countMatches(INLINE_SECTION, line);
+        boolean flattened = bullets >= 2 || (bullets >= 1 && sections >= 1) || sections >= 2;
+        if (!flattened) return List.of(line);
+
+        String expanded = INLINE_SECTION.matcher(line).replaceAll("\n$0\n");
+        expanded = INLINE_BULLET.matcher(expanded).replaceAll("\n- ");
+        List<String> lines = new ArrayList<>();
+        for (String part : expanded.split("\n")) {
+            if (!part.isBlank()) lines.add(part.strip());
+        }
+        return lines;
+    }
+
+    private static int countMatches(Pattern pattern, String text) {
+        Matcher matcher = pattern.matcher(text);
+        int count = 0;
+        while (matcher.find()) count++;
+        return count;
+    }
+
+    private static Block classify(String line) {
+        int hashes = markdownHeadingLevel(line);
+        if (hashes > 0) {
+            return new Block(Kind.HEADING, Math.min(hashes + 1, 3), line.substring(hashes).strip());
+        }
+        if (isBullet(line)) {
+            return new Block(Kind.BULLET, 0, line.substring(2).strip());
+        }
+        if (isSectionTitle(line)) {
+            return new Block(Kind.HEADING, 2, stripTrailingColon(line));
+        }
+        return new Block(Kind.PARAGRAPH, 0, line);
     }
 
     /** 按占位符把文本切成片段；占位符与正文分开，渲染时才能区别对待。 */
@@ -88,7 +142,7 @@ public final class ResumeLayout {
     public static String toMarkdown(String title, String text) {
         StringBuilder out = new StringBuilder();
         if (title != null && !title.isBlank()) out.append("# ").append(title.strip()).append("\n\n");
-        for (Block block : parse(text)) {
+        for (Block block : parse(text, title)) {
             switch (block.kind()) {
                 case HEADING -> out.append("#".repeat(Math.max(2, block.level()))).append(' ')
                         .append(block.text()).append("\n\n");
@@ -112,7 +166,7 @@ public final class ResumeLayout {
     private static boolean isBullet(String line) {
         if (line.length() < 2) return false;
         char marker = line.charAt(0);
-        boolean supported = marker == '-' || marker == '*' || marker == '•';
+        boolean supported = marker == '-' || marker == '*' || GLYPH_BULLETS.indexOf(marker) >= 0;
         return supported && line.charAt(1) == ' ';
     }
 
