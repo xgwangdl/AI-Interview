@@ -37,6 +37,7 @@ build/
 
 ### Vite / Vue build output ###
 dist/
+/web/.vite/
 
 ### Local configuration and secrets ###
 .env

@@ -371,6 +371,54 @@ AI 出题带自检 / 独立模块 / 五种题型 / 学习场景不做防作弊 /
   localStorage，登录后再用服务端的偏好覆盖——启动时先应用本地记录，避免闪一下默认色。
 - 实测：默认 `green` → PUT `blue` → 再读仍为 `blue` → PUT `amber` 成功 → PUT `rainbow` 返回 400。
 
+### 2026-10-15 面试官升级为真人数字人
+
+**素材落在哪**：组合图原本**不在项目里**（只在 `C:\Users\xgwan\Downloads\`）。
+已复制到 `web/public/assets/avatar/avatar-expression-sheet.png`——`web/` 才是前端根目录，
+Vite 的静态目录是 `web/public/`，前端按 `/assets/avatar/xxx.png` 访问。
+
+**素材处理**（`scripts/split-avatar-sheet.py`，可重复执行，不手裁）：
+
+- 原图 1674x940 RGBA，**真透明**（透明区 `(0,0,0,0)`，不是棋盘格）；
+- 切出 12 张表情/状态帧 + 1 张大图，输出 360x300 透明 PNG；
+- 处理中化解了三个坑：
+  1. 卡片底是**半透明白**（alpha 60-140），按阈值硬切会留灰底 → 改为线性重映射压成透明；
+  2. **左侧大图的手臂在第 2、3 行伸进了第 1 张卡片的矩形**，初版因此把手臂也裁了进去
+     （mouth-o 宽度等于整条列带）→ 改为按连通域从人脸处抠出人物；
+  3. 各卡片的人脸位置不同 → 统一按人脸高度缩放、按"人脸顶边 + 躯干中心"锚定。
+- 对齐质量（脚本输出的帧实测）：**12 帧人脸顶边极差 2px**；说话循环 4 帧脸心极差 9px；
+  透明区 56-61%、实心 38-42%、过渡像素仅 0.5-2.6%（说明没有卡片底残留）。
+- 预览图 `docs/images/avatar-crop-preview.png`（棋盘格底，一眼能看出残留/偏移）。
+
+**前端实现**：
+
+| 文件 | 说明 |
+| --- | --- |
+| `services/avatarAssets.js` | 帧清单、说话循环表、**预加载**（避免切换时闪白） |
+| `services/avatarState.js` | **状态的唯一来源**：IDLE/PREPARING/SPEAKING/LISTENING/RECORDING/FOLLOW_UP/ERROR，含错误与"自动播放被拦"标记 |
+| `services/avatarAudio.js` | 单例 `HTMLAudioElement` + **只创建一次**的 `MediaElementAudioSourceNode`（重复创建会抛错），提供 play/pause/stop/音量 |
+| `services/mouthAnimation.js` | 音量→档位的纯函数（可单测） |
+| `components/DigitalHuman.vue` | 渲染帧、按音量切嘴型、预加载、轻微浮动；**只读状态不写状态** |
+
+动画细节：最小驻留 90ms（不几十毫秒暴力切图）、同档位内轮换（不只用两张图来回跳）、
+`requestAnimationFrame` 只启动一次、页面切后台回来会重置计时；
+整体只做极轻的 `translate` 浮动，**不用缩放伪造说话动作**。
+
+**真实浏览器验证**（`web/scripts/capture-session-avatar.mjs`，用 Chrome 假摄像头走完整流程）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 数字人渲染 | `img.dh-frame` 存在，素材 360x300，页面渲染 210x175，`complete=true` |
+| 头像区实际画面 | std=53.8、最暗值 2、深色西装 7.3% + 肤色 6.5%（确认是真人照片，不是空白） |
+| 朗读中嘴型在切换 | 40 次采样出现 **6 种不同帧**（mouth-normal / smile / e / m / a + 状态帧） |
+| 音频结束自动闭嘴 | 播放结束后切到 `state-listening`，声波条停止 |
+| 两张截图的差异 | 13,564 像素，集中在嘴部区域（x 594-860, y 172-333） |
+
+**明确没做的**：音素级口型同步。嘴型只按**音量大小**分档，识别不了具体发音；
+音量分析不可用时降级为定时轮换嘴型。这一点在代码注释、USER-GUIDE、ARCHITECTURE 里都写明了。
+
+测试：前端从 38 增至 **52 个**（新增数字人状态机 7 个、嘴型逻辑 7 个）。
+
 ### 当前环境状态
 
 - **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，

@@ -1,0 +1,32 @@
+{
+  "canvas": [
+    360,
+    300
+  ],
+  "headAnchor": [
+    180,
+    72
+  ],
+  "talkCycle": [
+    "mouth-m",
+    "mouth-e",
+    "mouth-normal",
+    "mouth-a",
+    "mouth-normal",
+    "mouth-e"
+  ],
+  "frames": {
+    "mouth-closed": "闭嘴（准备）：待机 / 聆听 / 录制 / 配音结束",
+    "mouth-normal": "正在说话：正常张嘴",
+    "mouth-smile": "微笑：友善过渡帧",
+    "mouth-a": "发音 A：较大张嘴",
+    "mouth-o": "发音 O：圆口",
+    "mouth-e": "发音 E：横向张嘴",
+    "mouth-m": "发音 B/M：闭唇，低音量时用",
+    "head-nod": "点头/侧视：头部有角度差，只做低频点缀",
+    "state-asking": "提问状态（张口说话）",
+    "state-listening": "聆听状态（闭嘴、点头）",
+    "state-recording": "录制回答（保持安静）",
+    "state-followup": "追问状态（再次提问）"
+  }
+}
