@@ -86,6 +86,12 @@ FRAMES = [
 # 说话时循环的嘴型顺序：闭唇 → 中 → 大 → 中 → 横向，避免长时间停在张大嘴。
 TALK_CYCLE = ["mouth-m", "mouth-e", "mouth-normal", "mouth-a", "mouth-normal", "mouth-e"]
 
+# 闭眼帧是**合成**出来的（组合图里没有闭眼素材）：把镜片内的眼睛区域换成肤色并画一条睫毛线，
+# 镜框在更外圈、不动。坐标是原图绝对坐标，由下列探测得到：
+#   左眼 x809-833 / 右眼 x856-880，y148-167（"非肤色列簇"定位，关于 x=844 对称）
+# 合成结果需要人眼确认，脚本会额外输出一张放大对比图 docs/images/avatar-blink-check.png。
+EYE_BOXES = [(809, 833, 148, 167), (856, 880, 148, 167)]
+
 
 def load_sheet(path: Path) -> np.ndarray:
     if not path.exists():
@@ -136,9 +142,9 @@ def looks_like_label(frame: np.ndarray, band: int = 14) -> bool:
 def head_limit(height: int, window: int | None) -> int:
     """在裁剪结果里搜索人脸时，只看最上面多少行。
 
-    两个坑都踩过，所以这里必须用**固定像素窗口**而不是"高度的比例"：
+    两个坑都踩过，所以必须用**固定像素窗口**而不是"高度的比例"：
       * 窗口太小：第 3 行为了避开说明标签把裁剪改短后，0.62×149=92 会把脸截断，
-        测出的脸高从 96 掉到 66，缩放翻倍，人物在界面上突然变大；
+        测出的脸高从 96 掉到 66、缩放翻倍，人物在界面上突然变大；
       * 窗口太大：含进脖子，脸高被测成 113-123，而状态帧的裁剪根本到不了脖子（只有 96），
         两者不一致 → 说话时人物缩小 25%。
     卡片里的人脸都在离卡片顶 30-136px 的范围内，取 145px 刚好覆盖整张脸而不含脖子。
@@ -147,6 +153,37 @@ def head_limit(height: int, window: int | None) -> int:
     if window is None:
         return int(height * 0.62)
     return min(height, window)
+
+
+def close_eyes(sheet: np.ndarray, boxes: list[tuple[int, int, int, int]]) -> np.ndarray:
+    """合成闭眼：镜片内的眼睛区域填成脸颊肤色，中间画一条睫毛线。
+
+    为什么这么做而不是"整体压扁"：人物戴着眼镜，压扁会把镜框一起压变形。
+    只处理镜片内圈、镜框留在原处，看起来才像"眼皮合上"。
+    填充色取眼睛正下方的脸颊肤色，避免和周围有色差。
+    """
+    out = sheet.copy()
+    for x0, x1, y0, y1 in boxes:
+        # 取镜片下方几行的肤色当填充色（那里一定是纯皮肤）
+        patch = out[y1 + 4:y1 + 13, x0:x1 + 1]
+        mask = (patch[:, :, 3] > 200) & (patch[:, :, 0] > 170)
+        if mask.sum() >= 10:
+            color = np.median(patch[mask][:, :3], axis=0)
+        else:  # 找不到就退回一个中性肤色
+            color = np.array([232.0, 196.0, 172.0])
+
+        inset = 2                      # 留出镜框，别把深色框线涂掉
+        iy0, iy1, ix0, ix1 = y0 + inset, y1 - inset, x0 + inset, x1 - inset
+        out[iy0:iy1 + 1, ix0:ix1 + 1, 0] = color[0]
+        out[iy0:iy1 + 1, ix0:ix1 + 1, 1] = color[1]
+        out[iy0:iy1 + 1, ix0:ix1 + 1, 2] = color[2]
+
+        lash = color * 0.42            # 睫毛线：闭眼最关键的视觉特征
+        cy = (iy0 + iy1) // 2
+        out[cy:cy + 2, ix0:ix1 + 1, 0] = lash[0]
+        out[cy:cy + 2, ix0:ix1 + 1, 1] = lash[1]
+        out[cy:cy + 2, ix0:ix1 + 1, 2] = lash[2]
+    return out
 
 
 def keep_face_component(solid: np.ndarray, seed: tuple[int, int]) -> np.ndarray:
@@ -297,6 +334,15 @@ def main() -> int:
     except ValueError as exc:
         print(f"! 左侧大图跳过：{exc}")
 
+    # 闭眼帧：在整图上合成后再走同一条裁剪/对齐流程，保证与 mouth-closed 完全同框。
+    closed_sheet = close_eyes(arr, EYE_BOXES)
+    try:
+        outputs["eyes-closed"] = extract(
+            closed_sheet[ROW_BANDS[0][0]:ROW_BANDS[0][1], CARD_X[0]:CARD_X[1]],
+            "eyes-closed", log, shared_scale=shared_scale)
+    except ValueError as exc:
+        print(f"! 闭眼帧跳过：{exc}")
+
     print("\n逐帧对齐结果：")
     for line in log:
         print("  " + line)
@@ -319,6 +365,28 @@ def main() -> int:
     PREVIEW.parent.mkdir(parents=True, exist_ok=True)
     preview.save(PREVIEW)
     print(f"\n预览图：{PREVIEW}")
+
+    # 闭眼是合成出来的，单独给一张放大对比图，方便一眼判断像不像（否则得在 360px 画布上找眼睛）
+    if "eyes-closed" in outputs:
+        x0, x1, y0, y1 = EYE_BOXES[0][0], EYE_BOXES[1][1], EYE_BOXES[0][2], EYE_BOXES[0][3]
+        pad = 12
+        box = (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+        before = Image.fromarray(arr).crop(box).resize(
+            ((box[2] - box[0]) * 5, (box[3] - box[1]) * 5), Image.NEAREST)
+        after = Image.fromarray(close_eyes(arr, EYE_BOXES)).crop(box).resize(
+            ((box[2] - box[0]) * 5, (box[3] - box[1]) * 5), Image.NEAREST)
+        sheet_img = Image.new("RGB", (before.width, before.height * 2 + 30), (245, 246, 244))
+        flat = Image.new("RGB", before.size, (245, 246, 244))
+        flat.paste(before, (0, 0), before)
+        sheet_img.paste(flat, (0, 0))
+        flat2 = Image.new("RGB", after.size, (245, 246, 244))
+        flat2.paste(after, (0, 0), after)
+        sheet_img.paste(flat2, (0, before.height + 30))
+        draw2 = ImageDraw.Draw(sheet_img)
+        draw2.text((6, before.height + 7), "上：原图（睁眼）    下：合成后（闭眼）  ×5 放大", fill=(50, 60, 54))
+        check = REPO / "docs/images/avatar-blink-check.png"
+        sheet_img.save(check)
+        print(f"闭眼对比图：{check}")
 
     if args.preview_only:
         print("（--preview-only：未写素材）")

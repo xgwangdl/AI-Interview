@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { frameForLevel, levelFromAmplitude, nextFallbackFrame } from './mouthAnimation';
+import {
+  ATTACK, RELEASE, frameForLevel, levelFromAmplitude, levelWithHysteresis,
+  nextFallbackFrame, smoothAmplitude,
+} from './mouthAnimation';
 import { TALK_ROTATION } from './avatarAssets';
 
 describe('levelFromAmplitude', () => {
@@ -45,5 +48,51 @@ describe('nextFallbackFrame', () => {
     expect(nextFallbackFrame(0)).toBe(TALK_ROTATION[0]);
     expect(nextFallbackFrame(TALK_ROTATION.length)).toBe(TALK_ROTATION[0]);
     expect(TALK_ROTATION.includes(nextFallbackFrame(3))).toBe(true);
+  });
+});
+
+describe('smoothAmplitude', () => {
+  it('没有分析器时返回 -1，调用方据此走降级', () => {
+    expect(smoothAmplitude(0.5, -1)).toBe(-1);
+    expect(smoothAmplitude(0.5, NaN)).toBe(-1);
+  });
+
+  it('首个样本直接采用，不从上一次的残留值爬上来', () => {
+    expect(smoothAmplitude(null, 0.4)).toBe(0.4);
+  });
+
+  it('上升比下降快：张嘴及时，闭嘴有个收的过程', () => {
+    const rising = smoothAmplitude(0.1, 0.5);
+    const falling = smoothAmplitude(0.5, 0.1);
+    expect(rising - 0.1).toBeGreaterThan(0.5 - falling);
+    expect(ATTACK).toBeGreaterThan(RELEASE);
+  });
+});
+
+describe('levelWithHysteresis', () => {
+  it('阈值附近来回抖动时不会反复切换档位', () => {
+    // 0.18 是 1→2 档的边界；在它上下小幅波动不应该跳档
+    let level = levelWithHysteresis(1, 0.19);
+    expect(level).toBe(1);
+    for (const value of [0.20, 0.17, 0.19, 0.16, 0.20]) {
+      level = levelWithHysteresis(level, value);
+      expect(level).toBe(1);
+    }
+  });
+
+  it('明显超过阈值才升档，明显低于才降档', () => {
+    expect(levelWithHysteresis(1, 0.30)).toBe(2);   // 远超 0.18
+    expect(levelWithHysteresis(2, 0.10)).toBe(1);   // 远低于 0.18*0.7=0.126
+    expect(levelWithHysteresis(2, 0.15)).toBe(2);   // 只是略低，维持
+  });
+
+  it('静音回到闭唇档', () => {
+    expect(levelWithHysteresis(3, 0)).toBe(0);
+    expect(levelWithHysteresis(2, -1)).toBe(0);
+  });
+
+  it('档位不会越界', () => {
+    expect(levelWithHysteresis(3, 10)).toBe(3);
+    expect(levelWithHysteresis(0, 0)).toBe(0);
   });
 });

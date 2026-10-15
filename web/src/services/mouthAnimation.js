@@ -37,3 +37,43 @@ export function frameForLevel(level, rotation = 0) {
 export function nextFallbackFrame(index) {
   return TALK_ROTATION[index % TALK_ROTATION.length];
 }
+
+/**
+ * 音量平滑：起音快、落音慢。
+ *
+ * 直接用瞬时 RMS 会让嘴型在阈值附近来回跳（听感上是"抖"）。这里做一阶平滑：
+ * 音量上升时跟得快（张嘴要及时），下降时跟得慢（闭嘴要有个收的过程），
+ * 这也是人说话时的自然节奏。
+ */
+export const ATTACK = 0.55;
+export const RELEASE = 0.16;
+
+export function smoothAmplitude(previous, target, { attack = ATTACK, release = RELEASE } = {}) {
+  if (!Number.isFinite(target) || target < 0) return -1;   // 没有分析器
+  if (previous === null || previous === undefined || previous < 0) return target;
+  const k = target > previous ? attack : release;
+  return previous + (target - previous) * k;
+}
+
+/** 分档阈值（与 levelFromAmplitude 保持一致）。 */
+export const LEVEL_THRESHOLDS = [0.06, 0.18, 0.42];
+
+/**
+ * 带迟滞的分档：向上要明显超过阈值才升档，向下要明显低于阈值才降档。
+ * 没有迟滞时，音量停在 0.18 附近会让嘴型在"小幅"和"正常"之间每秒抖好几次。
+ */
+export const HYSTERESIS = 0.3;
+
+export function levelWithHysteresis(previousLevel, value, margin = HYSTERESIS) {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  let level = Math.max(0, Math.min(LEVEL_THRESHOLDS.length, previousLevel ?? 0));
+  // 升档：超过阈值上浮 margin 才认
+  while (level < LEVEL_THRESHOLDS.length && value > LEVEL_THRESHOLDS[level] * (1 + margin)) {
+    level += 1;
+  }
+  // 降档：跌破阈值下浮 margin 才认
+  while (level > 0 && value < LEVEL_THRESHOLDS[level - 1] * (1 - margin)) {
+    level -= 1;
+  }
+  return level;
+}

@@ -153,6 +153,28 @@ try {
     console.log('聆听态:', JSON.stringify(idle));
     await page.screenshot({ path: `${OUT}/09-session-avatar-listening.png` });
     log(`截图：${OUT}/09-session-avatar-listening.png`);
+
+    // 静止状态连续采样：验证「眨眼」确实在发生（闭眼帧是合成的，需要确认真的用上了）
+    const idleFrames = [];
+    for (let i = 0; i < 70; i += 1) {
+      const f = await page.evaluate(() => {
+        const img = document.querySelector('.digital-human img.dh-frame');
+        return img ? (img.getAttribute('src') || '').split('/').pop() : '(视频/无图)';
+      });
+      idleFrames.push(f);
+      await page.waitForTimeout(100);
+    }
+    const idleDistinct = [...new Set(idleFrames)];
+    const blinkCount = idleFrames.filter((f) => f === 'eyes-closed.png').length;
+    console.log('静止 7 秒采样:', JSON.stringify({
+      samples: idleFrames.length,
+      distinctFrames: idleDistinct,
+      blinkSamples: blinkCount,
+    }));
+    if (blinkCount > 0) {
+      await page.screenshot({ path: `${OUT}/10-session-avatar-blink.png` });
+      log(`截图（眨眼中）：${OUT}/10-session-avatar-blink.png`);
+    }
   }
 } finally {
   await browser.close();

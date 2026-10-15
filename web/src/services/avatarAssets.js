@@ -7,6 +7,15 @@
 
 const BASE = '/assets/avatar';
 
+/**
+ * 待机循环视频（可选）。
+ *
+ * 放一段人物坐着呼吸/眨眼的循环短片到 public/assets/avatar/idle-loop.mp4 就会自动启用：
+ * 不在说话时播视频（看起来是活的），说话时切回切帧动画（因为嘴型要跟着动态配音走）。
+ * **没有这个文件也完全正常** —— 组件会静默退回静态帧，不影响任何功能。
+ */
+export const IDLE_VIDEO = `${BASE}/idle-loop.mp4`;
+
 /** 五档嘴型，按"张嘴程度"从闭到最大排列。 */
 export const MOUTHS = {
   closed: 'mouth-closed',
@@ -32,7 +41,7 @@ export const STATE_FRAMES = {
 
 export const ALL_FRAMES = [
   'mouth-closed', 'mouth-m', 'mouth-e', 'mouth-normal', 'mouth-o', 'mouth-a', 'mouth-smile',
-  'head-nod', 'state-asking', 'state-listening', 'state-recording', 'state-followup',
+  'eyes-closed', 'head-nod', 'state-asking', 'state-listening', 'state-recording', 'state-followup',
   'portrait',
 ];
 
