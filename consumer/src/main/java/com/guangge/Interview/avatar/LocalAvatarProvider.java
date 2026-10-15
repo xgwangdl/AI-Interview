@@ -41,7 +41,10 @@ public class LocalAvatarProvider implements AvatarProvider {
         return new AvatarNarration(
                 PROVIDER,
                 AvatarState.ASKING,
-                request.text(),
+                // 返回**实际会念出来的文本**，不是完整原文：报告页的字幕按播放进度逐句出现，
+                // 用完整原文会在"音频被截断"时让字幕跑到音频前面。完整内容前端本来就有
+                // （评分里的 sampleAnswer），念完后展示那一份。
+                spoken,
                 request.interviewerStyle(),
                 speechEnabled,
                 speechEnabled ? request.audioPath() : null,

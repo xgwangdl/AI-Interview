@@ -84,8 +84,9 @@ class LocalAvatarProviderTest {
         AvatarNarration narration = provider.narrate(new AvatarNarrationRequest(
                 SESSION_ID, 0, longText, "balanced", "Java 后端", "/x"));
 
-        // 播报文本保留完整示范回答（给用户看的），但 truncated 会告诉前端"语音只念了前面一段"
-        assertEquals(longText, narration.text());
+        // 播报文本是**实际念出来的那一段**（字幕要跟它对上），truncated 告诉前端"只念了前面一段"
+        assertTrue(narration.text().length() < longText.length());
+        assertTrue(longText.startsWith(narration.text()), narration.text());
         assertTrue(narration.truncated());
         String spoken = LocalAvatarProvider.truncateForSpeech(longText, 40);
         assertTrue(spoken.length() <= 40, spoken);

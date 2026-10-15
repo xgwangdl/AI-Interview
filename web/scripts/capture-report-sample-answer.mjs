@@ -48,7 +48,9 @@ try {
     hasButton: Boolean(document.querySelector('.sample-play')),
     buttonText: document.querySelector('.sample-play')?.textContent?.trim() || null,
     hasAvatar: Boolean(document.querySelector('.sample-avatar .digital-human')),
-    sampleLength: document.querySelector('.sample-text')?.textContent?.length || 0,
+    // 初始状态下示范回答应该是**看不见**的，这里看的是占位提示
+    captionLength: document.querySelector('.sample-text')?.textContent?.length || 0,
+    hiddenPlaceholder: Boolean(document.querySelector('.sample-text.sample-hidden')),
   }));
   console.log('点击前:', JSON.stringify(before));
 
