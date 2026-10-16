@@ -1194,3 +1194,11 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 | 测试 | `ResumePdfFontsTest` 覆盖：不存在路径跳过、**存在但排不出来也跳过**（用仓库根目录的 pom.xml 当替身，走的就是 CFF 那条分支）、报错信息里要点出 CFF 与替代方案；`ResumePdfExporter.cjkFontAvailable()` 也改为按"能不能内嵌"判断，机器上只有 CFF 字体时版式用例会跳过而不是误报 |
 
 **验证**：本地 `mvn -B test` **163 个测试**全绿；CFF 拒收在本地用真实 Noto 字体复现并确认。
+
+**CI 结论**：推送 `d389ec6` 后 build workflow **SUCCESS**（1m 25s，run #36）——
+从 `3d32599` 开始连着红了 6 次的构建恢复了。此后每次 push 都是绿的，失败邮件自然停止。
+
+> 顺带记一笔：GitHub 的 job 日志与 artifact 下载接口都要鉴权（匿名 401），
+> 匿名 API 还有每小时 60 次的限额；这次是靠"下载同一个字体文件在本地复现" + 最终看 run 结论定位的。
+> 以后要快速诊断，最省事的是在仓库配一个只读 token 给 `gh`，或者把失败摘要写进 `::error` 注解
+> （注解是匿名可读的，这块还没做）。
