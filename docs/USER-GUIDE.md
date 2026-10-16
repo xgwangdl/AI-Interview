@@ -359,7 +359,7 @@ PRACTICE_ANALYSIS_POLL_INTERVAL_MS=2000
 | 出题失败：参考解无法通过校验 | AI 这一批题的质量没过自检（参考解跑不通或没有有效用例） | 直接重试；连续失败可以把题目组合拆小一些（比如一次 2-3 题），单次重试的成功率更高 |
 | 第一次选 C++ / Go 跑很久 | 这两个语言的镜像没有预拉（`gcc:13` 约 1.4GB） | 等它拉完，之后就是正常的秒级执行 |
 | 提交后「第 N 个用例未通过」但不给输入 | 那是隐藏用例，故意不展示输入输出 | 用「运行示例」对着可见示例调，或对照报告的期望值自己补边界 |
-| 导出 PDF 失败，提示「没有可用于 PDF 的中文字体」 | 服务器上没有装中文字体（Linux 服务器、CI 容器很常见） | 装一个：Debian/Ubuntu 上 `sudo apt-get install -y fonts-noto-cjk`；或者在 `.env` / `application.properties` 里用 `resume.export.pdf-font` 指定 `.ttf` / `.ttc` 文件路径后重启；只想先拿到文件时，改导出 Word 或 Markdown |
+| 导出 PDF 失败，提示「没有可用于 PDF 的中文字体」 | 服务器上没有装**能被内嵌**的中文字体（Linux 服务器、CI 容器很常见） | Debian/Ubuntu 上装 `sudo apt-get install -y fonts-wqy-zenhei`。**别装 `fonts-noto-cjk`**：它是 CFF 轮廓的字体，PDFBox 能加载但内嵌不了；也可以用 `resume.export.pdf-font` 指定一个 TrueType 的 `.ttf` / `.ttc` 后重启。只想先拿到文件时，改导出 Word 或 Markdown |
 
 ### 8.1 运维：指标与死信队列
 

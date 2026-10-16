@@ -270,9 +270,15 @@ CREATE INDEX idx_resume_optimizations_resume ON resume_optimizations (resume_id,
 
 **关于 PDF 中文字体**：浏览器不会替我们内嵌字体，PDFBox 也不会自动找字体。`ResumePdfFonts`
 先按配置项 `resume.export.pdf-font` / `resume.export.pdf-font-bold` 找，再依次试
-Windows（SimHei / 微软雅黑）、macOS（PingFang）、Linux（Noto CJK / 文泉驿 / AR PL）的常见路径，
+Windows（SimHei / 微软雅黑）、macOS（PingFang）、Linux（文泉驿 / AR PL / Noto）的常见路径，
 一个都没有时**明确报错**并提示怎么配，而不是生成一份乱码 PDF。
-只支持 `.ttf` / `.ttc`（PDFBox 3 不支持 CFF 轮廓的 `.otf`）。
+
+**注意轮廓格式**：只有 **TrueType 轮廓**的 `.ttf` / `.ttc` 能内嵌。CFF 轮廓的字体
+（`.otf`，以及 Debian/Ubuntu 的 `fonts-noto-cjk` 那个 `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`）
+**能加载却内嵌不了**，排版时会抛 `OTF fonts do not have a glyf table`。
+所以选字体时不是"看文件在不在"，而是**先用一个小文档试排一次**（`ResumePdfFonts.probe`，
+结果按路径缓存）：排不出来就换下一个候选，全都排不出来才报错。Linux 服务器上装
+`fonts-wqy-zenhei`（TrueType）即可。
 
 ---
 

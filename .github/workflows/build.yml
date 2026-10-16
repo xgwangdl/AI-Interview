@@ -6,8 +6,9 @@ name: build
 # 默认在 CI 中跳过；要纳入 CI 时再补一个带 service containers 的 job。
 #
 # 注意：runner 镜像里只有 emoji 字体，**没有任何中文字体**，而简历导出的 PDF 必须内嵌中文字体
-# （没有时后端会明确报错，见 ResumePdfFonts）。所以这里先装 fonts-noto-cjk；
-# 不装的话 ResumePdfExporterTest 会因为"机器上没有中文字体"而跳过，等于 CI 不覆盖 PDF 版式。
+# （没有时后端会明确报错，见 ResumePdfFonts）。这里装的是 **TrueType** 的 wqy-zenhei：
+# Debian/Ubuntu 常见的 fonts-noto-cjk 是 CFF 轮廓，PDFBox 能加载却不能内嵌（OTF fonts do not have a glyf table），
+# 装它等于没装。不装任何字体的话，ResumePdfExporterTest 会跳过，CI 也就不覆盖 PDF 版式。
 on:
   push:
   pull_request:
@@ -27,7 +28,7 @@ jobs:
           cache: maven
 
       - name: Install a CJK font (the PDF export embeds one)
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+        run: sudo apt-get update && sudo apt-get install -y fonts-wqy-zenhei
 
       - name: Backend build and tests
         run: mvn -B clean package

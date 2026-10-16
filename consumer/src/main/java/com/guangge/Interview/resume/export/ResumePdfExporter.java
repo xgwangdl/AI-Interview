@@ -70,7 +70,12 @@ public class ResumePdfExporter {
     private static final PDColor RULE = rgb("DCE3E8");
     private static final PDColor PLACEHOLDER = rgb("B45309");
 
-    /** 候选字体：先找用户指定的，再按 Windows / macOS / Linux 的常见路径试。 */
+    /**
+     * 候选字体：先找用户指定的，再按 Windows / macOS / Linux 的常见路径试。
+     *
+     * 顺序上先放 TrueType 字体，CFF 轮廓的放最后 —— 后者能加载但内嵌不了
+     * （见 {@link ResumePdfFonts} 的探测），排在前面只会白探一次。
+     */
     private static final List<String> DEFAULT_REGULAR_FONTS = List.of(
             "C:/Windows/Fonts/simhei.ttf",
             "C:/Windows/Fonts/msyh.ttc",
@@ -80,18 +85,21 @@ public class ResumePdfExporter {
             "/System/Library/Fonts/PingFang.ttc",
             "/System/Library/Fonts/Supplemental/Songti.ttc",
             "/Library/Fonts/Arial Unicode.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/truetype/arphic/uming.ttc");
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/arphic/uming.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            // 下面这些是 CFF 轮廓（Debian/Ubuntu 的 fonts-noto-cjk），PDFBox 内嵌不了，
+            // 留着只是为了让"探测 → 换字体 → 报错"这条链路能给出准确的提示
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
 
     private static final List<String> DEFAULT_BOLD_FONTS = List.of(
             "C:/Windows/Fonts/msyhbd.ttc",
             "C:/Windows/Fonts/simhei.ttf",
             "C:/Windows/Fonts/msjhbd.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc");
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc");
 
     private final List<String> regularCandidates;
     private final List<String> boldCandidates;
@@ -107,14 +115,14 @@ public class ResumePdfExporter {
     }
 
     /**
-     * 本机有没有可用于 PDF 的中文字体。
+     * 本机有没有"真的能内嵌"的中文字体。
      *
-     * 没有字体时导出会明确报错而不是生成乱码（见 {@link ResumePdfFonts}），
-     * 这是产品行为；但"机器上没装字体"不是代码缺陷，所以测试据此决定跳过还是真跑
-     * （CI 里用 apt 装了 fonts-noto-cjk，是真跑的）。
+     * 没有字体、或者只有 CFF 轮廓的字体（Debian 的 fonts-noto-cjk）时导出会明确报错，
+     * 而不是生成乱码或导出到一半崩掉（见 {@link ResumePdfFonts}），这是产品行为；
+     * 但"机器上没装能用的字体"不是代码缺陷，所以测试据此决定跳过还是真跑。
      */
     public boolean cjkFontAvailable() {
-        return ResumePdfFonts.anyAvailable(regularCandidates);
+        return ResumePdfFonts.firstEmbeddable(regularCandidates).isPresent();
     }
 
     public byte[] render(String title, String text, ResumeTheme theme) throws IOException {

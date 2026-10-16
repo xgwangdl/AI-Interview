@@ -1163,3 +1163,34 @@ String normalized = WHITESPACE.matcher(extracted).replaceAll(" ").trim();   // �
 **验证**：本地 `mvn -B test` **162 个测试**全绿（11 skipped）；推送后看 CI 结论（见下）。
 另外顺带记录了 runner 上的两处弃用告警（checkout@v4 / setup-java@v4 跑在 Node 24 上、
 官方已出 v7 / v6），这次不动它们，避免为了消除告警再引入一次失败。
+
+### 2026-10-16 续：装了中文字体 CI 仍然红 —— 真正的坑是"能加载但内嵌不了"
+
+按上面的修法给 workflow 装了 `fonts-noto-cjk` 之后，CI **还是失败**（上传 surefire 报告那步生效了，
+但 GitHub 的 artifact 下载接口要鉴权，本地拿不到）。
+
+**本地复现**：把 Ubuntu 那个字体文件（NotoSansCJK-Regular.ttc，19MB）下到本地，
+用 CI 上"唯一可用的字体"跑一遍真实用例的断言，一秒复现：
+
+```
+collection ok, first font = NotoSansCJKjp-Regular     ← 能加载
+load FAILED: UnsupportedOperationException: OTF fonts do not have a glyf table   ← 一排版就炸
+```
+
+`fonts-noto-cjk` 装的是 `/usr/share/fonts/**opentype**/noto/NotoSansCJK-Regular.ttc` ——
+**CFF 轮廓**的 OTC。PDFBox 3.0.7 的 `PDType0Font` 能把它读进来（`javap` 也确认它没有任何
+OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）就抛上面这个异常。
+也就是说：**这个坑不只影响 CI，Linux 服务器上按直觉装 Noto CJK 也是同样的结果** ——
+而我上一轮写的文档里正好推荐了它。
+
+**修复**（产品级，不是给 CI 打补丁）：
+
+| 改动 | 说明 |
+| --- | --- |
+| 字体"试排"探测 | `ResumePdfFonts.firstEmbeddable`：候选字体先在一次性小文档里 `showText` + `save`（真正走完子集化）跑通才算可用，结果按路径缓存。排不出来的（CFF 轮廓、损坏文件）直接换下一个候选 |
+| 报错更准确 | 全都不可用时提示"PDFBox 不能内嵌 CFF 轮廓的字体，例如 fonts-noto-cjk；装 TrueType 的 fonts-wqy-zenhei 或用 resume.export.pdf-font 指定"，而不是笼统说没字体 |
+| 候选顺序 | TrueType 的 wqy-zenhei / wqy-microhei / arphic 排到前面，Noto CJK 这类 CFF 放最后（避免每次都白探一次） |
+| CI 装对的字体 | workflow 改成 `fonts-wqy-zenhei`，并注明"装 fonts-noto-cjk 等于没装" |
+| 测试 | `ResumePdfFontsTest` 覆盖：不存在路径跳过、**存在但排不出来也跳过**（用仓库根目录的 pom.xml 当替身，走的就是 CFF 那条分支）、报错信息里要点出 CFF 与替代方案；`ResumePdfExporter.cjkFontAvailable()` 也改为按"能不能内嵌"判断，机器上只有 CFF 字体时版式用例会跳过而不是误报 |
+
+**验证**：本地 `mvn -B test` **163 个测试**全绿；CFF 拒收在本地用真实 Noto 字体复现并确认。
