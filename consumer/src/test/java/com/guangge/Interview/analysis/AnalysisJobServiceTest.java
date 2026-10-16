@@ -418,7 +418,9 @@ class AnalysisJobServiceTest {
     private AnalysisJobService service(AsrProvider asr, EvaluationProvider evaluation, int maxAttempts,
                                        long providerTimeoutMs) {
         return new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, asr, evaluation, validator,
-                new PracticeQuestionCatalog(objectMapper), metrics, maxAttempts, providerTimeoutMs,
+                new PracticeQuestionCatalog(objectMapper), metrics,
+                mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class),
+                maxAttempts, providerTimeoutMs,
                 1_000, 60_000);
     }
 

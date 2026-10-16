@@ -15,6 +15,7 @@ public record PracticeSessionView(
         String interviewerStyle,
         int questionCount,
         int durationMinutes,
+        boolean followUpEnabled,
         List<PracticeQuestion> questions,
         String status,
         Instant createdAt,

@@ -37,7 +37,8 @@ class PracticeSessionServiceTest {
     void setUp() {
         sessions = mock(PracticeSessionRepository.class);
         answers = mock(PracticeAnswerRepository.class);
-        service = new PracticeSessionService(sessions, answers, mock(MediaStorage.class), new ObjectMapper(), 7);
+        service = new PracticeSessionService(sessions, answers, mock(MediaStorage.class), new ObjectMapper(),
+                mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class), 7);
     }
 
     @Test
@@ -76,6 +77,7 @@ class PracticeSessionServiceTest {
     void createsSessionWithAuthenticatedOwnerAndRetentionDeadline() {
         PracticeSessionRequest request = new PracticeSessionRequest("Java 后端", null, null, null,
                 "technical", "standard", "balanced", 1, 4,
+                false,
                 List.of(new PracticeQuestion("q-1", "Explain a design", "design")));
         when(sessions.save(any(PracticeSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -127,7 +129,8 @@ class PracticeSessionServiceTest {
         when(answers.findById(answerId)).thenReturn(Optional.of(answer));
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(ownedSession(sessionId)));
         MediaStorage storage = mock(MediaStorage.class);
-        service = new PracticeSessionService(sessions, answers, storage, new ObjectMapper(), 7);
+        service = new PracticeSessionService(sessions, answers, storage, new ObjectMapper(),
+                mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class), 7);
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
                 () -> service.storeAnswerMedia("alice", answerId, "text/plain", 12,

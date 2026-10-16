@@ -23,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +35,7 @@ public class PracticeSessionService {
     private final PracticeAnswerRepository answers;
     private final MediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
+    private final com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive;
     private final int retentionDays;
 
     public PracticeSessionService(
@@ -41,11 +43,13 @@ public class PracticeSessionService {
             PracticeAnswerRepository answers,
             MediaStorage mediaStorage,
             ObjectMapper objectMapper,
+            com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive,
             @Value("${practice.media.retention-days:7}") int retentionDays) {
         this.sessions = sessions;
         this.answers = answers;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
+        this.scoreArchive = scoreArchive;
         this.retentionDays = Math.max(1, retentionDays);
     }
 
@@ -67,6 +71,7 @@ public class PracticeSessionService {
         session.setInterviewerStyle(request.interviewerStyle());
         session.setQuestionCount(request.questionCount());
         session.setDurationMinutes(request.durationMinutes());
+        session.setFollowUpEnabled(request.followUpEnabled());
         session.setQuestionsJson(writeQuestions(request.questions()));
         session.setStatus("in_progress");
         session.setCreatedAt(now);
@@ -193,7 +198,8 @@ public class PracticeSessionService {
     @Transactional
     public void delete(String ownerId, UUID id) throws IOException {
         PracticeSessionEntity session = requireOwnedSession(ownerId, id);
-        deleteSession(session);
+        // 用户主动删：连长期成绩档案一起删（"删除"就该是删除）
+        deleteSession(session, true);
     }
 
     @Scheduled(cron = "0 17 3 * * *")
@@ -201,19 +207,21 @@ public class PracticeSessionService {
     public void deleteExpiredSessions() {
         for (PracticeSessionEntity session : sessions.findAllByRetentionUntilBefore(Instant.now())) {
             try {
-                deleteSession(session);
+                // 到期清理：只删录像与练习本身，成绩档案留着 —— 这正是训练档案能长期看趋势的原因
+                deleteSession(session, false);
             } catch (IOException exception) {
                 throw new IllegalStateException("Unable to remove expired practice media", exception);
             }
         }
     }
 
-    private void deleteSession(PracticeSessionEntity session) throws IOException {
+    private void deleteSession(PracticeSessionEntity session, boolean forgetScores) throws IOException {
         List<PracticeAnswerEntity> sessionAnswers = answers.findAllBySessionIdOrderByQuestionIndexAsc(session.getId());
         for (PracticeAnswerEntity answer : sessionAnswers) {
             if (answer.getMediaKey() != null) mediaStorage.delete(answer.getMediaKey());
         }
         answers.deleteAllBySessionId(session.getId());
+        if (forgetScores) scoreArchive.forgetSession(session.getId());
         sessions.delete(session);
     }
 
@@ -233,11 +241,45 @@ public class PracticeSessionService {
         return toView(session, answerViews(session.getId()));
     }
 
+    /**
+     * 追加一道追问题目（见 {@link com.guangge.Interview.practice.followup.PracticeFollowUpService}）。
+     *
+     * 题目列表与题目数量必须一起改：前端按 questionCount 显示进度，
+     * 报告页按 questionsJson 取题干 —— 只改一个就会出现"第 6/5 题"这种自相矛盾的状态。
+     */
+    @Transactional
+    public PracticeQuestion appendFollowUpQuestion(UUID sessionId, String text, String category) {
+        PracticeSessionEntity session = sessions.findById(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice session not found"));
+        List<PracticeQuestion> questions = new ArrayList<>(readQuestions(session.getQuestionsJson()));
+        int followUpIndex = (int) questions.stream()
+                .filter(question -> category != null && category.equals(question.category()))
+                .count() + 1;
+        PracticeQuestion question = new PracticeQuestion(
+                "q-%d-follow-%d".formatted(questions.size(), followUpIndex), text, category);
+        questions.add(question);
+        session.setQuestionsJson(writeQuestions(questions));
+        session.setQuestionCount(questions.size());
+        sessions.save(session);
+        return question;
+    }
+
+    /** 当场追问要现转写：结果落回回答上，随后的批量分析就不用再转一次。 */
+    @Transactional
+    public void saveTranscript(UUID answerId, String transcript) {
+        answers.findById(answerId).ifPresent(answer -> {
+            answer.setTranscriptText(transcript);
+            answer.setTranscriptStatus("completed");
+            answers.save(answer);
+        });
+    }
+
     private PracticeSessionView toView(PracticeSessionEntity session, List<PracticeAnswerView> sessionAnswers) {
         return new PracticeSessionView(session.getId(), session.getRole(), session.getCompany(),
                 session.getJobDescription(), session.getResumeName(), session.getInterviewType(),
                 session.getDifficulty(), session.getInterviewerStyle(), session.getQuestionCount(),
-                session.getDurationMinutes(), readQuestions(session.getQuestionsJson()), session.getStatus(),
+                session.getDurationMinutes(), session.isFollowUpEnabled(),
+                readQuestions(session.getQuestionsJson()), session.getStatus(),
                 session.getCreatedAt(), session.getStartedAt(), session.getCompletedAt(),
                 session.getRetentionUntil(), sessionAnswers);
     }

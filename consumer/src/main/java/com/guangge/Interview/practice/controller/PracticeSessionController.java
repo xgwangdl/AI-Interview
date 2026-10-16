@@ -4,6 +4,8 @@ import com.guangge.Interview.analysis.AnalysisJobService;
 import com.guangge.Interview.practice.security.OwnerResolver;
 import com.guangge.Interview.practice.dto.PracticeAnswerRequest;
 import com.guangge.Interview.practice.dto.PracticeAnswerView;
+import com.guangge.Interview.practice.dto.PracticeFollowUpRequest;
+import com.guangge.Interview.practice.dto.PracticeFollowUpView;
 import com.guangge.Interview.practice.dto.MediaSignedUrlView;
 import com.guangge.Interview.practice.dto.PracticeReportView;
 import com.guangge.Interview.practice.dto.PracticeSessionRequest;
@@ -11,6 +13,7 @@ import com.guangge.Interview.practice.dto.PracticeSessionView;
 import com.guangge.Interview.practice.media.MediaSignedUrlService;
 import com.guangge.Interview.practice.service.PracticeReportService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
+import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -44,18 +47,21 @@ public class PracticeSessionController {
     private final AnalysisJobService analysisJobs;
     private final MediaSignedUrlService signedUrls;
     private final OwnerResolver owners;
+    private final com.guangge.Interview.practice.followup.PracticeFollowUpService followUps;
 
     public PracticeSessionController(
             PracticeSessionService practiceSessions,
             PracticeReportService practiceReports,
             AnalysisJobService analysisJobs,
             MediaSignedUrlService signedUrls,
-            OwnerResolver owners) {
+            OwnerResolver owners,
+            com.guangge.Interview.practice.followup.PracticeFollowUpService followUps) {
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.analysisJobs = analysisJobs;
         this.signedUrls = signedUrls;
         this.owners = owners;
+        this.followUps = followUps;
     }
 
     @PostMapping("/practice-sessions")
@@ -111,6 +117,20 @@ public class PracticeSessionController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id) {
         return practiceSessions.get(owner(authorization), id);
+    }
+
+    /**
+     * 面试官追问：就刚刚这道题的回答，问一句（也可能判断不需要追问）。
+     *
+     * 同步接口：内部要做一次语音转写 + 一次模型判断，所以前端要显示"正在考虑是否追问"。
+     * 判断为不追问时返回 `question: null`，前端照常进入下一题。
+     */
+    @PostMapping("/practice-sessions/{id}/follow-ups")
+    public PracticeFollowUpView followUp(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @Valid @RequestBody PracticeFollowUpRequest request) {
+        return followUps.followUp(owner(authorization), id, request.answerId());
     }
 
     @GetMapping("/practice-sessions/{id}/report")

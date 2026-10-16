@@ -14,7 +14,7 @@ const formRef = ref();
 const resumeName = ref('');
 const resumeText = ref('');
 const resumeStatus = ref('');
-const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20 });
+const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20, followUpEnabled: true });
 watch(() => form.questionCount, (count) => { form.durationMinutes = count * 4; });
 const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
 
@@ -138,6 +138,14 @@ async function resolveQuestions() {
           </el-radio-group></el-form-item>
           <div class="field-grid lower-fields">
             <el-form-item label="练习难度"><el-select v-model="form.difficulty"><el-option label="基础 · 建立节奏" value="foundation" /><el-option label="标准 · 接近常规面试" value="standard" /><el-option label="进阶 · 深挖细节" value="advanced" /></el-select></el-form-item>
+            <el-form-item label="面试官追问">
+              <el-switch v-model="form.followUpEnabled" />
+              <span class="switch-hint">
+                {{ form.followUpEnabled
+                  ? '答完每题由面试官决定要不要追问一句（每题多等几秒）'
+                  : '只按准备好的题单提问' }}
+              </span>
+            </el-form-item>
             <el-form-item label="问题数量"><el-select v-model="form.questionCount"><el-option :value="3" label="3 道 · 约 10 分钟" /><el-option :value="5" label="5 道 · 约 20 分钟" /><el-option :value="8" label="8 道 · 约 30 分钟" /></el-select></el-form-item>
           </div>
         </section>
@@ -166,6 +174,7 @@ async function resolveQuestions() {
 .focus-banner strong { display: block; color: #a7622c; font-size: 13px; }
 .focus-banner small { display: block; margin-top: 4px; color: #9c8a72; font-size: 12px; line-height: 1.6; }
 .focus-clear { margin-left: auto; padding: 0; border: 0; background: transparent; color: #a7622c; font-size: 12px; cursor: pointer; }
+.switch-hint { margin-left: 10px; color: #8a958e; font-size: 12px; }
 @media(max-width: 900px) { .setup-grid { grid-template-columns: minmax(0,1fr) 240px; gap: 13px; }.form-section { padding: 17px 15px; } }
 @media(max-width: 720px) { .setup-grid { grid-template-columns: 1fr; }.setup-aside { position: static; order: -1; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.summary-card { grid-row: span 2; }.privacy-card { margin: 0; }.continue-button { align-self: end; }.choice-subtitle { font-size: 13px; } }
 /* 窄屏改成单列：说明文字是这两个选项的主要价值，不能在手机上被藏掉。 */

@@ -1,24 +1,26 @@
 package com.guangge.Interview.practice.archive;
 
 import com.guangge.Interview.practice.dto.PracticeArchiveView;
-import com.guangge.Interview.practice.dto.PracticeReportView;
-import com.guangge.Interview.practice.entity.PracticeSessionEntity;
-import com.guangge.Interview.practice.repository.PracticeSessionRepository;
-import com.guangge.Interview.practice.service.PracticeReportService;
+import com.guangge.Interview.practice.entity.PracticeScoreEntity;
+import com.guangge.Interview.practice.repository.PracticeScoreRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 训练档案：跨场次的成长与短板。
  *
- * 复用 {@link PracticeReportService} 的每场汇总（它已经算好了 5 个维度的平均分），
- * 这样"哪些维度、怎么平均"只有一处定义，不会两边算法漂移。
+ * 数据源是 `practice_score_archive`（V9 起与录像/转写分开保留），所以**练习过期后档案仍在** ——
+ * 这也是这个功能从"7 天视野"变成"长期视野"的地方。
  */
 @Service
 public class PracticeArchiveService {
@@ -29,44 +31,54 @@ public class PracticeArchiveService {
     /** 低于这个分数才算短板 —— 全是 90 分的时候不该硬挑一个出来说"你这里差"。 */
     private static final double WEAK_THRESHOLD = 75.0;
     private static final int MAX_WEAK = 3;
-    private static final String COMPLETED = "completed";
+    private static final String SCOPE_NOTE =
+            "统计长期保留的分数（不含录像与转写；录像仍按 7 天清理），最近 %d 场练习";
 
-    private final PracticeSessionRepository sessions;
-    private final PracticeReportService reports;
+    private final PracticeScoreRepository scores;
 
-    public PracticeArchiveService(PracticeSessionRepository sessions, PracticeReportService reports) {
-        this.sessions = sessions;
-        this.reports = reports;
+    public PracticeArchiveService(PracticeScoreRepository scores) {
+        this.scores = scores;
     }
 
     @Transactional(readOnly = true)
     public PracticeArchiveView summary(String ownerId, Integer limit) {
         int window = limit == null ? DEFAULT_WINDOW : Math.min(Math.max(limit, 1), MAX_WINDOW);
-        List<PracticeSessionEntity> recent = sessions.findAllByOwnerIdOrderByCreatedAtDesc(ownerId).stream()
-                .filter(session -> COMPLETED.equals(session.getStatus()))
-                .limit(window)
+        List<UUID> sessionIds = scores.findRecentSessionIds(ownerId, PageRequest.of(0, window));
+        if (sessionIds.isEmpty()) {
+            return empty(window);
+        }
+
+        Map<UUID, List<PracticeScoreEntity>> bySession = new LinkedHashMap<>();
+        for (PracticeScoreEntity score : scores.findAllByOwnerIdAndSessionIdIn(ownerId, sessionIds)) {
+            bySession.computeIfAbsent(score.getSessionId(), ignored -> new ArrayList<>()).add(score);
+        }
+
+        // 趋势要"旧 → 新"：按场次创建时间升序
+        List<List<PracticeScoreEntity>> ordered = bySession.values().stream()
+                .sorted(Comparator.comparing(PracticeArchiveService::createdAt))
                 .toList();
 
         List<PracticeArchiveView.SessionPoint> trend = new ArrayList<>();
         Map<String, List<Double>> byDimension = new LinkedHashMap<>();
         int evaluatedAnswers = 0;
-        // recent 是"近 → 远"，倒过来遍历就是趋势图要的"旧 → 新"
-        for (int index = recent.size() - 1; index >= 0; index--) {
-            PracticeSessionEntity session = recent.get(index);
-            PracticeReportView report = reports.report(ownerId, session.getId());
-            PracticeReportView.ReportSummary summary = report.summary();
-            // 还没评分的场次不进档案：0 分和"没分数"是两回事
-            if (summary == null || summary.averageOverallScore() == null) continue;
+        for (List<PracticeScoreEntity> answers : ordered) {
+            Map<String, Double> dimensions = new LinkedHashMap<>();
+            putIfPresent(dimensions, "relevance", average(answers, PracticeScoreEntity::getRelevance));
+            putIfPresent(dimensions, "completeness", average(answers, PracticeScoreEntity::getCompleteness));
+            putIfPresent(dimensions, "professionalism", average(answers, PracticeScoreEntity::getProfessionalism));
+            putIfPresent(dimensions, "starStructure", average(answers, PracticeScoreEntity::getStarStructure));
+            putIfPresent(dimensions, "logic", average(answers, PracticeScoreEntity::getLogic));
 
-            Map<String, Double> dimensions = summary.averageDimensionScores() == null
-                    ? Map.of() : summary.averageDimensionScores();
-            dimensions.forEach((key, value) -> {
-                if (value != null) byDimension.computeIfAbsent(key, ignored -> new ArrayList<>()).add(value);
-            });
-            evaluatedAnswers += report.evaluatedCount();
+            Double overall = average(answers, PracticeScoreEntity::getOverallScore);
+            // 场次里只要有一条有分数就进档案；"0 分"和"没评分"在这里已经天然分开
+            if (overall == null) continue;
+
+            dimensions.forEach((key, value) ->
+                    byDimension.computeIfAbsent(key, ignored -> new ArrayList<>()).add(value));
+            evaluatedAnswers += (int) answers.stream().filter(row -> row.getOverallScore() != null).count();
+            PracticeScoreEntity head = answers.get(0);
             trend.add(new PracticeArchiveView.SessionPoint(
-                    session.getId(), session.getRole(), session.getCreatedAt(),
-                    summary.averageOverallScore(), dimensions));
+                    head.getSessionId(), head.getRole(), head.getSessionCreatedAt(), overall, dimensions));
         }
 
         List<PracticeArchiveView.DimensionStat> dimensions = byDimension.entrySet().stream()
@@ -80,7 +92,7 @@ public class PracticeArchiveService {
                 .toList();
 
         return new PracticeArchiveView(
-                "只统计还没过期的已完成练习（默认保留 7 天，更早的记录会随保留策略一起清掉）",
+                SCOPE_NOTE.formatted(ordered.size()),
                 window,
                 new PracticeArchiveView.Totals(trend.size(), evaluatedAnswers),
                 trend.size() >= 2,
@@ -89,8 +101,35 @@ public class PracticeArchiveService {
                 weakest);
     }
 
+    private static PracticeArchiveView empty(int window) {
+        return new PracticeArchiveView(SCOPE_NOTE.formatted(0), window,
+                new PracticeArchiveView.Totals(0, 0), false, List.of(), List.of(), List.of());
+    }
+
+    private static Instant createdAt(List<PracticeScoreEntity> answers) {
+        Instant value = answers.get(0).getSessionCreatedAt();
+        return value == null ? Instant.EPOCH : value;
+    }
+
+    private static void putIfPresent(Map<String, Double> sink, String key, Double value) {
+        if (value != null) sink.put(key, value);
+    }
+
+    private static Double average(List<PracticeScoreEntity> rows, java.util.function.Function<PracticeScoreEntity, BigDecimal> pick) {
+        double raw = rows.stream()
+                .map(pick)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(BigDecimal::doubleValue)
+                .average()
+                .orElse(Double.NaN);
+        return Double.isNaN(raw) ? null : round(raw);
+    }
+
+    private static double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
     private static double round(List<Double> values) {
-        double raw = values.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        return Math.round(raw * 100.0) / 100.0;
+        return round(values.stream().mapToDouble(Double::doubleValue).average().orElse(0));
     }
 }

@@ -54,6 +54,7 @@ public class AnalysisJobService {
     private final EvaluationResultValidator validator;
     private final PracticeQuestionCatalog questions;
     private final AnalysisQueueMetrics metrics;
+    private final com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive;
     private final int maxAttempts;
     private final long providerTimeoutMs;
     private final long retryBackoffMs;
@@ -70,6 +71,7 @@ public class AnalysisJobService {
             EvaluationResultValidator validator,
             PracticeQuestionCatalog questions,
             AnalysisQueueMetrics metrics,
+            com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive,
             @Value("${practice.analysis.max-attempts:3}") int maxAttempts,
             @Value("${practice.analysis.provider-timeout-ms:120000}") long providerTimeoutMs,
             @Value("${practice.analysis.retry-backoff-ms:5000}") long retryBackoffMs,
@@ -84,6 +86,7 @@ public class AnalysisJobService {
         this.validator = validator;
         this.questions = questions;
         this.metrics = metrics;
+        this.scoreArchive = scoreArchive;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.providerTimeoutMs = Math.max(1000, providerTimeoutMs);
         this.retryBackoffMs = Math.max(0, retryBackoffMs);
@@ -356,6 +359,8 @@ public class AnalysisJobService {
             answer.setEvaluationJson(validator.write(report));
             answer.setEvaluationStatus("completed");
             answers.save(answer);
+            // 成绩另存一份长期档案：场次 7 天后会连回答一起清掉，档案要留下来（见 V9 迁移）
+            scoreArchive.record(session, answer, outcome.result());
         }
     }
 

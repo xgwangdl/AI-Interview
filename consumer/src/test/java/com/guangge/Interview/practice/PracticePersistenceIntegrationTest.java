@@ -27,6 +27,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 /**
  * Applies the real Flyway migrations to a real PostgreSQL + pgvector database and exercises the
@@ -112,7 +113,8 @@ class PracticePersistenceIntegrationTest {
     void expiredSessionsAreDeletedTogetherWithMediaAndJobs() throws IOException {
         LocalMediaStorage storage = new LocalMediaStorage(mediaDir.toString());
         PracticeSessionService service =
-                new PracticeSessionService(sessions, answers, storage, new ObjectMapper(), 7);
+                new PracticeSessionService(sessions, answers, storage, new ObjectMapper(),
+                        mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class), 7);
 
         PracticeSessionEntity expired = newSession();
         expired.setRetentionUntil(Instant.now().minusSeconds(3600));

@@ -20,5 +20,7 @@ public record PracticeSessionRequest(
         @NotBlank @Size(max = 32) String interviewerStyle,
         @Min(1) @Max(20) int questionCount,
         @Min(1) @Max(240) int durationMinutes,
+        /** 允许面试官追问（默认关：每题会多一次转写与一次模型调用）。 */
+        boolean followUpEnabled,
         @NotNull @NotEmpty @Size(max = 20) List<@Valid PracticeQuestion> questions) {
 }

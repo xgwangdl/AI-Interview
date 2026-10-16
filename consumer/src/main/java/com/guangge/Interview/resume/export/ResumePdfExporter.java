@@ -87,6 +87,9 @@ public class ResumePdfExporter {
             "/Library/Fonts/Arial Unicode.ttf",
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
             "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            // Alpine（Docker 镜像）：apk add font-wqy-zenhei 装到这两个目录
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
             "/usr/share/fonts/truetype/arphic/uming.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
             // 下面这些是 CFF 轮廓（Debian/Ubuntu 的 fonts-noto-cjk），PDFBox 内嵌不了，
@@ -98,6 +101,7 @@ public class ResumePdfExporter {
             "C:/Windows/Fonts/simhei.ttf",
             "C:/Windows/Fonts/msjhbd.ttc",
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc");
 

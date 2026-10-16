@@ -27,6 +27,7 @@ import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.service.PracticeQuestionCatalog;
 import com.guangge.Interview.practice.service.PracticeReportService;
+import com.guangge.Interview.practice.archive.PracticeScoreArchiveService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
 import com.guangge.Interview.practice.storage.LocalMediaStorage;
 import com.guangge.Interview.practice.storage.MediaStorage;
@@ -86,6 +87,7 @@ class PracticeFlowAcceptanceTest {
     private AnalysisJobService jobService;
     private PracticeReportService reportService;
     private MediaSignedUrlService signedUrls;
+    private PracticeScoreArchiveService scoreArchive;
 
     @BeforeEach
     void setUp() {
@@ -95,14 +97,17 @@ class PracticeFlowAcceptanceTest {
         dlq = mock(AnalysisDlqRepository.class);
         mediaStorage = new LocalMediaStorage(tempDir.toString());
         metrics = new AnalysisQueueMetrics(new SimpleMeterRegistry(), jobs, dlq);
+        // 成绩档案用 mock：这个用例关心的是"分析链路能不能跑通"，档案落库有自己的单测
+        scoreArchive = mock(PracticeScoreArchiveService.class);
 
         EvaluationResultValidator validator = new EvaluationResultValidator(objectMapper);
         PracticeQuestionCatalog catalog = new PracticeQuestionCatalog(objectMapper);
         signedUrls = new MediaSignedUrlService("acceptance-secret", 300);
 
-        sessionService = new PracticeSessionService(sessions, answers, mediaStorage, objectMapper, 7);
+        sessionService = new PracticeSessionService(sessions, answers, mediaStorage, objectMapper,
+                scoreArchive, 7);
         jobService = new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, transcribingAsr(),
-                evaluatingProvider(), validator, catalog, metrics, 3, 60_000, 1_000, 60_000);
+                evaluatingProvider(), validator, catalog, metrics, scoreArchive, 3, 60_000, 1_000, 60_000);
         reportService = new PracticeReportService(sessions, answers, jobs, validator, signedUrls, catalog);
 
         stubRepositories();
@@ -243,7 +248,7 @@ class PracticeFlowAcceptanceTest {
                 .mapToObj(index -> new PracticeQuestion("q-" + index, "第 " + index + " 题", "design"))
                 .toList();
         return new PracticeSessionRequest("Java 后端", "Light", "负责订单系统", "resume.pdf",
-                "technical", "standard", "balanced", 5, 20, questions);
+                "technical", "standard", "balanced", 5, 20, false, questions);
     }
 
     private static AsrProvider transcribingAsr() {

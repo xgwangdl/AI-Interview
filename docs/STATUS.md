@@ -1277,3 +1277,54 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 这样档案能跨越 7 天窗口；之后是错题本（按题重练）与区间选择。Q11-Q14 见需求文档。
 
 **测试**：后端 176 → **185 个**（档案聚合 4 条、出题 focus 3 条、原有出题用例适配 1 条）；前端 84 → **92 个**。
+
+### 2026-10-16 三项收尾：分数长期保留 + 追问式面试 + Docker 一键跑
+
+按上一轮讨论的顺序把三件做完了（背景见 [PRACTICE-ARCHIVE-REQUIREMENTS.md](PRACTICE-ARCHIVE-REQUIREMENTS.md) §2.2）。
+
+**① 分数长期保留（档案的天花板拆掉了）**
+
+- 新增迁移 `V9`：`practice_score_archive` 一张表，**只存分数与维度**（不含转写与录像），
+  外加 `practice_sessions.follow_up_enabled`。
+- 迁移里**回填**已有评分，升级后历史不会丢：验证时库里 smoke 1 条、guangge 5 条 ✓。
+- 写入点挂在评分完成之后（`AnalysisJobService`）：同一场次同一道题唯一（唯一索引 + 存在性检查），
+  分析任务重试不会写出重复分数。
+- 删除语义分两种：**用户主动删某场练习 → 该场成绩一起删**；**到期自动清理 → 只删录像与练习，
+  档案保留**（这正是"7 天清理"与"长期成长"能共存的地方）。
+- 新增 `DELETE /api/v1/practice-archive`：一键清空长期统计，练习与录像不动。
+- 档案接口改成读这张表，范围说明改为"统计长期保留的分数（不含录像与转写）"。
+
+**② 追问式面试**
+
+- 新增 `POST /api/v1/practice-sessions/{id}/follow-ups`：就刚答完的那道题做一次**同步**转写 +
+  一次模型判断，返回`{question, reason}`；判断为不需要或转写太短时 `question` 为空，前端照常下一题。
+- 提示词（`practice-follow-up-system-prompt.st`）明确"什么时候问、什么时候不问"：
+  只有结论没细节 / 含糊 / 提到没讲清 → 追问；已经答完整 → 不问。追问 ≤40 字、一次只问一件事。
+- 追问作为**下一题**追加到 `questions_json` 并把 `question_count` +1，所以小人播报、录制、评分、
+  报告全都沿用原有链路；一场最多 3 次。
+- 前端：答完题后若开启追问，数字人字幕显示"面试官正在考虑是否追问…"，追问进来就插到当前题后面；
+  任何失败只影响这一次追问，绝不影响答题（后端直接给可读 reason）。
+- 创建练习页新增开关（默认开），说明写清"每题多等几秒"。
+
+**③ Docker 一键跑起来**
+
+- 新增根 `Dockerfile`（多阶段：`mvnw` 构建 → JRE 运行，**运行镜像里装文泉驿字体**，
+  顺带把"PDF 要 TrueType 中文字体"这件事在容器里做实）+ `web/Dockerfile` + `web/nginx.conf`
+  （反代 `/api`、`/login`、`/actuator`，GET 的 `/login` 交回 SPA，和 vite 配置一致）。
+- `docker compose --profile full up -d --build` 一条命令起全栈：基础设施 + 后端 + 前端，
+  访问 <http://localhost:8080>。不加 profile 时行为与以前完全一样（只起基础设施）。
+- `.dockerignore` 把 `data/`、`target/`、`node_modules/` 排除在构建上下文外。
+
+**过程中修掉一个真缺陷**：项目里写的是 `spring.redis.host`（Boot 3 已改用 `spring.data.redis.host`），
+旧前缀被静默忽略 → 容器里连的其实是容器自己的 localhost，健康检查一直 DOWN（本地开发看不出来，
+因为默认值恰好也是 localhost）。已改成新前缀。
+
+**验证**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 单测 | 后端 185 → **199 个**（档案聚合重写 5、成绩档案写入 4、追问校验 4、追问服务 5、旧用例适配）；前端 **92 个** |
+| 真实追问 | 用库里现成的回答（含转写）调用：**4 秒**返回追问「能具体说说你是怎么进行服务拆分的吗？」+ 理由，场次题目数 2 → 3（验证后已还原这条数据） |
+| 容器全栈 | `docker compose --profile full up -d` 起 4 个容器；经 nginx 登录 200、`/api/v1/practice-archive` 正常、`GET /login` 走 SPA、健康检查 **UP** |
+| 容器内 PDF | 容器里导出简历 PDF：200 / `application/pdf` / 25291 字节 / `%PDF` 头 —— Alpine 的文泉驿字体路径生效 |
+| 迁移 | 启动即执行 V9；成绩档案表里 smoke 1 条、guangge 5 条（回填成功） |

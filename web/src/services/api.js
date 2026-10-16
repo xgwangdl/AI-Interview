@@ -53,6 +53,7 @@ export function trySyncSession(session) {
       interviewerStyle: session.interviewerStyle,
       questionCount: session.questionCount,
       durationMinutes: session.durationMinutes,
+      followUpEnabled: Boolean(session.followUpEnabled),
       questions: session.questions,
     }),
   });
@@ -120,6 +121,19 @@ export function tryUploadAnswerMedia(answerId, blob) {
   const form = new FormData();
   form.append('file', blob, `${answerId}.webm`);
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/media`, { method: 'POST', body: form });
+}
+
+/**
+ * 面试官追问：把刚答完的那道题交给后端，让面试官决定要不要接着问一句。
+ *
+ * 同步接口（内部要转写 + 一次模型判断），所以调用方要显示"正在考虑是否追问"。
+ * 返回 `{question: null, reason}` 表示这次不追问，照常进入下一题。
+ */
+export function requestFollowUp(sessionId, answerId) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/follow-ups`, {
+    method: 'POST',
+    body: JSON.stringify({ answerId }),
+  });
 }
 
 // --- 分片上传（#12）：大文件断点续传，见 services/chunkedUpload.js ---

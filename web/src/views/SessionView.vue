@@ -6,7 +6,9 @@ import { usePracticeStore } from '../stores/practice';
 import { getActiveStream, stopActiveStream, supportedRecorderType } from '../services/mediaCapture';
 import { getMedia, saveMedia } from '../services/mediaStore';
 import { buildQuestions, styleLabels } from '../data/questions';
-import { getNarrationAudio, getQuestionNarration, tryCompleteAnswer, tryCompleteSession, trySaveAnswer } from '../services/api';
+import {
+  getNarrationAudio, getQuestionNarration, requestFollowUp, tryCompleteAnswer, tryCompleteSession, trySaveAnswer,
+} from '../services/api';
 import { uploadAnswerMediaWithFallback } from '../services/chunkedUpload';
 import DigitalHuman from '../components/DigitalHuman.vue';
 import { createAvatarAudio } from '../services/avatarAudio';
@@ -22,6 +24,8 @@ const recorderState = ref('idle');
 const currentIndex = ref(0);
 const elapsed = ref(0);
 const savedAnswer = ref(false);
+const followUpPending = ref(false);
+const followUpNotice = ref('');
 const narrationBlobUrl = ref('');
 const narration = ref(null);
 const narrationLoading = ref(false);
@@ -42,6 +46,7 @@ const formattedTime = computed(() => `${String(Math.floor(elapsed.value / 60)).p
 // 之前这里绑定的是整段问题文本，长句会溢出画面、压在小人身上被裁掉，
 // 用户看到的就是同一句问题出现两遍、而且上面那遍还看不全。
 const narrationCaption = computed(() => {
+  if (followUpPending.value) return '面试官正在考虑是否追问…';
   if (narrationLoading.value) return '正在准备这道题…';
   if (speaking.value) return '正在朗读这道题…';
   if (narrationAudioFailed.value) return '语音暂不可用，请阅读下方问题';
@@ -310,6 +315,9 @@ async function finishQuestion() {
     ElMessage.warning('请先录制本题回答，或选择结束本次练习。');
     return;
   }
+  // 面试官追问：答完当场判断，问出来就作为下一题插进来
+  const followUp = await maybeFollowUp();
+  if (followUp) return;
   if (currentIndex.value < questions.value.length - 1) {
     currentIndex.value += 1;
     elapsed.value = 0;
@@ -318,6 +326,40 @@ async function finishQuestion() {
     return;
   }
   await finishPractice();
+}
+
+/**
+ * 追问：把这一题的回答交给后端，由面试官决定要不要接着问一句。
+ *
+ * 返回 true 表示"插入了追问并已经跳过去"。任何失败都只是少问一句，
+ * 绝不能挡住练习 —— 所以这里吞掉异常、由后端给出可读的 reason 文案。
+ */
+async function maybeFollowUp() {
+  if (!draft.followUpEnabled || !draft.id) return false;
+  const answer = draft.answers.find((item) => item.questionIndex === currentIndex.value);
+  if (!answer?.mediaId) return false;
+  followUpPending.value = true;
+  try {
+    const result = await requestFollowUp(draft.id, answer.mediaId);
+    if (!result?.question) {
+      if (result?.reason) followUpNotice.value = result.reason;
+      return false;
+    }
+    if (!draft.questions) draft.questions = [];
+    draft.questions.splice(currentIndex.value + 1, 0, result.question);
+    practice.saveDraft();
+    currentIndex.value += 1;
+    elapsed.value = 0;
+    recorderState.value = 'idle';
+    savedAnswer.value = false;
+    ElMessage.success('面试官追问了一句，请继续回答。');
+    return true;
+  } catch (error) {
+    followUpNotice.value = error.message || '这次追问没成功，继续下一题即可';
+    return false;
+  } finally {
+    followUpPending.value = false;
+  }
 }
 
 async function retake() {

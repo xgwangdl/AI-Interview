@@ -62,7 +62,14 @@ public class PracticeSessionEntity {
     @Column(name = "retention_until", nullable = false)
     private Instant retentionUntil;
 
+    /** 是否允许面试官根据回答追问（V9 起）。追问要多一次转写 + 一次模型调用，所以在创建时由用户决定。 */
+    @Column(name = "follow_up_enabled", nullable = false)
+    private boolean followUpEnabled;
+
     public PracticeSessionEntity() { }
+
+    public boolean isFollowUpEnabled() { return followUpEnabled; }
+    public void setFollowUpEnabled(boolean followUpEnabled) { this.followUpEnabled = followUpEnabled; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
