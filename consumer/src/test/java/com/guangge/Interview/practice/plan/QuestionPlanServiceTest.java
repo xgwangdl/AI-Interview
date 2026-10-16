@@ -14,7 +14,7 @@ class QuestionPlanServiceTest {
 
     private static final QuestionPlanRequest REQUEST = new QuestionPlanRequest(
             "Java 后端", "Light", "负责订单系统", "resume.pdf", "五年 Java 后端经验",
-            "technical", "standard", "balanced", 3);
+            "technical", "standard", "balanced", 3, null);
 
     @Test
     void returnsQuestionsWithTheirProvenance() {

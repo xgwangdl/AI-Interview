@@ -1,12 +1,14 @@
 <script setup>
-import { reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { extractResume, planQuestions, trySyncSession } from '../services/api';
 import { buildQuestions } from '../data/questions';
+import { DIMENSION_LABELS } from '../services/practiceArchive';
 
 const router = useRouter();
+const route = useRoute();
 const practice = usePracticeStore();
 const formRef = ref();
 const resumeName = ref('');
@@ -15,6 +17,22 @@ const resumeStatus = ref('');
 const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20 });
 watch(() => form.questionCount, (count) => { form.durationMinutes = count * 4; });
 const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
+
+/**
+ * 从训练档案点「针对短板再练一场」过来时带着岗位与弱项维度。
+ * 只影响出题倾向，用户可以随时清掉。
+ */
+const focusDimensions = ref([]);
+const focusLabels = computed(() => focusDimensions.value.map((key) => DIMENSION_LABELS[key] || key));
+
+onMounted(() => {
+  if (typeof route.query.role === 'string' && route.query.role) form.role = route.query.role;
+  if (typeof route.query.company === 'string' && route.query.company) form.company = route.query.company;
+  focusDimensions.value = String(route.query.focus || '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => DIMENSION_LABELS[key]);
+});
 
 async function onResumeChange(event) {
   const file = event.target.files?.[0];
@@ -69,6 +87,7 @@ async function resolveQuestions() {
       difficulty: form.difficulty,
       interviewerStyle: form.interviewerStyle,
       questionCount: form.questionCount,
+      focusDimensions: focusDimensions.value,
     });
     if (plan?.questions?.length === form.questionCount) return plan.questions;
   } catch {
@@ -84,6 +103,14 @@ async function resolveQuestions() {
     <div class="page-heading"><div><div class="eyebrow">STEP 01 / 02</div><h1>配置你的练习</h1><p>补充目标岗位和面试偏好，系统将据此组织练习问题。</p></div><el-tag class="tag-muted">练习数据保存 7 天</el-tag></div>
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="setup-grid">
       <div class="setup-main">
+        <section v-if="focusLabels.length" class="panel focus-banner">
+          <el-icon><Aim /></el-icon>
+          <div>
+            <strong>本次重点考察：{{ focusLabels.join('、') }}</strong>
+            <small>来自你的训练档案（最近几次练习里较弱的部分）。出题会多出能暴露这些问题的题。</small>
+          </div>
+          <button class="focus-clear" @click="focusDimensions = []">清除</button>
+        </section>
         <section class="form-section panel">
           <div class="form-section-title"><span class="number-badge">01</span><div><strong>岗位信息</strong><small>让问题更贴近你的目标职位</small></div></div>
           <div class="field-grid">
@@ -134,6 +161,11 @@ async function resolveQuestions() {
 .choice-grid { display: grid; width: 100%; grid-template-columns: repeat(3,1fr); gap: 9px; }.choice-grid :deep(.el-radio-button) { width: 100%; }.choice-grid :deep(.el-radio-button__inner) { display: grid; width: 100%; height: auto; min-height: 76px; align-content: center; gap: 5px; padding: 10px 11px; border: 1px solid #e2e7e3 !important; border-radius: 6px !important; box-shadow: none !important; text-align: left; white-space: normal; line-height: 1.45; }.choice-grid :deep(.el-radio-button:first-child .el-radio-button__inner),.choice-grid :deep(.el-radio-button:last-child .el-radio-button__inner) { border-left: 1px solid #e2e7e3; border-radius: 6px; }.choice-grid :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { border-color: var(--green) !important; background: #f0f8f4; color: var(--green-dark); }.choice-title { font-size: 14px; font-weight: 600; }.choice-subtitle { color: #5f6d66; font-size: 14px; line-height: 1.5; }
 .lower-fields { margin-top: 5px; }.lower-fields :deep(.el-select) { width: 100%; }
 .setup-aside { position: sticky; top: 82px; }.summary-card { padding: 17px; box-shadow: none; }.summary-card .section-title { margin-bottom: 17px; }.summary-role { color: #35413b; font-size: 16px; font-weight: 650; }.summary-company { margin-top: 5px; color: #98a29d; font-size: 13px; }.summary-divider { margin: 16px 0 13px; border-top: 1px solid #edf0ed; }.summary-row { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0; color: #818c86; font-size: 13px; }.summary-row strong { color: #4c5952; font-size: 13px; font-weight: 600; }.privacy-card { display: flex; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid #dcece2; border-radius: 6px; background: #eff7f1; color: var(--green); }.privacy-card > .el-icon { flex: none; margin-top: 2px; }.privacy-card strong { color: #3d7458; font-size: 13px; }.privacy-card p { margin: 5px 0 0; color: #718d7b; font-size: 13px; line-height: 1.6; }.continue-button { width: 100%; }
+.focus-banner { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 13px 15px; border-color: #f0dcc6; background: #fdf6ee; box-shadow: none; }
+.focus-banner > .el-icon { flex: none; margin-top: 2px; color: #c07a34; font-size: 16px; }
+.focus-banner strong { display: block; color: #a7622c; font-size: 13px; }
+.focus-banner small { display: block; margin-top: 4px; color: #9c8a72; font-size: 12px; line-height: 1.6; }
+.focus-clear { margin-left: auto; padding: 0; border: 0; background: transparent; color: #a7622c; font-size: 12px; cursor: pointer; }
 @media(max-width: 900px) { .setup-grid { grid-template-columns: minmax(0,1fr) 240px; gap: 13px; }.form-section { padding: 17px 15px; } }
 @media(max-width: 720px) { .setup-grid { grid-template-columns: 1fr; }.setup-aside { position: static; order: -1; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.summary-card { grid-row: span 2; }.privacy-card { margin: 0; }.continue-button { align-self: end; }.choice-subtitle { font-size: 13px; } }
 /* 窄屏改成单列：说明文字是这两个选项的主要价值，不能在手机上被藏掉。 */

@@ -1241,3 +1241,39 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 
 **测试**：后端 163 → **176 个**（新增校验器 9 条、服务流程 5 条）；前端 72 → **84 个**（新增向导逻辑 9 条、
 两个新接口客户端 3 条）。
+
+### 2026-10-16 新功能：训练档案（跨场次成长 + 短板复练）
+
+需求见 [PRACTICE-ARCHIVE-REQUIREMENTS.md](PRACTICE-ARCHIVE-REQUIREMENTS.md)。这是产品闭环里最大的一块缺口：
+功能都不缺，但**每一次练习都是一次性的** —— 报告只看单场，7 天后连数据一起清，
+用户知道哪弱也不知道下一步练什么，更没有理由回来练第二次。
+
+**一期刻意做小**：不新增表、不新增迁移，纯粹聚合现有数据（`practice_sessions` +
+`practice_answers.evaluation_json`），图表用 SVG 自己算坐标（前端没装图表库，也免了联网装依赖）。
+
+| 层 | 实现 |
+| --- | --- |
+| 接口 | `GET /api/v1/practice-archive?limit=5`：返回趋势（时间正序）、维度平均、短板（<75 分，最多 3 个）、范围说明 |
+| 复用 | 每场汇总直接调 `PracticeReportService.report()` —— "哪 5 个维度、怎么平均"只有一处定义，不会两边算法漂移 |
+| 出题倾向 | `QuestionPlanRequest` 增加 `focusDimensions`；`SpringAiQuestionPlanProvider` 把 key 翻成中文并写成"多出不答好就会暴露这些问题的题"，**不改题目数量与题型** |
+| 前端 | 总览页新增"训练档案"三栏（最近得分 / 维度平均 / 下一步练什么）；`services/practiceArchive.js` 负责标签、建议文案与折线坐标（可单测） |
+| 复练入口 | 「针对短板再练一场」→ `/practice/setup?role=…&focus=…`，配置页预填岗位并显示"本次重点考察"，可一键清除 |
+
+**真实数据验证**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 真实聚合 | smoke 账号现有 4 场已完成练习：接口返回 4 个点、5 个维度平均、短板取最低的 3 个，未登录 401 |
+| 阈值行为 | 全部 ≥75 分时 `weakest` 为空（单测覆盖），前端改为建议"提高难度再练一场" |
+| 不入档 | in_progress、或已完成但没评分的场次不进趋势与平均（单测覆盖） |
+| 浏览器实测 | `web/scripts/verify-practice-archive.mjs`：仪表盘画出 1 条折线 5 个点、5 条维度条、3 项短板；点按钮后配置页岗位预填 `Java 后端`、提示"本次重点考察：STAR 结构、回答逻辑、回答完整度"，URL 带 `focus=starStructure,logic,completeness` |
+| 出题链路 | 带 focus 的提示词里出现中文维度名与"多出不答好就会暴露这些问题的题"（单测覆盖 key→中文、未知 key 忽略） |
+
+截图见 `data/screenshots/archive-dashboard.png` 与 `archive-focus-setup.png`。
+验证时给 smoke 账号临时造过 5 场递增成绩的演示数据（`data/seed-archive-demo.sql`），**已按 id 全部删除**；
+顺手清掉了 3 场早先冒烟测试留下的 0 分场次（它们会把趋势图带成"看起来坏了"）。
+
+**二期（下一步）**：把"分数与维度"与"录像"分开保留（新表 + V9 迁移 + 清理任务改造），
+这样档案能跨越 7 天窗口；之后是错题本（按题重练）与区间选择。Q11-Q14 见需求文档。
+
+**测试**：后端 176 → **185 个**（档案聚合 4 条、出题 focus 3 条、原有出题用例适配 1 条）；前端 84 → **92 个**。

@@ -1,10 +1,40 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePracticeStore } from '../stores/practice';
+import { buildArchive, loadArchive, trendPoints } from '../services/practiceArchive';
 
 const router = useRouter();
 const practice = usePracticeStore();
+const archive = ref(null);
+const archiveLoading = ref(true);
+
+// 折线画布用固定尺寸 + 自己算坐标：省一个图表库依赖，也不用联网装包
+const TREND_WIDTH = 320;
+const TREND_HEIGHT = 108;
+const trendDots = computed(() => trendPoints(archive.value?.trend, TREND_WIDTH, TREND_HEIGHT));
+const trendPath = computed(() => trendDots.value.map((dot) => `${dot.x},${dot.y}`).join(' '));
+
+onMounted(loadArchiveSummary);
+
+async function loadArchiveSummary() {
+  archiveLoading.value = true;
+  try {
+    archive.value = buildArchive(await loadArchive(5));
+  } catch {
+    // 档案是增强项：拿不到就不显示这一块，不影响练习列表
+    archive.value = null;
+  } finally {
+    archiveLoading.value = false;
+  }
+}
+
+/** 针对短板再练一场：带上岗位与弱项维度，出题时会多出能暴露这些问题的题。 */
+function retryWeakDimensions() {
+  const query = { role: archive.value?.latestRole || '' };
+  if (archive.value?.focusKeys?.length) query.focus = archive.value.focusKeys.join(',');
+  router.push({ path: '/practice/setup', query });
+}
 const latest = computed(() => practice.sessions.slice(0, 4));
 // 累计的是「实际录制时长」，不是创建练习时填的预计时长。
 const recordedSeconds = computed(() => practice.completed.reduce(
@@ -48,6 +78,71 @@ function timeLabel(value) {
         <button class="text-action" @click="router.push('/practice/setup')">配置岗位与题目 <el-icon><ArrowRight /></el-icon></button>
       </article>
     </div>
+
+    <section v-if="archive" class="archive-section">
+      <div class="section-title">
+        <span>训练档案</span>
+        <small class="archive-scope">{{ archive.scopeNote }}</small>
+      </div>
+
+      <div v-if="archive.scoredSessions" class="archive-grid">
+        <article class="panel archive-card">
+          <div class="archive-card-head">
+            <strong>最近得分</strong>
+            <span>{{ archive.scoredSessions }} 场 · {{ archive.evaluatedAnswers }} 个回答已评分</span>
+          </div>
+          <svg class="trend-svg" :viewBox="`0 0 ${TREND_WIDTH} ${TREND_HEIGHT}`" role="img" aria-label="最近练习得分趋势">
+            <polyline v-if="trendDots.length > 1" :points="trendPath" class="trend-line" />
+            <g v-for="(dot, index) in trendDots" :key="index">
+              <circle :cx="dot.x" :cy="dot.y" r="3.6" class="trend-dot" />
+              <text :x="dot.x" :y="dot.y - 8" text-anchor="middle" class="trend-score">{{ dot.score }}</text>
+              <text :x="dot.x" :y="TREND_HEIGHT - 1" text-anchor="middle" class="trend-label">{{ dot.label }}</text>
+            </g>
+          </svg>
+          <p v-if="archive.needsMoreSessions" class="archive-hint">
+            再完成一场练习就能看到趋势；现在这个点是最近一场的成绩。
+          </p>
+        </article>
+
+        <article class="panel archive-card">
+          <div class="archive-card-head"><strong>维度平均</strong><span>橙色的是需要重点练的</span></div>
+          <div class="dimension-list">
+            <div v-for="item in archive.dimensions" :key="item.key" class="dimension-row"
+                 :class="{ weak: archive.focusKeys.includes(item.key) }">
+              <span class="dimension-name">{{ item.label }}</span>
+              <span class="dimension-bar"><i :style="{ width: `${Math.min(item.average, 100)}%` }"></i></span>
+              <strong>{{ item.average }}</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel archive-card">
+          <div class="archive-card-head"><strong>下一步练什么</strong></div>
+          <template v-if="archive.weakest.length">
+            <ul class="weakest-list">
+              <li v-for="item in archive.weakest" :key="item.key">
+                <div class="weakest-head"><strong>{{ item.label }}</strong><span>{{ item.average }} 分</span></div>
+                <p>{{ item.advice }}</p>
+              </li>
+            </ul>
+            <el-button class="primary-button" @click="retryWeakDimensions">
+              <el-icon><Aim /></el-icon> 针对短板再练一场
+            </el-button>
+            <p class="archive-hint">再练时会多出能暴露这些问题的题，岗位沿用「{{ archive.latestRole }}」。</p>
+          </template>
+          <template v-else>
+            <p class="archive-hint">最近这几个维度都在 75 分以上，没有明显短板。可以试着提高难度。</p>
+            <el-button class="soft-button" @click="router.push('/practice/setup')">提高难度再练一场</el-button>
+          </template>
+        </article>
+      </div>
+
+      <div v-else class="panel archive-empty">
+        <strong>还没有可复盘的练习</strong>
+        <p>完成一场练习、等分析跑完后，这里会出现你的成绩趋势、维度平均，以及下一步该重点练什么。</p>
+        <el-button class="soft-button" @click="router.push('/practice/setup')">开始第一次练习</el-button>
+      </div>
+    </section>
 
     <div class="dashboard-lower">
       <section class="recent-section">
@@ -93,6 +188,37 @@ function timeLabel(value) {
 .text-action, .link-button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--green); font-size: 13px; font-weight: 600; }
 .text-action { margin-top: 9px; padding: 0; }
 .dashboard-lower { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(250px, .85fr); gap: 21px; }
+.archive-section { margin-bottom: 28px; }
+.archive-scope { color: #98a29d; font-size: 12px; font-weight: 400; }
+.archive-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr); gap: 15px; }
+.archive-card { padding: 15px 17px 14px; box-shadow: none; }
+.archive-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.archive-card-head strong { color: #33413a; font-size: 14px; font-weight: 650; }
+.archive-card-head span { color: #98a29d; font-size: 12px; }
+.trend-svg { width: 100%; height: 108px; }
+.trend-line { fill: none; stroke: var(--green); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.trend-dot { fill: var(--green); }
+.trend-score { fill: #4c5952; font-size: 10px; font-weight: 600; }
+.trend-label { fill: #98a29d; font-size: 9px; }
+.dimension-list { display: grid; gap: 9px; }
+.dimension-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) 33px; align-items: center; gap: 8px; }
+.dimension-name { color: #5d6a64; font-size: 13px; }
+.dimension-bar { display: block; height: 7px; overflow: hidden; border-radius: 4px; background: #eef1ee; }
+.dimension-bar i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
+.dimension-row.weak .dimension-bar i { background: #d9863f; }
+.dimension-row strong { color: #46524c; font-size: 13px; text-align: right; }
+.weakest-list { margin: 0 0 12px; padding: 0; list-style: none; }
+.weakest-list li { padding: 8px 0; border-bottom: 1px dashed #eef1ee; }
+.weakest-list li:last-child { border-bottom: 0; }
+.weakest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.weakest-head strong { color: #a7622c; font-size: 13px; font-weight: 650; }
+.weakest-head span { color: #98a29d; font-size: 12px; }
+.weakest-list p { margin: 4px 0 0; color: #7c8782; font-size: 13px; line-height: 1.7; }
+.archive-hint { margin: 9px 0 0; color: #98a29d; font-size: 12px; line-height: 1.7; }
+.archive-empty { display: grid; justify-items: center; gap: 8px; padding: 24px; text-align: center; box-shadow: none; }
+.archive-empty strong { color: #46524c; font-size: 14px; }
+.archive-empty p { max-width: 460px; margin: 0; color: #8d9792; font-size: 13px; line-height: 1.75; }
+.archive-card .primary-button.el-button, .archive-card .soft-button.el-button { width: 100%; margin-top: 10px; }
 .section-title { margin-bottom: 13px; }
 .recent-list { overflow: hidden; box-shadow: none; }
 .recent-row { display: flex; width: 100%; min-height: 69px; align-items: center; gap: 12px; padding: 0 15px; border: 0; border-bottom: 1px solid #eef1ee; background: white; text-align: left; }
@@ -105,6 +231,7 @@ function timeLabel(value) {
 .guidance-panel { overflow: hidden; padding: 0 17px 16px; box-shadow: none; }.guidance-art { position: relative; display: flex; height: 116px; align-items: center; justify-content: center; margin: 0 -17px 15px; overflow: hidden; background: #eff6f2; }.art-window { position: absolute; top: 20px; right: 26px; display: flex; width: 97px; height: 67px; gap: 5px; align-items: flex-start; padding: 10px; border: 1px solid #dce8e1; border-radius: 6px; background: rgba(255,255,255,.72); transform: rotate(5deg); }.art-window i { width: 5px; height: 5px; border-radius: 50%; background: #df9b7c; }.art-window i:nth-child(2) { background: #e5c26c; }.art-window i:nth-child(3) { background: #78ad8b; }
 .art-person { position: absolute; z-index: 2; bottom: -6px; left: calc(50% - 21px); width: 70px; height: 96px; }.person-head { position: absolute; top: 8px; left: 20px; width: 35px; height: 38px; border: 1px solid #d59c7d; border-radius: 46% 46% 43% 43%; background: #e7b08e; }.person-head::after { position: absolute; top: -4px; left: 0; width: 36px; height: 15px; border-radius: 50% 50% 35% 35%; background: #483c36; content: ''; }.person-neck { position: absolute; top: 42px; left: 31px; width: 14px; height: 16px; background: #dba282; }.person-body { position: absolute; bottom: 0; left: 5px; width: 65px; height: 48px; border-radius: 24px 24px 0 0; background: #4a826e; }.art-spark { position: absolute; color: var(--coral); font-size: 14px; }.spark-a { top: 21px; left: 31%; font-size: 17px; }.spark-b { right: 23%; bottom: 19px; color: #d7a845; font-size: 14px; }
 .guidance-panel > strong { color: #36423c; font-size: 14px; }.guidance-panel > p { margin: 8px 0 12px; color: #87928c; font-size: 13px; line-height: 1.75; }.guidance-meta { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 11px; border-top: 1px solid #edf0ed; color: #7c8782; font-size: 13px; }.guidance-meta span { display: inline-flex; align-items: center; gap: 5px; }
-@media(max-width: 920px) { .dashboard-lower { grid-template-columns: 1fr; }.guidance-section { display: none; } }
+@media(max-width: 1080px) { .archive-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }.archive-grid > :last-child { grid-column: 1 / -1; } }
+@media(max-width: 920px) { .dashboard-lower { grid-template-columns: 1fr; }.guidance-section { display: none; }.archive-grid { grid-template-columns: 1fr; }.archive-grid > :last-child { grid-column: auto; } }
 @media(max-width: 680px) { .overview-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }.overview-card { min-height: 130px; padding: 13px; }.overview-card:last-child { grid-column: 1 / -1; min-height: 133px; }.overview-number { font-size: 25px; }.recent-row { gap: 8px; padding: 0 10px; }.recent-date, .recent-arrow { display: none; }.recent-main span { max-width: 160px; } }
 </style>
