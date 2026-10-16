@@ -2,6 +2,9 @@ package com.guangge.Interview.resume;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeDetailView;
+import com.guangge.Interview.resume.dto.ResumeDraftRequests;
+import com.guangge.Interview.resume.dto.ResumeDraftResult;
+import com.guangge.Interview.resume.dto.ResumeDraftView;
 import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
 import com.guangge.Interview.resume.dto.ResumeOptimizationView;
 import com.guangge.Interview.resume.dto.ResumeRequests;
@@ -49,6 +52,7 @@ public class ResumeLibraryService {
     private final ResumeDocxExporter docxExporter;
     private final ResumePdfExporter pdfExporter;
     private final ResumeThemeResolver themeResolver;
+    private final ResumeDraftProvider draftProvider;
 
     public ResumeLibraryService(ResumeLibraryRepository resumes,
                                ResumeOptimizationRepository optimizations,
@@ -56,7 +60,8 @@ public class ResumeLibraryService {
                                ObjectMapper objectMapper,
                                ResumeDocxExporter docxExporter,
                                ResumePdfExporter pdfExporter,
-                               ResumeThemeResolver themeResolver) {
+                               ResumeThemeResolver themeResolver,
+                               ResumeDraftProvider draftProvider) {
         this.resumes = resumes;
         this.optimizations = optimizations;
         this.provider = provider;
@@ -64,6 +69,57 @@ public class ResumeLibraryService {
         this.docxExporter = docxExporter;
         this.pdfExporter = pdfExporter;
         this.themeResolver = themeResolver;
+        this.draftProvider = draftProvider;
+    }
+
+    // ---------- 从零创建（见 docs/RESUME-REQUIREMENTS.md §4.8）----------
+
+    /**
+     * 素材 → 简历正文。
+     *
+     * **不落库**：用户先看、先改，点保存才写进简历库（与上传解析的"先过目再保存"同一套思路）。
+     * 用户什么素材都没给也要能出结果 —— 那是一份带占位符的骨架，而不是报错。
+     */
+    public ResumeDraftView draft(String ownerId, ResumeDraftRequests.Draft materials) {
+        ResumeDraftView view = generate(() -> draftProvider.draft(materials), "生成");
+        log.info("生成简历草稿：{} 字，{} 条追问，{} 处待补充（owner={}）",
+                view.rawText().length(), view.questions().size(), view.placeholders().size(), ownerId);
+        return view;
+    }
+
+    /** 追问补全：现有正文 + 用户补充的信息 → 新的完整正文，同样不落库（也就不需要 id）。 */
+    public ResumeDraftView refine(String ownerId, String rawText, String supplement, List<String> questions) {
+        String current = rawText == null ? "" : rawText.strip();
+        if (current.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "要补全的正文不能为空");
+        }
+        String value = supplement == null ? "" : supplement.strip();
+        if (value.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "补充内容不能为空");
+        }
+        ResumeDraftView view = generate(
+                () -> draftProvider.refine(current, value, questions), "补全");
+        log.info("补全简历草稿：{} 字，{} 处待补充（owner={}）",
+                view.rawText().length(), view.placeholders().size(), ownerId);
+        return view;
+    }
+
+    /**
+     * 模型侧的失败一律按"上游没给好东西"处理（502）：素材还在前端，用户直接重试就行，
+     * 这里也没有任何半成品被写进库。
+     */
+    private ResumeDraftView generate(java.util.function.Supplier<ResumeDraftResult> call, String what) {
+        try {
+            ResumeDraftResult result = call.get();
+            return new ResumeDraftView(result.resumeText(), result.questions(), result.placeholders(),
+                    draftProvider.modelName());
+        } catch (ResumeFormatException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "模型这次没按约定返回，请重试：" + exception.getMessage());
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    what + "失败：" + LogSanitizer.truncate(message(exception), 200) + "（稍后重试）");
+        }
     }
 
     // ---------- 简历本体 ----------

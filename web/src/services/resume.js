@@ -48,6 +48,24 @@ export function applyOptimization(id, optimizationId, sections) {
   });
 }
 
+/**
+ * 从零创建：把采集到的素材交给模型整理成简历正文。
+ *
+ * 后端**不落库**（见 docs/RESUME-REQUIREMENTS.md §4.8）：返回的正文先给用户看和改，
+ * 确认后再走 createResume 保存。什么素材都不给也能调，回来的是一份带占位符的骨架。
+ */
+export function draftResume(materials) {
+  return apiRequest('/resumes/draft', { method: 'POST', body: JSON.stringify(materials) });
+}
+
+/** 追问补全：现有正文 + 补充信息 → 新的完整正文，同样不落库。 */
+export function refineResume(rawText, supplement, questions = []) {
+  return apiRequest('/resumes/refine', {
+    method: 'POST',
+    body: JSON.stringify({ rawText, supplement, questions }),
+  });
+}
+
 /** 导出格式：后端的 `format` 参数与下载文件名后缀。 */
 export const RESUME_EXPORT_FORMATS = [
   { value: 'md', label: 'Markdown (.md)', suffix: 'md' },

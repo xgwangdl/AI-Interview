@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -49,6 +49,12 @@ async function load() {
     resume.value = data;
     form.title = data.title;
     form.rawText = data.rawText;
+    // 从「从零创建」保存并勾了"顺手优化"过来的：把目标岗位填好并把优化面板滚到眼前
+    if (route.query.optimize) {
+      job.role = String(route.query.role || '');
+      await nextTick();
+      document.querySelector('.optimize-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   } catch (error) {
     ElMessage.error(error.message || '无法加载简历');
     router.replace('/resumes');
@@ -188,7 +194,7 @@ async function exportResume(format) {
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel optimize-panel">
         <div class="section-title">按岗位优化</div>
         <el-form label-position="top">
           <el-form-item label="目标岗位"><el-input v-model="job.role" maxlength="200" placeholder="例如：Java 后端工程师" /></el-form-item>

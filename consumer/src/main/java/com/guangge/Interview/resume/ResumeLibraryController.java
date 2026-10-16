@@ -4,6 +4,8 @@ import com.guangge.Interview.practice.resume.ResumeExtractionService;
 import com.guangge.Interview.practice.resume.ResumeExtractView;
 import com.guangge.Interview.practice.security.OwnerResolver;
 import com.guangge.Interview.resume.dto.ResumeDetailView;
+import com.guangge.Interview.resume.dto.ResumeDraftRequests;
+import com.guangge.Interview.resume.dto.ResumeDraftView;
 import com.guangge.Interview.resume.dto.ResumeOptimizationView;
 import com.guangge.Interview.resume.dto.ResumeRequests;
 import com.guangge.Interview.resume.dto.ResumeView;
@@ -71,6 +73,31 @@ public class ResumeLibraryController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @Validated @RequestBody ResumeRequests.SaveResume request) {
         return library.create(owners.requireOwner(authorization), request);
+    }
+
+    /**
+     * 从零创建：把采集到的素材整理成简历正文。
+     *
+     * **不落库** —— 和上传解析一样，先给用户看、让他改，确认后再调 `POST /resumes` 保存。
+     */
+    @PostMapping("/draft")
+    public ResumeDraftView draft(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody ResumeDraftRequests.Draft request) {
+        return library.draft(owners.requireOwner(authorization), request);
+    }
+
+    /**
+     * 追问补全：把用户补充的信息并进现有正文，同样不落库。
+     *
+     * 收的是正文本身而不是简历 id —— 成稿页在保存之前就要能用它。
+     */
+    @PostMapping("/refine")
+    public ResumeDraftView refine(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody ResumeDraftRequests.Refine request) {
+        return library.refine(owners.requireOwner(authorization), request.rawText(), request.supplement(),
+                request.questions());
     }
 
     @GetMapping
