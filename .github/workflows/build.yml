@@ -4,6 +4,10 @@ name: build
 # 这里跑的是本地已经验证过的三条命令：后端干净构建、前端干净安装后测试并构建。
 # 需要 Postgres / S3 的集成用例由 -Ddb.integration / -Ds3.integration 控制，
 # 默认在 CI 中跳过；要纳入 CI 时再补一个带 service containers 的 job。
+#
+# 注意：runner 镜像里只有 emoji 字体，**没有任何中文字体**，而简历导出的 PDF 必须内嵌中文字体
+# （没有时后端会明确报错，见 ResumePdfFonts）。所以这里先装 fonts-noto-cjk；
+# 不装的话 ResumePdfExporterTest 会因为"机器上没有中文字体"而跳过，等于 CI 不覆盖 PDF 版式。
 on:
   push:
   pull_request:
@@ -22,8 +26,20 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Install a CJK font (the PDF export embeds one)
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
       - name: Backend build and tests
         run: mvn -B clean package
+
+      # 失败时把 surefire 报告传上来：不然只能登录网页点开日志才能看到是哪个用例挂了
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/*.txt'
+          if-no-files-found: ignore
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

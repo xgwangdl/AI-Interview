@@ -58,6 +58,14 @@ final class ResumePdfFonts implements Closeable {
         return fonts;
     }
 
+    /** 候选路径里有没有至少一个存在的字体文件（只判断存在，不加载）。 */
+    static boolean anyAvailable(List<String> candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank() && Files.isRegularFile(Path.of(candidate))) return true;
+        }
+        return false;
+    }
+
     private PDType0Font loadFirst(PDDocument document, List<String> candidates) {
         for (String candidate : candidates) {
             Path path = Path.of(candidate);

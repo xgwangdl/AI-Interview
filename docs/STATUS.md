@@ -1138,3 +1138,28 @@ String normalized = WHITESPACE.matcher(extracted).replaceAll(" ").trim();   // �
 **关于"装个 skill 让它来做"**：Codex 的 skill 是我这边的工作流（文档、表格、PPT 等），
 跑不到产品运行时里 —— 用户上传简历时是在后端 Java 里生成文件，不可能去调一个 skill。
 所以这里没有别的选择，只能自己把模板写好；好处是强调色、页脚、字体这些都能跟着产品走。
+
+### 2026-10-16 修复：CI 一直在失败（用户收到一堆 GitHub 失败邮件）
+
+用户收到 `[xgwangdl/AI-Interview] Run failed: build - feature/practice-interview`。
+查 run 历史：12:55 UTC 之前全绿，**从简历功能的第一个提交 3d32599 起每次都红**，
+正好是我推的那几个提交，所以邮件是我这边引出来的。
+
+**根因**：GitHub 的 runner 镜像里只装了 `fonts-noto-color-emoji`，**没有任何中文字体**
+（`actions/runner-images` 的 Ubuntu2404 清单里 fonts 只有这一项）。而简历导出的 PDF
+必须内嵌中文字体，机器上没有时 `ResumePdfFonts` 会按设计明确报错 ——
+于是 `ResumePdfExporterTest` 那批版式用例在 CI 上必然失败。
+这就是"本地全绿、CI 全红"的来源，跟代码逻辑无关，是环境假设没写进 CI。
+
+**修复**：
+
+| 改动 | 说明 |
+| --- | --- |
+| workflow 装字体 | `sudo apt-get install -y fonts-noto-cjk` —— 让 CI 真的覆盖 PDF 版式，而不是绕开它 |
+| 用例可跳过 | `ResumePdfExporterTest` 增加 `@BeforeEach` 断言：机器上没有中文字体就 `assumeTrue` 跳过，不把环境问题当代码缺陷（其他机器上跑这个仓库也不会误报） |
+| 拆出一个不依赖字体的用例类 | `ResumePdfFontsTest`：缺字体时报错信息要可执行、候选列表判断只认文件存在 —— 这两条在任何机器上都跑 |
+| 失败可诊断 | workflow 增加 `if: failure()` 上传 `**/target/surefire-reports/*.txt`：下次挂了不用登录网页翻日志（GitHub 的 job 日志接口要鉴权，匿名拿不到） |
+
+**验证**：本地 `mvn -B test` **162 个测试**全绿（11 skipped）；推送后看 CI 结论（见下）。
+另外顺带记录了 runner 上的两处弃用告警（checkout@v4 / setup-java@v4 跑在 Node 24 上、
+官方已出 v7 / v6），这次不动它们，避免为了消除告警再引入一次失败。

@@ -106,6 +106,17 @@ public class ResumePdfExporter {
         return render(title, text, ResumeTheme.GREEN);
     }
 
+    /**
+     * 本机有没有可用于 PDF 的中文字体。
+     *
+     * 没有字体时导出会明确报错而不是生成乱码（见 {@link ResumePdfFonts}），
+     * 这是产品行为；但"机器上没装字体"不是代码缺陷，所以测试据此决定跳过还是真跑
+     * （CI 里用 apt 装了 fonts-noto-cjk，是真跑的）。
+     */
+    public boolean cjkFontAvailable() {
+        return ResumePdfFonts.anyAvailable(regularCandidates);
+    }
+
     public byte[] render(String title, String text, ResumeTheme theme) throws IOException {
         try (PDDocument document = new PDDocument()) {
             ResumePdfFonts fonts = ResumePdfFonts.load(document, regularCandidates, boldCandidates);

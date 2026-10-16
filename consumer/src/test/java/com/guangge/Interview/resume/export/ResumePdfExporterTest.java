@@ -4,6 +4,8 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * PDF 导出。
@@ -24,6 +25,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ResumePdfExporterTest {
 
     private final ResumePdfExporter exporter = new ResumePdfExporter("", "");
+
+    /**
+     * PDF 必须内嵌中文字体，机器上没装中文字体时导出会明确报错（这是产品行为，见 ResumePdfFonts）。
+     * GitHub 的 runner 默认不带中文字体，所以这里在缺字体的机器上跳过版式用例，
+     * 不把环境问题当代码缺陷 —— workflow 里装了 fonts-noto-cjk，CI 上是真跑的。
+     */
+    @BeforeEach
+    void requireCjkFont() {
+        Assumptions.assumeTrue(exporter.cjkFontAvailable(), "本机没有中文字体，跳过 PDF 版式用例");
+    }
 
     @Test
     @DisplayName("生成的是 %PDF 文件，且中文正文能抽回来")
@@ -129,13 +140,4 @@ class ResumePdfExporterTest {
         }
     }
 
-    @Test
-    @DisplayName("一个候选字体都没有时，报错要指出怎么修")
-    void failsWithActionableMessageWhenNoFont() throws Exception {
-        try (PDDocument document = new PDDocument()) {
-            assertThatThrownBy(() -> ResumePdfFonts.load(document, List.of(), List.of()))
-                    .isInstanceOf(ResumeExportException.class)
-                    .hasMessageContaining("resume.export.pdf-font");
-        }
-    }
 }
