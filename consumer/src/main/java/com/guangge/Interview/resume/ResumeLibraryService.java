@@ -12,6 +12,8 @@ import com.guangge.Interview.resume.export.ResumeExportException;
 import com.guangge.Interview.resume.export.ResumeExportFormat;
 import com.guangge.Interview.resume.export.ResumeLayout;
 import com.guangge.Interview.resume.export.ResumePdfExporter;
+import com.guangge.Interview.resume.export.ResumeTheme;
+import com.guangge.Interview.resume.export.ResumeThemeResolver;
 import com.guangge.Interview.util.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,19 +48,22 @@ public class ResumeLibraryService {
     private final ObjectMapper objectMapper;
     private final ResumeDocxExporter docxExporter;
     private final ResumePdfExporter pdfExporter;
+    private final ResumeThemeResolver themeResolver;
 
     public ResumeLibraryService(ResumeLibraryRepository resumes,
                                ResumeOptimizationRepository optimizations,
                                ResumeOptimizationProvider provider,
                                ObjectMapper objectMapper,
                                ResumeDocxExporter docxExporter,
-                               ResumePdfExporter pdfExporter) {
+                               ResumePdfExporter pdfExporter,
+                               ResumeThemeResolver themeResolver) {
         this.resumes = resumes;
         this.optimizations = optimizations;
         this.provider = provider;
         this.objectMapper = objectMapper;
         this.docxExporter = docxExporter;
         this.pdfExporter = pdfExporter;
+        this.themeResolver = themeResolver;
     }
 
     // ---------- 简历本体 ----------
@@ -236,11 +241,13 @@ public class ResumeLibraryService {
     public ExportedResume export(String ownerId, UUID resumeId, ResumeExportFormat format) {
         ResumeEntity resume = requireOwned(ownerId, resumeId);
         try {
+            // 强调色跟着账号的主题色走：导出的文件和用户在界面上看到的是同一套配色
+            ResumeTheme theme = themeResolver.themeOf(ownerId);
             byte[] body = switch (format) {
                 case MARKDOWN -> ResumeLayout.toMarkdown(resume.getTitle(), resume.getRawText())
                         .getBytes(StandardCharsets.UTF_8);
-                case DOCX -> docxExporter.render(resume.getTitle(), resume.getRawText());
-                case PDF -> pdfExporter.render(resume.getTitle(), resume.getRawText());
+                case DOCX -> docxExporter.render(resume.getTitle(), resume.getRawText(), theme);
+                case PDF -> pdfExporter.render(resume.getTitle(), resume.getRawText(), theme);
             };
             log.info("导出简历 {}：{}，{} 字节", resumeId, format.extension(), body.length);
             return new ExportedResume(fileNameOf(resume, format), body, format);

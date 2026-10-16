@@ -26,39 +26,49 @@ import java.util.Set;
 /**
  * 简历导出 PDF。
  *
+ * 版式是一套简历模板，不是"把正文按行印出来"：顶部姓名 + 求职意向 + 强调色分隔线，
+ * 小节标题带色块与细线，条目用矢量圆点、字段名（"时间："）加粗，多页时页脚有页码。
+ * 强调色跟着账号的主题色走（见 {@link ResumeTheme}），和界面是同一套配色。
+ *
  * 直接排版（PDFBox），不经过 HTML→PDF 中转：依赖只有一个，不牵涉 iText 的 AGPL，
  * 也不用把内容拼成 HTML 再交给一个渲染引擎猜版式。
- *
- * 与需求文档的要求一致：内容就是库里的当前版本，不带任何额外注解；
- * 需要用户补充的占位符用琥珀色标出来，方便打印前先填。
  */
 @Component
 public class ResumePdfExporter {
 
     private static final Logger log = LoggerFactory.getLogger(ResumePdfExporter.class);
 
-    private static final float MARGIN_LEFT = 56f;
-    private static final float MARGIN_RIGHT = 56f;
-    private static final float MARGIN_TOP = 62f;
-    private static final float MARGIN_BOTTOM = 58f;
+    private static final float MARGIN_LEFT = 54f;
+    private static final float MARGIN_RIGHT = 54f;
+    private static final float MARGIN_TOP = 56f;
+    private static final float MARGIN_BOTTOM = 60f;
+    private static final float FOOTER_RULE_Y = 52f;
 
-    private static final float TITLE_SIZE = 18f;
-    private static final float HEADING_SIZE = 13f;
-    private static final float SUB_HEADING_SIZE = 11.5f;
-    private static final float BODY_SIZE = 10.5f;
-    /** 行距系数：中文正文 1.6 倍左右读起来不挤，也接近 Word 的单倍行距观感。 */
-    private static final float LINE_FACTOR = 1.62f;
-    /**
-     * 项目符号候选：SimHei 里没有 U+2022（•），而雅黑 / Noto / 苹方都有。
-     * 按顺序挑第一个字体里存在的，避免整份 PDF 因为一个符号报错。
-     */
-    private static final List<String> BULLET_MARKS = List.of("• ", "● ", "· ");
-    private static final float PARAGRAPH_GAP = 5f;
-    private static final float HEADING_GAP = 11f;
+    private static final float NAME_SIZE = 21f;
+    private static final float OBJECTIVE_SIZE = 10.5f;
+    private static final float SECTION_SIZE = 12f;
+    private static final float SUB_SECTION_SIZE = 11f;
+    private static final float ENTRY_SIZE = 10.8f;
+    private static final float BODY_SIZE = 10f;
+    private static final float FOOTER_SIZE = 8f;
 
-    private static final PDColor TEXT_COLOR = new PDColor(new float[] {0.11f, 0.13f, 0.16f}, PDDeviceRGB.INSTANCE);
-    private static final PDColor PLACEHOLDER_COLOR = new PDColor(new float[] {0.71f, 0.33f, 0.04f}, PDDeviceRGB.INSTANCE);
-    private static final PDColor RULE_COLOR = new PDColor(new float[] {0.78f, 0.8f, 0.82f}, PDDeviceRGB.INSTANCE);
+    /** 行距系数：中文正文 1.55 倍读起来不挤，页面也不会被撑太长。 */
+    private static final float LINE_FACTOR = 1.55f;
+    private static final float BULLET_GAP = 13f;
+    private static final float BULLET_RADIUS = 1.75f;
+    private static final float SECTION_BAR_WIDTH = 3.2f;
+    private static final float SECTION_BAR_HEIGHT = 11.5f;
+    private static final float SECTION_GAP_BEFORE = 14f;
+    private static final float SECTION_GAP_AFTER = 6.5f;
+    private static final float ENTRY_GAP_BEFORE = 7f;
+    private static final float ITEM_GAP = 2.5f;
+
+    /** 固定墨色：中性色，配任何主题色都成立。 */
+    private static final PDColor INK = rgb("26303B");
+    private static final PDColor BODY = rgb("3C4650");
+    private static final PDColor MUTED = rgb("78838F");
+    private static final PDColor RULE = rgb("DCE3E8");
+    private static final PDColor PLACEHOLDER = rgb("B45309");
 
     /** 候选字体：先找用户指定的，再按 Windows / macOS / Linux 的常见路径试。 */
     private static final List<String> DEFAULT_REGULAR_FONTS = List.of(
@@ -93,12 +103,17 @@ public class ResumePdfExporter {
     }
 
     public byte[] render(String title, String text) throws IOException {
+        return render(title, text, ResumeTheme.GREEN);
+    }
+
+    public byte[] render(String title, String text, ResumeTheme theme) throws IOException {
         try (PDDocument document = new PDDocument()) {
             ResumePdfFonts fonts = ResumePdfFonts.load(document, regularCandidates, boldCandidates);
             try {
-                Composer composer = new Composer(document, fonts);
+                Composer composer = new Composer(document, fonts, theme);
                 composer.compose(title, text);
                 composer.close();
+                composer.paintFooter(nameOf(title));
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 document.save(out);
                 return out.toByteArray();
@@ -109,6 +124,10 @@ public class ResumePdfExporter {
         }
     }
 
+    private static String nameOf(String title) {
+        return title == null || title.isBlank() ? "简历" : title.strip();
+    }
+
     private static List<String> candidates(String configured, List<String> defaults) {
         List<String> all = new ArrayList<>();
         if (configured != null && !configured.isBlank()) all.add(configured.strip());
@@ -116,116 +135,194 @@ public class ResumePdfExporter {
         return all;
     }
 
-    /** 排版样式：字号 + 字重 + 缩进 + 是否列表项 + 是否居中。 */
-    private record Style(float size, boolean bold, float indent, boolean bullet, boolean centered) { }
+    private static PDColor rgb(String hex) {
+        return new PDColor(new float[] {
+                Integer.parseInt(hex.substring(0, 2), 16) / 255f,
+                Integer.parseInt(hex.substring(2, 4), 16) / 255f,
+                Integer.parseInt(hex.substring(4, 6), 16) / 255f}, PDDeviceRGB.INSTANCE);
+    }
 
-    /** 一行文字：文本 + 它在整段里的起始下标（用来定位占位符的着色区间）。 */
+    /** 一段文字的成品：去掉不可用字符后的正文 + 需要特殊着色的区间。 */
+    private record Content(String text, List<Span> spans) { }
+
+    /** 着色/字体区间：占位符（琥珀加粗）、条目的字段名（"时间："，加粗）。 */
+    private record Span(int start, int end, boolean placeholder, boolean label) { }
+
+    /** 一行文字：文本 + 它在整段里的起始下标（用来定位着色区间）。 */
     private record Line(String text, int start) { }
 
-    /** 逐块写进 PDF 的游标：负责换页、行距与占位符着色。 */
+    /** 逐块写进 PDF 的游标：负责换页、行距、圆点与着色。 */
     private static final class Composer {
 
         private final PDDocument document;
         private final ResumePdfFonts fonts;
+        private final PDColor accent;
+        private final PDColor accentDark;
         private final Map<Integer, Float> regularWidths = new HashMap<>();
         private final Map<Integer, Float> boldWidths = new HashMap<>();
         private final Map<PDType0Font, Set<Integer>> unsupported = new IdentityHashMap<>();
+        private final List<PDPage> pages = new ArrayList<>();
 
         private PDPageContentStream content;
         private float y;
         private float width;
 
-        Composer(PDDocument document, ResumePdfFonts fonts) {
+        Composer(PDDocument document, ResumePdfFonts fonts, ResumeTheme theme) {
             this.document = document;
             this.fonts = fonts;
+            this.accent = rgb(theme.accent());
+            this.accentDark = rgb(theme.accentDark());
         }
 
         void compose(String title, String text) throws IOException {
             newPage();
-            String heading = title == null || title.isBlank() ? "简历" : title.strip();
-            writeBlock(heading, new Style(TITLE_SIZE, true, 0f, false, true));
-            y -= 7f;
-            rule();
-            y -= 3f;
-            for (ResumeLayout.Block block : ResumeLayout.parse(text, title)) {
+            List<ResumeLayout.Block> body = header(nameOf(title), ResumeLayout.parse(text, title));
+            for (int index = 0; index < body.size(); index++) {
+                ResumeLayout.Block block = body.get(index);
                 switch (block.kind()) {
-                    case HEADING -> {
-                        y -= HEADING_GAP;
-                        writeBlock(block.text(), new Style(
-                                block.level() <= 2 ? HEADING_SIZE : SUB_HEADING_SIZE, true, 0f, false, false));
-                        if (block.level() <= 2) {
-                            // 小节下面走一条细线：和常见简历模板一致，扫读时更容易分段
-                            y -= 4f;
-                            rule();
-                            y -= 3f;
-                        } else {
-                            y -= 1f;
-                        }
-                    }
-                    case BULLET -> writeBlock(block.text(),
-                            new Style(BODY_SIZE, false, 0f, true, false));
-                    case PARAGRAPH -> writeBlock(block.text(),
-                            new Style(BODY_SIZE, false, 0f, false, false));
+                    case HEADING -> writeSectionHeading(block);
+                    case BULLET -> writeBullet(block.text());
+                    case PARAGRAPH -> writeParagraph(block.text(), index == 0
+                            || body.get(index - 1).kind() == ResumeLayout.Kind.HEADING);
                 }
-                y -= PARAGRAPH_GAP;
             }
         }
 
-        void close() throws IOException {
-            if (content != null) content.close();
-            content = null;
+        /** 顶栏：姓名 + 求职意向 + 强调色分隔线；返回剩下的正文块。 */
+        private List<ResumeLayout.Block> header(String name, List<ResumeLayout.Block> blocks) throws IOException {
+            pair(name, NAME_SIZE, true, INK);
+            y -= 2f;
+            int consumed = 0;
+            if (!blocks.isEmpty() && isObjective(blocks.get(0))) {
+                pair(blocks.get(0).text(), OBJECTIVE_SIZE, false, accentDark);
+                consumed = 1;
+            }
+            y -= 7f;
+            rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 1.6f, accent);
+            y -= 11f;
+            return blocks.subList(consumed, blocks.size());
         }
 
-        private void writeBlock(String text, Style style) throws IOException {
-            PDType0Font font = style.bold() ? fonts.bold() : fonts.regular();
-            String mark = style.bullet() ? bulletMark(font) : "";
-            // 列表项的悬挂缩进按「• 」实测宽度算，折行文字才会和第一行对齐
-            float hanging = style.bullet() ? measure(mark, font, style.size()) : 0f;
+        /** 紧跟姓名的那行如果是"求职目标：xxx"这种短句，就当顶栏副标题。 */
+        private boolean isObjective(ResumeLayout.Block block) {
+            if (block.kind() != ResumeLayout.Kind.PARAGRAPH) return false;
+            String value = block.text().strip();
+            boolean looksLikeObjective = value.contains("求职") || value.contains("应聘") || value.startsWith("目标");
+            return value.length() <= 40 && looksLikeObjective;
+        }
+
+        private void writeSectionHeading(ResumeLayout.Block block) throws IOException {
+            float size = block.level() <= 2 ? SECTION_SIZE : SUB_SECTION_SIZE;
+            float lineHeight = size * LINE_FACTOR;
+            ensure(SECTION_GAP_BEFORE + lineHeight + 12f);
+            y -= SECTION_GAP_BEFORE + lineHeight;
+
+            float barBottom = y + (lineHeight - SECTION_BAR_HEIGHT) / 2f - 1f;
+            content.setNonStrokingColor(accent);
+            content.addRect(MARGIN_LEFT, barBottom, SECTION_BAR_WIDTH, SECTION_BAR_HEIGHT);
+            content.fill();
+            show(block.text(), fonts.bold(), size, MARGIN_LEFT + SECTION_BAR_WIDTH + 6.5f, accentDark);
+
+            y -= 5f;
+            rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 0.7f, RULE);
+            y -= SECTION_GAP_AFTER;
+        }
+
+        /** 条目：圆点用矢量画（不受字体有没有 ● 影响），折行与首行文字对齐。 */
+        private void writeBullet(String text) throws IOException {
+            Content rendered = build(text, BODY_SIZE, fonts.regular());
+            if (rendered.text().isBlank()) return;
+            List<Line> lines = wrap(rendered.text(), fonts.regular(), BODY_SIZE, width - BULLET_GAP);
+            float lineHeight = BODY_SIZE * LINE_FACTOR;
+            for (int index = 0; index < lines.size(); index++) {
+                ensure(lineHeight);
+                y -= lineHeight;
+                if (index == 0) {
+                    content.setNonStrokingColor(accent);
+                    dot(MARGIN_LEFT + 1.2f + BULLET_RADIUS, y + BODY_SIZE * 0.30f, BULLET_RADIUS);
+                }
+                writeLine(rendered, lines.get(index), BODY_SIZE, MARGIN_LEFT + BULLET_GAP, BODY, false);
+            }
+            y -= ITEM_GAP;
+        }
+
+        /** 普通段落：公司名 / 项目名（紧跟小节标题的）加粗一档，与下面的条目区分开。 */
+        private void writeParagraph(String text, boolean entry) throws IOException {
+            float size = entry ? ENTRY_SIZE : BODY_SIZE;
+            Content rendered = build(text, size, entry ? fonts.bold() : fonts.regular());
+            if (rendered.text().isBlank()) return;
+            PDType0Font font = entry ? fonts.bold() : fonts.regular();
+            List<Line> lines = wrap(rendered.text(), font, size, width);
+            if (entry) y -= ENTRY_GAP_BEFORE;
+            float lineHeight = size * LINE_FACTOR;
+            for (Line line : lines) {
+                ensure(lineHeight);
+                y -= lineHeight;
+                writeLine(rendered, line, size, MARGIN_LEFT, entry ? INK : BODY, entry);
+            }
+            y -= ITEM_GAP;
+        }
+
+        /** 顶栏那种不需要换行的一行文字。 */
+        private void pair(String text, float size, boolean bold, PDColor color) throws IOException {
+            Content rendered = build(text, size, bold ? fonts.bold() : fonts.regular(), false);
+            if (rendered.text().isBlank()) return;
+            float lineHeight = size * LINE_FACTOR;
+            ensure(lineHeight);
+            y -= lineHeight;
+            writeLine(rendered, new Line(rendered.text(), 0), size, MARGIN_LEFT, color, bold);
+        }
+
+        /** 清洗文本并把"字段名 / 占位符"区间登记下来。 */
+        private Content build(String text, float size, PDType0Font font) {
+            return build(text, size, font, true);
+        }
+
+        /** withLabel=false 时不把"xxx："当字段名强调（顶栏的求职意向不需要）。 */
+        private Content build(String text, float size, PDType0Font font, boolean withLabel) {
             StringBuilder full = new StringBuilder();
-            List<int[]> placeholders = new ArrayList<>();
-            for (ResumeLayout.Piece piece : ResumeLayout.pieces(mark + text)) {
+            List<Span> spans = new ArrayList<>();
+            boolean labelDone = false;
+            for (ResumeLayout.Piece piece : ResumeLayout.pieces(text)) {
                 String clean = sanitize(piece.text(), font);
                 int start = full.length();
                 full.append(clean);
-                if (piece.placeholder()) placeholders.add(new int[] {start, full.length()});
-            }
-            String value = full.toString();
-            if (value.isBlank()) return;
-
-            float lineHeight = style.size() * LINE_FACTOR;
-            float limit = width - style.indent() - hanging;
-            List<Line> lines = wrap(value, font, style.size(), Math.max(40f, limit));
-            for (int index = 0; index < lines.size(); index++) {
-                ensure(lineHeight);
-                float indent = style.indent() + (index == 0 ? 0f : hanging);
-                float x = MARGIN_LEFT + indent;
-                if (style.centered()) {
-                    float lineWidth = measure(lines.get(index).text(), font, style.size());
-                    x = MARGIN_LEFT + Math.max(0f, (width - lineWidth) / 2f);
+                if (piece.placeholder()) {
+                    spans.add(new Span(start, full.length(), true, false));
+                    labelDone = true;
+                } else if (withLabel && !labelDone) {
+                    // 条目的"时间："这类字段名加粗：只认开头几个字以内的冒号
+                    int colon = clean.indexOf('：');
+                    if (colon < 0) colon = clean.indexOf(':');
+                    if (colon >= 0 && colon <= 7) {
+                        spans.add(new Span(start, start + colon + 1, false, true));
+                        labelDone = true;
+                    }
                 }
-                y -= lineHeight;
-                writeLine(value, placeholders, lines.get(index), font, style.size(), x);
             }
+            return new Content(full.toString(), spans);
         }
 
-        /** 按占位符区间切段着色：占位符琥珀色，正文墨色。 */
-        private void writeLine(String full, List<int[]> placeholders, Line line,
-                               PDType0Font font, float size, float x) throws IOException {
+        private void writeLine(Content rendered, Line line, float size, float x, PDColor defaultColor, boolean bold)
+                throws IOException {
             int to = line.start() + line.text().length();
             int position = line.start();
             while (position < to) {
-                int[] holder = placeholderAt(placeholders, position);
-                int end = holder != null ? Math.min(holder[1], to) : nextPlaceholderStart(placeholders, position, to);
-                String chunk = full.substring(position, end);
-                content.setNonStrokingColor(holder != null ? PLACEHOLDER_COLOR : TEXT_COLOR);
-                showText(chunk, font, size, x);
+                Span span = spanAt(rendered.spans(), position);
+                int end = span != null ? Math.min(span.end(), to) : nextSpanStart(rendered.spans(), position, to);
+                String chunk = rendered.text().substring(position, end);
+                boolean placeholder = span != null && span.placeholder();
+                boolean label = span != null && span.label();
+                PDType0Font font = bold || placeholder || label ? fonts.bold() : fonts.regular();
+                show(chunk, font, size, x, placeholder ? PLACEHOLDER : defaultColor);
                 x += measure(chunk, font, size);
                 position = end;
             }
         }
 
-        private void showText(String text, PDType0Font font, float size, float x) throws IOException {
+        private void show(String text, PDType0Font font, float size, float x, PDColor color) throws IOException {
             if (text.isEmpty()) return;
+            content.setNonStrokingColor(color);
             content.beginText();
             content.setFont(font, size);
             content.newLineAtOffset(x, y);
@@ -253,8 +350,7 @@ public class ResumePdfExporter {
                     end += Character.charCount(codePoint);
                 }
                 // 拉丁文优先断在空格后，中文没有空格就按字断。
-                // 注意：必须要求那个空格已经过半行，否则中文条目行里唯一的空格
-                // （项目符号后面那个）会把整行切成"只剩一个 ●"。
+                // 必须要求那个空格已经过半行，否则中文条目行里唯一的空格会把整行切成"只剩一个字"。
                 boolean usefulSpace = lastSpace > start && widthAtLastSpace > maxWidth * 0.5f;
                 int breakAt = end < text.length() && usefulSpace ? lastSpace + 1 : end;
                 if (breakAt <= start) breakAt = start + Character.charCount(text.codePointAt(start));
@@ -330,18 +426,26 @@ public class ResumePdfExporter {
             }
         }
 
-        private String bulletMark(PDType0Font font) {
-            for (String mark : BULLET_MARKS) {
-                if (canEncode(font, mark.codePointAt(0))) return mark;
-            }
-            return "- ";
+        /** 圆点：四段贝塞尔拼一个整圆，比用字体里的 ● 精致，也不受字体覆盖影响。 */
+        private void dot(float centerX, float centerY, float radius) throws IOException {
+            float control = radius * 0.5523f;
+            content.moveTo(centerX + radius, centerY);
+            content.curveTo(centerX + radius, centerY + control, centerX + control, centerY + radius,
+                    centerX, centerY + radius);
+            content.curveTo(centerX - control, centerY + radius, centerX - radius, centerY + control,
+                    centerX - radius, centerY);
+            content.curveTo(centerX - radius, centerY - control, centerX - control, centerY - radius,
+                    centerX, centerY - radius);
+            content.curveTo(centerX + control, centerY - radius, centerX + radius, centerY - control,
+                    centerX + radius, centerY);
+            content.fill();
         }
 
-        private void rule() throws IOException {
-            content.moveTo(MARGIN_LEFT, y);
-            content.lineTo(MARGIN_LEFT + width, y);
-            content.setStrokingColor(RULE_COLOR);
-            content.setLineWidth(0.8f);
+        private void rule(float fromX, float atY, float toX, float lineWidth, PDColor color) throws IOException {
+            content.setStrokingColor(color);
+            content.setLineWidth(lineWidth);
+            content.moveTo(fromX, atY);
+            content.lineTo(toX, atY);
             content.stroke();
         }
 
@@ -353,22 +457,50 @@ public class ResumePdfExporter {
             if (content != null) content.close();
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
+            pages.add(page);
             content = new PDPageContentStream(document, page);
             width = page.getMediaBox().getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
             y = page.getMediaBox().getHeight() - MARGIN_TOP;
         }
 
-        private static int[] placeholderAt(List<int[]> placeholders, int position) {
-            for (int[] range : placeholders) {
-                if (position >= range[0] && position < range[1]) return range;
+        void close() throws IOException {
+            if (content != null) content.close();
+            content = null;
+        }
+
+        /** 多页时补页脚：细线 + 左侧姓名 + 右侧页码。单页不加，免得像公文。 */
+        void paintFooter(String name) throws IOException {
+            if (pages.size() < 2) return;
+            for (int index = 0; index < pages.size(); index++) {
+                PDPage page = pages.get(index);
+                float right = page.getMediaBox().getWidth() - MARGIN_RIGHT;
+                content = new PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true);
+                try {
+                    rule(MARGIN_LEFT, FOOTER_RULE_Y, right, 0.6f, RULE);
+                    // show() 用的是游标的 y，画页脚前先把它挪到底部
+                    y = FOOTER_RULE_Y - 10f;
+                    show(name, fonts.regular(), FOOTER_SIZE, MARGIN_LEFT, MUTED);
+                    String pageNumber = "第 " + (index + 1) + " / " + pages.size() + " 页";
+                    show(pageNumber, fonts.regular(), FOOTER_SIZE,
+                            right - measure(pageNumber, fonts.regular(), FOOTER_SIZE), MUTED);
+                } finally {
+                    content.close();
+                }
+            }
+            content = null;
+        }
+
+        private static Span spanAt(List<Span> spans, int position) {
+            for (Span span : spans) {
+                if (position >= span.start() && position < span.end()) return span;
             }
             return null;
         }
 
-        private static int nextPlaceholderStart(List<int[]> placeholders, int position, int limit) {
+        private static int nextSpanStart(List<Span> spans, int position, int limit) {
             int next = limit;
-            for (int[] range : placeholders) {
-                if (range[0] > position && range[0] < next) next = range[0];
+            for (Span span : spans) {
+                if (span.start() > position && span.start() < next) next = span.start();
             }
             return next;
         }

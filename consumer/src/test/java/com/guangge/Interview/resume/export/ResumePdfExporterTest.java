@@ -58,19 +58,46 @@ class ResumePdfExporterTest {
     }
 
     @Test
-    @DisplayName("所有文字都落在页边距内，不越界也不压到页脚")
+    @DisplayName("单页简历：文字都落在页边距内，不越界也不压到底部")
     void keepsTextInsideTheMargins() throws Exception {
-        String paragraph = "负责订单系统的重构与性能优化，接口数量减少 40%，并沉淀了配套的监控看板，"
-                + "同时把发布流程从手工改成自动化，回滚时间从 30 分钟降到 3 分钟。\n";
-        byte[] bytes = exporter.render("边界检查", paragraph.repeat(30));
+        byte[] bytes = exporter.render("边界检查", """
+                求职目标：Java 后端工程师
+
+                基本信息
+                - 姓名：张三
+                - 手机：13800000000
+
+                工作经历
+                某某科技
+                - 时间：2020.07 - 至今
+                - 职责：负责订单系统的重构与性能优化，接口数量减少 40%，并沉淀了配套的监控看板。
+                """);
 
         try (PDDocument document = Loader.loadPDF(bytes)) {
+            assertThat(document.getNumberOfPages()).isEqualTo(1);
             // A4：595.28 x 841.89，左右各 56pt 边距，上下 62/58pt
             for (float[] point : glyphPositions(document)) {
                 assertThat(point[0]).as("文字左边不越过左页边距").isGreaterThanOrEqualTo(52f);
                 assertThat(point[0]).as("文字右边不越过右页边距").isLessThanOrEqualTo(540f);
                 assertThat(point[1]).as("文字不越过上页边距").isGreaterThanOrEqualTo(40f);
-                assertThat(point[1]).as("文字不越过下页边距").isLessThanOrEqualTo(790f);
+                assertThat(point[1]).as("文字不越过下页边距").isLessThanOrEqualTo(785f);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("多页简历：页脚在底部，正文也不会压到它")
+    void putsFootersAtTheBottomOfEveryPage() throws Exception {
+        String paragraph = "负责订单系统的重构与性能优化，接口数量减少 40%，并沉淀了配套的监控看板，"
+                + "同时把发布流程从手工改成自动化，回滚时间从 30 分钟降到 3 分钟。\n";
+        byte[] bytes = exporter.render("分页检查", paragraph.repeat(30));
+
+        try (PDDocument document = Loader.loadPDF(bytes)) {
+            assertThat(document.getNumberOfPages()).isGreaterThan(1);
+            String text = new PDFTextStripper().getText(document);
+            assertThat(text).contains("第 1 / " + document.getNumberOfPages() + " 页");
+            for (float[] point : glyphPositions(document)) {
+                assertThat(point[1]).as("任何文字都不跑到页面下边缘外").isLessThanOrEqualTo(812f);
             }
         }
     }
