@@ -8,9 +8,13 @@ vi.mock('../services/api', () => ({
 vi.mock('../services/mediaStore', () => ({
   deleteMedia: vi.fn(),
 }));
+vi.mock('../services/practiceMistakes', () => ({
+  retryMistake: vi.fn(),
+}));
 
 import { getSessions, tryDeleteSession } from '../services/api';
 import { deleteMedia } from '../services/mediaStore';
+import { retryMistake } from '../services/practiceMistakes';
 import { usePracticeStore } from './practice';
 
 const STORAGE_KEY = 'ai-interview-practice-v1:u1';
@@ -80,5 +84,17 @@ describe('practice store', () => {
     expect(tryDeleteSession).toHaveBeenCalledWith('s1');
     expect(deleteMedia).toHaveBeenCalledWith(['m-1']);
     expect(store.sessions).toHaveLength(0);
+  });
+
+  it('重练错题：建好练习后顺手刷新本地列表（设备检测页要从本地找这场练习）', async () => {
+    retryMistake.mockResolvedValue({ id: 'new-session' });
+    getSessions.mockResolvedValue([{ id: 'new-session', status: 'in_progress', answers: [] }]);
+
+    const store = usePracticeStore();
+    const sessionId = await store.retryMistake('q-1');
+
+    expect(retryMistake).toHaveBeenCalledWith('q-1');
+    expect(sessionId).toBe('new-session');
+    expect(store.sessions.map((item) => item.id)).toEqual(['new-session']);
   });
 });

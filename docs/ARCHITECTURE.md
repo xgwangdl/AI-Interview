@@ -515,13 +515,14 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 文件 | 职责 |
 | --- | --- |
 | `main.js` / `App.vue` | 应用入口与整体布局 |
-| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history` |
+| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`（错题本分页页） |
 | `authGuard.js` | 路由守卫：未登录跳登录页 |
-| `views/` | 7 个页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView` |
+| `views/` | 练习主线页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView`、`MistakeBookView`（简历与笔试的页面见下两行） |
 | `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |
 | `components/CodeEditor.vue` + `services/monaco.js` | Monaco 封装：**懒加载**（只有打开笔试页才拉那几 MB），含 Java/Python/C++/JS/Go/SQL 高亮；只需核心 worker，因为这些语言是主线程 Monarch 词法高亮 |
 | `components/DigitalHuman.vue` | 真人数字人：切帧动画 + 音量驱动嘴型，见 5.8 |
 | `stores/practice.js` | Pinia store：会话列表与草稿、`localStorage` 持久化、过期清理、断网补传 |
+| `views/MistakeBookView.vue` + `services/practiceMistakes.js` | 错题本：总览页那 5 条的组装、`/mistakes` 页的分页与岗位筛选（参数拼接与页码计算都在 service 里，可单测）；重练走 store 的 `retryMistake` |
 | `services/api.js` | 后端 API 封装，统一注入 token、错误归一化 |
 | `services/mediaCapture.js` | `MediaRecorder` 封装：权限、开始/停止、分片、时长 |
 | `services/mediaStore.js` | 上传失败的本地缓存 |

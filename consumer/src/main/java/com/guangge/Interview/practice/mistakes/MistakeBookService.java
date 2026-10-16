@@ -34,8 +34,11 @@ public class MistakeBookService {
 
     /** 与训练档案的短板阈值一致：两处都说 75，用户才不会觉得两套标准打架。 */
     public static final double PASS_THRESHOLD = 75.0;
-    static final int DEFAULT_LIMIT = 5;
-    static final int MAX_LIMIT = 20;
+    /** 默认一页 20 条：错题本页面的分页大小，与前端 `PAGE_SIZE` 保持一致。 */
+    static final int DEFAULT_LIMIT = 20;
+    static final int MAX_LIMIT = 50;
+    /** 岗位置空缺省值：档案里允许 role 为空（V9 之前的记录），筛选与展示要跟同一个名字对齐。 */
+    static final String UNKNOWN_ROLE = "未指定岗位";
     /** 单题重练只录一段回答，不用 20 分钟；跟前端"每题 4 分钟"的估算保持一致。 */
     static final int RETRY_DURATION_MINUTES = 4;
     private static final String SCOPE_NOTE =
@@ -58,9 +61,17 @@ public class MistakeBookService {
         this.sessions = sessions;
     }
 
+    /**
+     * 错题本一页。
+     *
+     * 所有错题都在内存里分组后再筛选、分页：一次练习最多几十条成绩，
+     * 而"同一道题的最好成绩/最弱维度"用 SQL 表达要把五个维度各聚合一遍，得不偿失。
+     * 真到几千条的量级，再换成 `group by question_id` 的数据库侧聚合（见需求文档 §7）。
+     */
     @Transactional(readOnly = true)
-    public MistakeBookView summary(String ownerId, Integer limit) {
-        int capped = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_LIMIT);
+    public MistakeBookView summary(String ownerId, String role, Integer offset, Integer limit) {
+        int size = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_LIMIT);
+        int from = offset == null ? 0 : Math.max(offset, 0);
 
         Map<String, List<PracticeScoreEntity>> byQuestion = new LinkedHashMap<>();
         for (PracticeScoreEntity row : scores.findScoredQuestions(ownerId)) {
@@ -69,7 +80,7 @@ public class MistakeBookService {
             byQuestion.computeIfAbsent(row.getQuestionId(), ignored -> new ArrayList<>()).add(row);
         }
 
-        List<MistakeBookView.Mistake> mistakes = byQuestion.values().stream()
+        List<MistakeBookView.Mistake> all = byQuestion.values().stream()
                 .map(MistakeBookService::toMistake)
                 .filter(mistake -> mistake.bestScore() != null && mistake.bestScore() < PASS_THRESHOLD)
                 .sorted(Comparator.comparingDouble(MistakeBookView.Mistake::bestScore)
@@ -78,8 +89,28 @@ public class MistakeBookService {
                                 Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
 
+        String selected = role == null || role.isBlank() ? null : role;
+        List<MistakeBookView.Mistake> filtered = selected == null ? all
+                : all.stream().filter(mistake -> selected.equals(mistake.role())).toList();
+
+        List<MistakeBookView.Mistake> page = from >= filtered.size() ? List.of()
+                : filtered.subList(from, Math.min(from + size, filtered.size()));
+
         return new MistakeBookView(SCOPE_NOTE.formatted(PASS_THRESHOLD), PASS_THRESHOLD,
-                mistakes.size(), mistakes.stream().limit(capped).toList());
+                filtered.size(), from, size, selected, roleCounts(all), page);
+    }
+
+    /** 岗位筛选选项：基于未筛选的错题统计，数量多的排前面，同名岗位按名字稳定排序。 */
+    private static List<MistakeBookView.RoleCount> roleCounts(List<MistakeBookView.Mistake> all) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (MistakeBookView.Mistake mistake : all) {
+            counts.merge(mistake.role(), 1, Integer::sum);
+        }
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .map(entry -> new MistakeBookView.RoleCount(entry.getKey(), entry.getValue()))
+                .toList();
     }
 
     /**
@@ -126,7 +157,7 @@ public class MistakeBookService {
                 latest.getQuestionId(),
                 latest.getQuestionText(),
                 latest.getQuestionCategory(),
-                latest.getRole(),
+                blankTo(latest.getRole(), UNKNOWN_ROLE),
                 latest.getDifficulty(),
                 latest.getInterviewType(),
                 latest.getInterviewerStyle(),

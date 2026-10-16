@@ -12,8 +12,17 @@ import java.util.List;
 public record MistakeBookView(
         String scopeNote,
         double passThreshold,
+        /** 当前筛选条件下的错题总数：分页算总数、入口写"查看全部 N 道"都用它。 */
         int total,
+        int offset,
+        int limit,
+        /** 当前筛选的岗位（空 = 全部）。 */
+        String role,
+        /** 有错题的岗位与数量，给筛选下拉用（永远基于**未筛选**的错题，否则选完就只剩一个选项）。 */
+        List<RoleCount> roles,
         List<Mistake> mistakes) {
+
+    public record RoleCount(String role, int count) { }
 
     /**
      * 一道错题。

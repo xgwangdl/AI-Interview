@@ -133,3 +133,22 @@ a { color: inherit; text-decoration: none; }
   .page-heading h1 { font-size: 22px; }
   .mobile-backdrop { position: fixed; z-index: 30; inset: 0; background: rgba(22, 31, 27, .28); }
 }
+
+/* --- 错题本（训练总览页与 /mistakes 页共用，见 docs/MISTAKE-BOOK-REQUIREMENTS.md）--- */
+.mistake-list { padding: 6px 0; box-shadow: none; }
+.mistake-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 16px; border-bottom: 1px solid #eef1ee; }
+.mistake-row:last-child { border-bottom: 0; }
+.mistake-score { display: grid; gap: 3px; }
+.mistake-score strong { color: #c2691f; font-size: 20px; font-weight: 650; line-height: 1.1; }
+.mistake-score small { color: #9aa39f; font-size: 12px; }
+.mistake-main { display: grid; min-width: 0; gap: 6px; }
+.mistake-main strong { color: #34403a; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.mistake-main small { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: #8d9792; font-size: 12px; }
+.mistake-tag.el-tag { border-color: #e6ebe8; background: #f4f7f5; color: #6c7a73; }
+.mistake-action.el-button { flex: none; }
+.mistake-more { margin: 8px 16px 4px; color: #98a29d; font-size: 12px; }
+@media (max-width: 680px) {
+  .mistake-row { grid-template-columns: 68px minmax(0, 1fr); gap: 10px; padding: 11px 12px; }
+  .mistake-action.el-button { grid-column: 1 / -1; }
+  .mistake-score strong { font-size: 17px; }
+}

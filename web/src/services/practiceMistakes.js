@@ -18,8 +18,19 @@ export const DIFFICULTY_LABELS = {
   advanced: '进阶',
 };
 
-export function loadMistakes(limit = 5) {
-  return apiRequest(`/practice-archive/mistakes?limit=${encodeURIComponent(limit)}`);
+/** 错题页每页条数：与后端 `MistakeBookService.DEFAULT_LIMIT` 保持一致（改要一起改）。 */
+export const PAGE_SIZE = 20;
+
+/**
+ * 拉一页错题。
+ *
+ * `limit` 之外还支持 `offset` 与 `role`：总览页只传 `limit: 5`（拿最差的前 5 条 + 总数），
+ * `/mistakes` 页用它做真分页与岗位筛选。参数拼在这里而不是组件里，是为了能单测。
+ */
+export function loadMistakes({ role = '', offset = 0, limit = PAGE_SIZE } = {}) {
+  const params = new URLSearchParams({ offset: String(Math.max(0, offset)), limit: String(limit) });
+  if (role) params.set('role', role);
+  return apiRequest(`/practice-archive/mistakes?${params.toString()}`);
 }
 
 export function retryMistake(questionId) {
@@ -57,8 +68,33 @@ export function buildMistakes(book) {
     scopeNote: book?.scopeNote || '',
     passThreshold: threshold,
     total: book?.total ?? mistakes.length,
+    offset: book?.offset ?? 0,
+    limit: book?.limit || mistakes.length || PAGE_SIZE,
+    role: book?.role || '',
+    roles: (book?.roles || []).map((item) => ({ role: item.role, count: item.count })),
     mistakes,
+    /** 分页控件要的东西：当前第几页、共几页、还有没有下一页 */
+    page: pageOf(book?.offset, book?.limit, book?.total),
+    pageCount: pageCountOf(book?.limit, book?.total ?? mistakes.length),
+    hasMore: hasMoreOf(book?.offset, book?.limit, book?.total),
   };
+}
+
+function pageOf(offset, limit, total) {
+  const size = Number(limit) > 0 ? Number(limit) : PAGE_SIZE;
+  const from = Math.max(0, Number(offset) || 0);
+  return Math.floor(from / size) + 1;
+}
+
+function pageCountOf(limit, total) {
+  const size = Number(limit) > 0 ? Number(limit) : PAGE_SIZE;
+  return Math.max(1, Math.ceil(Math.max(0, Number(total) || 0) / size));
+}
+
+function hasMoreOf(offset, limit, total) {
+  const size = Number(limit) > 0 ? Number(limit) : PAGE_SIZE;
+  const from = Math.max(0, Number(offset) || 0);
+  return from + size < (Number(total) || 0);
 }
 
 function round(value) {

@@ -55,12 +55,19 @@ public class PracticeArchiveController {
         return Map.of("removed", scores.clear(owners.requireOwner(authorization)));
     }
 
-    /** 错题本：最好一次也没过线的题。 */
+    /**
+     * 错题本：最好一次也没过线的题。
+     *
+     * 分页参数（`offset` / `limit`）与岗位筛选都是给"查看全部错题"那个页面用的；
+     * 总览页只传 `limit=5`，拿到的仍然是最差的前 5 条 + 总数。
+     */
     @GetMapping("/mistakes")
     public MistakeBookView mistakes(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestParam(defaultValue = "5") int limit) {
-        return mistakeBook.summary(owners.requireOwner(authorization), limit);
+            @RequestParam(required = false) String role,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "20") int limit) {
+        return mistakeBook.summary(owners.requireOwner(authorization), role, offset, limit);
     }
 
     /**

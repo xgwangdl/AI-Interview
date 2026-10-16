@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/practice/:id/session', name: 'session', component: () => import('./views/SessionView.vue') },
     { path: '/practice/:id/report', name: 'report', component: () => import('./views/ReportView.vue') },
     { path: '/history', name: 'history', component: () => import('./views/HistoryView.vue') },
+    { path: '/mistakes', name: 'mistakes', component: () => import('./views/MistakeBookView.vue') },
     { path: '/resumes', name: 'resume-list', component: () => import('./views/ResumeListView.vue') },
     { path: '/resumes/new', name: 'resume-new', component: () => import('./views/ResumeNewView.vue') },
     { path: '/resumes/:id', name: 'resume-detail', component: () => import('./views/ResumeDetailView.vue') },

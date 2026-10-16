@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { deleteMedia } from '../services/mediaStore';
 import { getSessions, tryDeleteSession } from '../services/api';
+import { retryMistake as createRetrySession } from '../services/practiceMistakes';
 
 const storageKey = () => `ai-interview-practice-v1:${localStorage.getItem('userId') || 'anonymous'}`;
 const retentionDays = 7;
@@ -101,6 +102,20 @@ export const usePracticeStore = defineStore('practice', {
           return;
         }
       }
+    },
+    /**
+     * 重练一道错题。
+     *
+     * 后端建的是一场**正常的练习**（只有这一道题），所以这里顺手刷新一次列表：
+     * 设备检测页是从本地列表里找这场练习的，不刷新就会"找不到这次练习"。
+     * 放在 store 里而不是两个视图各写一遍，也是为了让"重练"只有一条路径。
+     *
+     * @returns 新建练习的 id
+     */
+    async retryMistake(questionId) {
+      const created = await createRetrySession(questionId);
+      await this.loadFromServer();
+      return created.id;
     },
     async pruneExpired() {
       const expired = this.sessions.filter((item) => item.retentionUntil && Date.parse(item.retentionUntil) <= Date.now());
