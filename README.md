@@ -82,6 +82,23 @@
 
 ## ⚡ 快速开始
 
+### 方式一：一条命令全跑起来（推荐先试）
+
+```bash
+cp .env.example .env          # 只填 AUTH_TOKEN_SECRET 也能起；填上 Ali_API_KEY 才有真实 AI
+docker compose --profile full up -d --build
+```
+
+等后端健康检查变绿（约 30 秒，首次构建要先下载依赖，耐心一点），然后打开
+<http://localhost:8080>，用 `smoke / 123456` 登录即可。
+
+这套 profile 会把 Postgres、Redis、后端、前端（nginx 反代 `/api`）一起起好；
+**不加 `--profile full`** 就还是老样子——只起基础设施，应用在本机跑（下面方式二）。
+容器里已经装好中文字体（文泉驿），所以简历导出的 PDF 在容器里也能正常生成。
+停掉：`docker compose --profile full down`（数据卷保留）。
+
+### 方式二：本机开发
+
 ```bash
 # 1. 环境变量
 cp .env.example .env          # 至少填 Ali_API_KEY 与 AUTH_TOKEN_SECRET

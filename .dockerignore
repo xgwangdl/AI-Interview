@@ -1,0 +1,10 @@
+# 构建上下文尽量小：这些都不该进镜像（也让 docker build 快很多）
+.git
+data
+artifacts
+docs
+**/target
+**/node_modules
+web/dist
+.idea
+.env
