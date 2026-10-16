@@ -6,6 +6,8 @@ import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.service.PracticeQuestionCatalog;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import com.guangge.Interview.quota.ModelCallGuard;
+import com.guangge.Interview.quota.ModelLease;
 import com.guangge.Interview.util.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.UUID;
@@ -55,6 +58,7 @@ public class AnalysisJobService {
     private final PracticeQuestionCatalog questions;
     private final AnalysisQueueMetrics metrics;
     private final com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive;
+    private final ModelCallGuard modelCalls;
     private final int maxAttempts;
     private final long providerTimeoutMs;
     private final long retryBackoffMs;
@@ -72,6 +76,7 @@ public class AnalysisJobService {
             PracticeQuestionCatalog questions,
             AnalysisQueueMetrics metrics,
             com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive,
+            ModelCallGuard modelCalls,
             @Value("${practice.analysis.max-attempts:3}") int maxAttempts,
             @Value("${practice.analysis.provider-timeout-ms:120000}") long providerTimeoutMs,
             @Value("${practice.analysis.retry-backoff-ms:5000}") long retryBackoffMs,
@@ -87,6 +92,7 @@ public class AnalysisJobService {
         this.questions = questions;
         this.metrics = metrics;
         this.scoreArchive = scoreArchive;
+        this.modelCalls = modelCalls;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.providerTimeoutMs = Math.max(1000, providerTimeoutMs);
         this.retryBackoffMs = Math.max(0, retryBackoffMs);
@@ -269,6 +275,18 @@ public class AnalysisJobService {
             log.info("分析任务完成 job={} session={} answer={} attempts={} 耗时={}ms",
                     job.getId(), job.getSessionId(), job.getAnswerId(), job.getAttempts(), elapsed);
         } catch (RuntimeException exception) {
+            if (exception instanceof AnalysisDeferredException deferred) {
+                // 额度用完了不是失败：把任务推到额度重置之后再跑，
+                // 不消耗重试次数，也不进死信队列（用户第二天看到的是正常的报告）
+                job.setStatus(STATUS_PENDING);
+                job.setNextAttemptAt(deferred.resumeAt());
+                job.setLastError(deferred.getMessage());
+                job.setUpdatedAt(Instant.now());
+                jobs.save(job);
+                log.info("分析任务 {} 因额度不足推迟到 {}：{}",
+                        job.getId(), deferred.resumeAt(), deferred.getMessage());
+                return;
+            }
             int attempts = job.getAttempts() + 1;
             job.setAttempts(attempts);
             job.setLastError(trimError(exception));
@@ -329,38 +347,89 @@ public class AnalysisJobService {
 
         String transcript = answer.getTranscriptText();
         if (transcript == null || transcript.isBlank()) {
-            Resource media = mediaStorage.find(answer.getMediaKey())
-                    .orElseThrow(() -> new IllegalStateException("Recorded media is missing: " + job.getAnswerId()));
-            transcript = transcribe(media, answer.getMediaContentType()).text();
+            // 转写与评分都要花模型的钱：额度不够时把整条任务推迟，而不是让它失败
+            try (ModelLease lease = reserveFor(session, job, "语音转写")) {
+                Resource media = mediaStorage.find(answer.getMediaKey())
+                        .orElseThrow(() -> new IllegalStateException("Recorded media is missing: " + job.getAnswerId()));
+                transcript = transcribe(media, answer.getMediaContentType()).text();
+            }
             answer.setTranscriptText(transcript);
             answer.setTranscriptStatus("completed");
             answers.save(answer);
         }
 
         if (answer.getEvaluationJson() == null || answer.getEvaluationJson().isBlank()) {
-            EvaluationRequest request = new EvaluationRequest(
-                    session.getRole(),
-                    session.getJobDescription(),
-                    answer.getQuestionId(),
-                    questionText(session, answer.getQuestionId()),
-                    transcript,
-                    answer.getDurationSeconds());
-            EvaluationOutcome outcome = withTimeout("内容评分",
-                    () -> evaluationProvider.evaluate(request));
-            EvaluationProvenance provenance = evaluationProvider.provenance();
-            EvaluationReport report = new EvaluationReport(
-                    provenance.modelName(),
-                    provenance.modelVersion(),
-                    provenance.promptVersion(),
-                    Instant.now(),
-                    // 原始响应留档用于审计，但加上限，避免异常长的输出撑爆这一行。
-                    LogSanitizer.truncate(outcome.rawResponse(), MAX_RAW_RESPONSE_LENGTH),
-                    outcome.result());
-            answer.setEvaluationJson(validator.write(report));
-            answer.setEvaluationStatus("completed");
-            answers.save(answer);
-            // 成绩另存一份长期档案：场次 7 天后会连回答一起清掉，档案要留下来（见 V9 迁移）
-            scoreArchive.record(session, answer, outcome.result());
+            String spoken = transcript;
+            try (ModelLease lease = reserveFor(session, job, "内容评分")) {
+                EvaluationRequest request = new EvaluationRequest(
+                        session.getRole(),
+                        session.getJobDescription(),
+                        answer.getQuestionId(),
+                        questionText(session, answer.getQuestionId()),
+                        spoken,
+                        answer.getDurationSeconds());
+                EvaluationOutcome outcome = withTimeout("内容评分",
+                        () -> evaluationProvider.evaluate(request));
+                EvaluationProvenance provenance = evaluationProvider.provenance();
+                EvaluationReport report = new EvaluationReport(
+                        provenance.modelName(),
+                        provenance.modelVersion(),
+                        provenance.promptVersion(),
+                        Instant.now(),
+                        // 原始响应留档用于审计，但加上限，避免异常长的输出撑爆这一行。
+                        LogSanitizer.truncate(outcome.rawResponse(), MAX_RAW_RESPONSE_LENGTH),
+                        outcome.result());
+                answer.setEvaluationJson(validator.write(report));
+                answer.setEvaluationStatus("completed");
+                answers.save(answer);
+                // 成绩另存一份长期档案：场次 7 天后会连回答一起清掉，档案要留下来（见 V9 迁移）
+                // 题面一起带上：错题本要靠它才能把"这道题"重练一遍（见 V10 迁移）
+                scoreArchive.record(session, answer, questionOf(session, answer.getQuestionId()), outcome.result());
+            }
+        }
+    }
+
+    /**
+     * 占一次模型额度；占不到就抛出"推迟"信号。
+     *
+     * 之所以要抛而不是返回 null：调用点有转写与评分两处，中间还夹着写库，
+     * 用异常才能保证"没额度 → 什么都不做 → 任务回到 pending"这条路是唯一的。
+     */
+    private ModelLease reserveFor(PracticeSessionEntity session, AnalysisJobEntity job, String kind) {
+        ModelLease lease = modelCalls.tryAcquire(session.getOwnerId(), kind);
+        if (!lease.allowed()) {
+            Instant resumeAt = lease.resetsAt() == null ? Instant.now().plusSeconds(3600) : lease.resetsAt();
+            // 同一时刻涌上来一大批任务不好看，错开一两分钟
+            resumeAt = resumeAt.plusSeconds(ThreadLocalRandom.current().nextInt(0, 120));
+            throw new AnalysisDeferredException(lease.reason(), resumeAt);
+        }
+        return lease;
+    }
+
+    /** 额度不足导致的"延后处理"：既不是失败，也不该消耗重试次数。 */
+    private static final class AnalysisDeferredException extends RuntimeException {
+        private final Instant resumeAt;
+
+        AnalysisDeferredException(String message, Instant resumeAt) {
+            super(message);
+            this.resumeAt = resumeAt;
+        }
+
+        Instant resumeAt() {
+            return resumeAt;
+        }
+    }
+
+    /** 题目读不出来时只丢题面，不影响分数入库。 */
+    private com.guangge.Interview.practice.dto.PracticeQuestion questionOf(
+            PracticeSessionEntity session, String questionId) {
+        try {
+            return questions.questions(session.getQuestionsJson()).stream()
+                    .filter(question -> question.id().equals(questionId))
+                    .findFirst()
+                    .orElse(null);
+        } catch (RuntimeException exception) {
+            return null;
         }
     }
 

@@ -1,6 +1,7 @@
 package com.guangge.Interview.practice.archive;
 
 import com.guangge.Interview.analysis.EvaluationResult;
+import com.guangge.Interview.practice.dto.PracticeQuestion;
 import com.guangge.Interview.practice.entity.PracticeAnswerEntity;
 import com.guangge.Interview.practice.entity.PracticeScoreEntity;
 import com.guangge.Interview.practice.entity.PracticeSessionEntity;
@@ -26,6 +27,9 @@ public class PracticeScoreArchiveService {
 
     private static final Logger log = LoggerFactory.getLogger(PracticeScoreArchiveService.class);
 
+    /** 题干不长，这只是一道上限保险。 */
+    private static final int MAX_QUESTION_TEXT = 2000;
+
     private final PracticeScoreRepository scores;
 
     public PracticeScoreArchiveService(PracticeScoreRepository scores) {
@@ -39,7 +43,8 @@ public class PracticeScoreArchiveService {
      * 所以分析任务重试不会写出重复分数。
      */
     @Transactional
-    public void record(PracticeSessionEntity session, PracticeAnswerEntity answer, EvaluationResult result) {
+    public void record(PracticeSessionEntity session, PracticeAnswerEntity answer, PracticeQuestion question,
+                       EvaluationResult result) {
         if (session == null || answer == null || result == null || result.scores() == null) return;
         if (scores.existsBySessionIdAndQuestionId(session.getId(), answer.getQuestionId())) return;
 
@@ -50,8 +55,15 @@ public class PracticeScoreArchiveService {
         entity.setSessionCreatedAt(session.getCreatedAt() == null ? Instant.now() : session.getCreatedAt());
         entity.setQuestionIndex(answer.getQuestionIndex());
         entity.setQuestionId(answer.getQuestionId());
+        // 题面留一份：场次 7 天后会被清理，错题本要靠它才能"把这道题重练一遍"（V10）
+        if (question != null) {
+            entity.setQuestionText(truncate(question.text(), MAX_QUESTION_TEXT));
+            entity.setQuestionCategory(question.category());
+        }
         entity.setRole(session.getRole());
         entity.setDifficulty(session.getDifficulty());
+        entity.setInterviewType(session.getInterviewType());
+        entity.setInterviewerStyle(session.getInterviewerStyle());
         entity.setOverallScore(scale(result.overallScore()));
         entity.setRelevance(scale(result.scores().relevance()));
         entity.setCompleteness(scale(result.scores().completeness()));
@@ -60,6 +72,18 @@ public class PracticeScoreArchiveService {
         entity.setLogic(scale(result.scores().logic()));
         entity.setEvaluatedAt(Instant.now());
         scores.save(entity);
+    }
+
+    /** 兼容旧调用：没有题面信息时照样记分数（错题本里不会出现这道题）。 */
+    @Transactional
+    public void record(PracticeSessionEntity session, PracticeAnswerEntity answer, EvaluationResult result) {
+        record(session, answer, null, result);
+    }
+
+    /** 题面按 text 列存，不需要无限长；超长只可能是模型失控，截断比报错好。 */
+    private static String truncate(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /** 用户主动删掉一场练习时，这一场的成绩也跟着删（"删除"就该是删除）。 */

@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus';
 import { usePracticeStore } from './stores/practice';
 import { getPreferences, savePreferences } from './services/api';
 import { THEMES, applyTheme, bootstrapTheme, rememberTheme } from './services/theme';
+import { buildUsage, loadModelUsage } from './services/modelUsage';
 
 const route = useRoute();
 const router = useRouter();
@@ -13,6 +14,8 @@ const menuOpen = ref(false);
 const profileName = ref(localStorage.getItem('userName') || '练习者');
 // 主题先按本地记录渲染（避免闪一下默认色），登录后再用服务端的偏好覆盖。
 const theme = ref(bootstrapTheme());
+/** 今日 AI 额度：和主题色一样是"账号状态"，顶栏一直能看见 */
+const usage = ref(buildUsage(null));
 
 async function chooseTheme(name) {
   theme.value = name;
@@ -46,7 +49,24 @@ watch(() => route.name, (name, previous) => {
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
 const pageTitle = computed(() => ({ dashboard: '训练总览', setup: '创建训练', 'device-check': '设备检测', session: '模拟面试', report: '练习报告', history: '练习记录', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情' }[route.name] || '面试练习室'));
-watch(() => route.fullPath, () => { menuOpen.value = false; });
+watch(() => route.fullPath, () => {
+  menuOpen.value = false;
+  // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
+  void refreshUsage();
+});
+
+async function refreshUsage() {
+  if (!localStorage.getItem('token')) {
+    usage.value = buildUsage(null);
+    return;
+  }
+  try {
+    usage.value = buildUsage(await loadModelUsage());
+  } catch {
+    // 额度只是提示：拿不到就不显示，不能因此打扰用户
+    usage.value = buildUsage(null);
+  }
+}
 
 async function refreshPractice() {
   // 登录页与首次跳转期间还没有 token，直接跳过，避免必然 401 的请求和误导性报错。
@@ -60,7 +80,12 @@ async function refreshPractice() {
   }
 }
 
-onMounted(() => { if (route.name !== 'login') void refreshPractice(); });
+onMounted(() => {
+  if (route.name !== 'login') {
+    void refreshPractice();
+    void refreshUsage();
+  }
+});
 
 function navigate(path) {
   menuOpen.value = false;
@@ -116,7 +141,13 @@ function accountCommand(command) {
       <header class="topbar">
         <button class="mobile-menu" aria-label="打开导航" @click="menuOpen = true"><el-icon><Menu /></el-icon></button>
         <div class="breadcrumb"><span>工作空间</span><el-icon><ArrowRight /></el-icon><strong>{{ pageTitle }}</strong></div>
-        <div class="topbar-actions"><span class="privacy-status"><i></i>个人练习空间</span><button class="help-button" aria-label="查看隐私信息" title="查看隐私信息"><el-icon><QuestionFilled /></el-icon></button></div>
+        <div class="topbar-actions">
+          <span v-if="usage.enabled" class="quota-chip" :class="{ tight: usage.tight, empty: usage.exhausted }"
+                :title="`${usage.note}${usage.resetLabel ? ' ' + usage.resetLabel : ''}`">
+            <el-icon><Lightning /></el-icon>{{ usage.label }}<small v-if="usage.resetLabel">{{ usage.resetLabel }}</small>
+          </span>
+          <span class="privacy-status"><i></i>个人练习空间</span><button class="help-button" aria-label="查看隐私信息" title="查看隐私信息"><el-icon><QuestionFilled /></el-icon></button>
+        </div>
       </header>
       <div class="page-content"><RouterView /></div>
     </main>

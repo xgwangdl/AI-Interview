@@ -198,6 +198,9 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `entity` / `repository` | `PracticeSessionEntity`、`PracticeAnswerEntity` 及其仓储 | 持久化 |
 | `dto` | `PracticeSessionRequest`、`PracticeAnswerRequest`、`PracticeReportView` 等 | API 模型 |
 | `plan` | `QuestionPlanController` / `QuestionPlanService` / `SpringAiQuestionPlanProvider` / `QuestionPlanValidator` | AI 出题，输出同样要过结构校验 |
+| `followup` | `PracticeFollowUpService` / `SpringAiPracticeFollowUpProvider` / `PracticeFollowUpValidator` | 面试官追问：同步转写 + 一次模型判断，追问插在被追问的那道题后面（同一道题最多 2 轮，一场最多 3 次） |
+| `archive` | `PracticeArchiveService` / `PracticeScoreArchiveService` / `PracticeArchiveController` | 训练档案：跨场次的趋势与短板；成绩与录像分开长期保留（V9） |
+| `mistakes` | `MistakeBookService` / `MistakeBookView` | 错题本：最好一次没过 75 分的题 + 一键单题重练（V10） |
 | `resume` | `ResumeController` / `ResumeExtractionService` | 上传 PDF/Word，用 Apache Tika 抽文本 |
 | `security` | `OwnerResolver` | 从 Bearer Token 解析出当前用户，作为数据归属 |
 | | `LegacyApiAuthInterceptor` / `LegacyApiAuthConfiguration` | 给遗留接口补鉴权 |
@@ -390,6 +393,24 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 
 预览图在 `docs/images/avatar-crop-preview.png`（放在棋盘格上，能一眼看出是否残留卡片底）。
 
+### 5.9 `quota` —— 成本护栏
+
+模型调用是共享成本，这里给它上锁（需求见 [COST-GUARD-REQUIREMENTS.md](COST-GUARD-REQUIREMENTS.md)）：
+
+| 类 | 职责 |
+| --- | --- |
+| `ModelCallGuard` | 按"账号 + 自然日"计数 + 在飞并发计数；`call`（拿不到就 429）/ `tryAcquire`（拿不到返回许可，由调用方决定降级）/ `require`（事务方法内先扣再进业务）/ `usage` |
+| `ModelUsageController` | `GET /api/v1/me/model-usage` —— 前端顶栏额度条的来源 |
+| `ModelLease` · `ModelQuotaExceededException` | 许可对象（`close()` 释放并发名额，日额度不返还）与 429 异常 |
+
+计数优先走 Redis（多实例共享、重启不丢），`RedisCounterStore` 与 `InMemoryCounterStore` 都实现同一个
+`CounterStore` 接口；Redis 连不上时自动退到内存并记一条警告 —— 护栏失效的退化方向是"照常花钱"，
+而不是"谁都别想用"。
+
+**接入点**：面试出题、笔试出题、简答判分、追问、转写与评分（在 `AnalysisJobService` 里）、
+简历生成/补全/优化、语音合成。异步链路拿不到额度时**顺延**（`AnalysisDeferredException` → 任务回到
+`pending` 并把 `nextAttemptAt` 指到额度重置后），不消耗重试次数、不进死信队列。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -448,6 +469,10 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V4__analysis_queue_observability.sql` | `analysis_jobs` / `analysis_jobs_dlq` | 退避字段 `next_attempt_at` + 死信表 |
 | `V5__candidate_registration.sql` | `candidates` | 用户名唯一索引（开放注册），口令改存 BCrypt 哈希 |
 | `V6__coding_assessment.sql` | `coding_sessions` / `code_questions` / `code_submissions` | 笔试模块：会话、题目（五种题型共用一张表）、提交与判分结果 |
+| `V7__user_theme_preference.sql` | `candidates` | 每个账号的界面主题色 |
+| `V8__resume_library.sql` | `resumes` / `resume_optimizations` | 简历库与按 JD 优化的历史（逐段改动 + 待补充占位符） |
+| `V9__score_archive_and_follow_up.sql` | `practice_score_archive` + `practice_sessions.follow_up_enabled` | 成绩与录像分开保留（只存分数与维度），并回填历史；追问开关 |
+| `V10__mistake_book.sql` | `practice_score_archive` | 题面 / 题目分类 / 面试类型与风格跟着成绩走，错题本才有题可重练；回填还在保留期内的历史 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -476,6 +501,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 笔试 | `practice.coding.retention-days` / `practice.coding.plan-max-attempts` | 7 / 3 |
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
+| AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 120 / 3 / Asia/Shanghai |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
 | 模型 | `spring.ai.dashscope.*`（chat `qwen-max`、embedding `text-embedding-v2`、speech / transcription） | 统一读 `Ali_API_KEY` |
 

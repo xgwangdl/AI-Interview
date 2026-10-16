@@ -6,6 +6,7 @@ import com.guangge.Interview.analysis.EvaluationResultValidator;
 import com.guangge.Interview.analysis.AnalysisJobEntity;
 import com.guangge.Interview.analysis.AnalysisJobRepository;
 import com.guangge.Interview.practice.dto.PracticeReportView;
+import com.guangge.Interview.practice.dto.PracticeQuestion;
 import com.guangge.Interview.practice.entity.PracticeAnswerEntity;
 import com.guangge.Interview.practice.entity.PracticeSessionEntity;
 import com.guangge.Interview.practice.media.MediaSignedUrlService;
@@ -57,12 +58,18 @@ public class PracticeReportService {
         PracticeSessionEntity session = sessions.findByIdAndOwnerId(sessionId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice session not found"));
         List<PracticeAnswerEntity> sessionAnswers = answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId);
+        List<PracticeQuestion> questionList = questionList(session);
+        Map<String, String> followUpRoots = PracticeQuestionCatalog.followUpRoots(questionList);
 
         List<PracticeReportView.QuestionReport> questions = new ArrayList<>();
         List<EvaluationResult> evaluations = new ArrayList<>();
+        int followUpAnswers = 0;
         for (PracticeAnswerEntity answer : sessionAnswers) {
             EvaluationResult evaluation = readEvaluation(answer);
             if (evaluation != null) evaluations.add(evaluation);
+            String parentQuestionId = followUpRoots.get(answer.getQuestionId());
+            if (parentQuestionId != null) followUpAnswers++;
+            int index = PracticeQuestionCatalog.indexOf(questionList, answer.getQuestionId());
             questions.add(new PracticeReportView.QuestionReport(
                     answer.getId(),
                     answer.getQuestionIndex(),
@@ -74,6 +81,11 @@ public class PracticeReportService {
                     answer.getEvaluationStatus(),
                     "/api/v1/answers/" + answer.getId() + "/media",
                     signedUrls.issue(answer.getId()).url(),
+                    parentQuestionId != null,
+                    parentQuestionId,
+                    parentQuestionId == null ? null
+                            : PracticeQuestionCatalog.indexOf(questionList, parentQuestionId),
+                    index < 0 ? 0 : PracticeQuestionCatalog.followUpRoundOf(questionList, index),
                     evaluation));
         }
 
@@ -86,7 +98,7 @@ public class PracticeReportService {
                 session.getQuestionCount(),
                 evaluations.size(),
                 Instant.now(),
-                summarize(evaluations),
+                summarize(evaluations, followUpAnswers),
                 analysis,
                 questions);
     }
@@ -98,6 +110,15 @@ public class PracticeReportService {
             return validator.parseReport(json).result();
         } catch (EvaluationFormatException exception) {
             return null;
+        }
+    }
+
+    /** 题目列表读不出来时不让整份报告垮掉：追问标记是增强信息，缺了照样出报告。 */
+    private List<PracticeQuestion> questionList(PracticeSessionEntity session) {
+        try {
+            return questions.questions(session.getQuestionsJson());
+        } catch (RuntimeException exception) {
+            return List.of();
         }
     }
 
@@ -139,9 +160,9 @@ public class PracticeReportService {
         return new PracticeReportView.AnalysisState(processing ? "processing" : "completed", attempts, null);
     }
 
-    private static PracticeReportView.ReportSummary summarize(List<EvaluationResult> evaluations) {
+    private static PracticeReportView.ReportSummary summarize(List<EvaluationResult> evaluations, int followUpCount) {
         if (evaluations.isEmpty()) {
-            return new PracticeReportView.ReportSummary(null, Map.of(), 0, 0, 0, 0, List.of());
+            return new PracticeReportView.ReportSummary(null, Map.of(), 0, 0, 0, 0, followUpCount, List.of());
         }
         Map<String, Double> dimensions = new LinkedHashMap<>();
         dimensions.put("relevance", average(evaluations, result -> result.scores().relevance()));
@@ -164,6 +185,7 @@ public class PracticeReportService {
                 average(evaluations, result -> result.delivery().totalPauseSeconds()),
                 (int) Math.round(evaluations.stream()
                         .mapToInt(result -> result.delivery().fillerWordCount()).average().orElse(0)),
+                followUpCount,
                 suggestions);
     }
 

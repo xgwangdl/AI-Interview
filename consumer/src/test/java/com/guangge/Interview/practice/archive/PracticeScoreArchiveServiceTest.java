@@ -1,6 +1,7 @@
 package com.guangge.Interview.practice.archive;
 
 import com.guangge.Interview.analysis.EvaluationResult;
+import com.guangge.Interview.practice.dto.PracticeQuestion;
 import com.guangge.Interview.practice.entity.PracticeAnswerEntity;
 import com.guangge.Interview.practice.entity.PracticeScoreEntity;
 import com.guangge.Interview.practice.entity.PracticeSessionEntity;
@@ -57,6 +58,22 @@ class PracticeScoreArchiveServiceTest {
         service.record(session, answer, evaluation());
 
         verify(scores, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("带上题面一起存：错题本要靠它才能在录像清掉之后重练那道题")
+    void keepsTheQuestionText() {
+        PracticeSessionEntity session = session();
+        PracticeAnswerEntity answer = answer(session.getId());
+        when(scores.existsBySessionIdAndQuestionId(session.getId(), "q-2")).thenReturn(false);
+
+        service.record(session, answer, new PracticeQuestion("q-2", "讲一个你优化过的接口", "technical"),
+                evaluation());
+
+        ArgumentCaptor<PracticeScoreEntity> captor = ArgumentCaptor.forClass(PracticeScoreEntity.class);
+        verify(scores).save(captor.capture());
+        assertThat(captor.getValue().getQuestionText()).isEqualTo("讲一个你优化过的接口");
+        assertThat(captor.getValue().getQuestionCategory()).isEqualTo("technical");
     }
 
     @Test

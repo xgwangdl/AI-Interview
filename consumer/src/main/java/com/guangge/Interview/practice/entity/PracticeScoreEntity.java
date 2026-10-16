@@ -36,11 +36,28 @@ public class PracticeScoreEntity {
     @Column(name = "question_id", nullable = false, length = 64)
     private String questionId;
 
+    /**
+     * 题干本身。V10 起才有：场次过了保留期会被清理，错题本要"重练这道题"就必须自己留住题面。
+     * 追问题目靠 {@code questionCategory} 区分，不进错题本。
+     */
+    @Column(name = "question_text", columnDefinition = "text")
+    private String questionText;
+
+    @Column(name = "question_category", length = 100)
+    private String questionCategory;
+
     @Column(name = "role", length = 160)
     private String role;
 
     @Column(name = "difficulty", length = 32)
     private String difficulty;
+
+    /** 原场次的面试类型与面试官风格：重练时沿用，不用让用户再选一遍。 */
+    @Column(name = "interview_type", length = 32)
+    private String interviewType;
+
+    @Column(name = "interviewer_style", length = 32)
+    private String interviewerStyle;
 
     @Column(name = "overall_score")
     private BigDecimal overallScore;
@@ -81,11 +98,23 @@ public class PracticeScoreEntity {
     public String getQuestionId() { return questionId; }
     public void setQuestionId(String questionId) { this.questionId = questionId; }
 
+    public String getQuestionText() { return questionText; }
+    public void setQuestionText(String questionText) { this.questionText = questionText; }
+
+    public String getQuestionCategory() { return questionCategory; }
+    public void setQuestionCategory(String questionCategory) { this.questionCategory = questionCategory; }
+
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
 
     public String getDifficulty() { return difficulty; }
     public void setDifficulty(String difficulty) { this.difficulty = difficulty; }
+
+    public String getInterviewType() { return interviewType; }
+    public void setInterviewType(String interviewType) { this.interviewType = interviewType; }
+
+    public String getInterviewerStyle() { return interviewerStyle; }
+    public void setInterviewerStyle(String interviewerStyle) { this.interviewerStyle = interviewerStyle; }
 
     public BigDecimal getOverallScore() { return overallScore; }
     public void setOverallScore(BigDecimal overallScore) { this.overallScore = overallScore; }

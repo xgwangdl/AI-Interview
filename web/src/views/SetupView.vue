@@ -90,8 +90,12 @@ async function resolveQuestions() {
       focusDimensions: focusDimensions.value,
     });
     if (plan?.questions?.length === form.questionCount) return plan.questions;
-  } catch {
-    // 静默回退，不打断创建流程。
+  } catch (error) {
+    // 静默回退，不打断创建流程；但额度用完这件事必须说出来 ——
+    // 否则用户只会觉得"这次的题怎么变水了"，也不知道额度是共享资源。
+    if (error?.status === 429) {
+      ElMessage.warning(`${error.message || '今天的 AI 额度已用完'}，本次先用系统内置题库出题。`);
+    }
   }
   return buildQuestions(form.role, form.questionCount, form.interviewType);
 }

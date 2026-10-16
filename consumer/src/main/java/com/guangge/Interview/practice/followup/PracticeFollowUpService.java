@@ -10,6 +10,8 @@ import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.service.PracticeQuestionCatalog;
 import com.guangge.Interview.practice.service.PracticeSessionService;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import com.guangge.Interview.quota.ModelCallGuard;
+import com.guangge.Interview.quota.ModelLease;
 import com.guangge.Interview.util.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +21,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -37,9 +43,16 @@ public class PracticeFollowUpService {
     private static final Logger log = LoggerFactory.getLogger(PracticeFollowUpService.class);
     /** 一场最多追问几次：再多就变成审问了，成本也顶不住。 */
     static final int MAX_FOLLOW_UPS_PER_SESSION = 3;
+    /**
+     * 同一道原题最多追问到第几轮。
+     *
+     * 连续追问要能看出"挖到底了"和"原地打转"的区别：第二轮允许（上一轮没问出细节，
+     * 换个角度再要一次数字或取舍），第三轮就停 —— 再问下去只是在消耗用户耐心。
+     */
+    static final int MAX_ROUNDS_PER_QUESTION = 2;
     /** 转写短于这个字数就不问了 —— 没听清或者根本没答，追问也问不出东西。 */
     static final int MIN_TRANSCRIPT_CHARS = 12;
-    static final String FOLLOW_UP_CATEGORY = "follow_up";
+    static final String FOLLOW_UP_CATEGORY = PracticeQuestionCatalog.FOLLOW_UP_CATEGORY;
 
     private final PracticeSessionRepository sessions;
     private final PracticeAnswerRepository answers;
@@ -48,6 +61,7 @@ public class PracticeFollowUpService {
     private final PracticeFollowUpProvider provider;
     private final PracticeQuestionCatalog questions;
     private final PracticeSessionService sessionService;
+    private final ModelCallGuard modelCalls;
     private final long timeoutMs;
 
     public PracticeFollowUpService(
@@ -58,6 +72,7 @@ public class PracticeFollowUpService {
             PracticeFollowUpProvider provider,
             PracticeQuestionCatalog questions,
             PracticeSessionService sessionService,
+            ModelCallGuard modelCalls,
             @Value("${practice.follow-up.timeout-ms:30000}") long timeoutMs) {
         this.sessions = sessions;
         this.answers = answers;
@@ -66,10 +81,22 @@ public class PracticeFollowUpService {
         this.provider = provider;
         this.questions = questions;
         this.sessionService = sessionService;
+        this.modelCalls = modelCalls;
         this.timeoutMs = Math.max(3000, timeoutMs);
     }
 
     public PracticeFollowUpView followUp(String ownerId, UUID sessionId, UUID answerId) {
+        // 追问 = 一次转写 + 一次模型判断，两样都花钱。
+        // 额度用完时不报错、只少问一句 —— 练习必须能继续走下去。
+        try (ModelLease lease = modelCalls.tryAcquire(ownerId, "追问")) {
+            if (!lease.allowed()) {
+                return PracticeFollowUpView.none(lease.reason() + "，先答下一题吧");
+            }
+            return decide(ownerId, sessionId, answerId);
+        }
+    }
+
+    private PracticeFollowUpView decide(String ownerId, UUID sessionId, UUID answerId) {
         PracticeSessionEntity session = sessions.findByIdAndOwnerId(sessionId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice session not found"));
         if (!session.isFollowUpEnabled()) {
@@ -83,24 +110,64 @@ public class PracticeFollowUpService {
             return PracticeFollowUpView.none("这场练习的追问已经够多了，接着答下一题吧");
         }
 
+        List<PracticeQuestion> questionList = questions.questions(session.getQuestionsJson());
+        // 题号以 question_id 为准：questionIndex 只是位置，插过追问之后它俩可能不同步。
+        int answeredIndex = PracticeQuestionCatalog.indexOf(questionList, answer.getQuestionId());
+        int nextRound = answeredIndex < 0 ? 1
+                : PracticeQuestionCatalog.followUpRoundOf(questionList, answeredIndex) + 1;
+        if (nextRound > MAX_ROUNDS_PER_QUESTION) {
+            return PracticeFollowUpView.none(
+                    "这道题已经追问过 " + MAX_ROUNDS_PER_QUESTION + " 次，先答下一题吧");
+        }
+
         String transcript = transcriptOf(answer);
         if (transcript == null || transcript.strip().length() < MIN_TRANSCRIPT_CHARS) {
             return PracticeFollowUpView.none("这段回答太短，没有可以深挖的内容");
         }
 
-        PracticeFollowUpResult result = withTimeout(() -> provider.followUp(
-                session.getRole(), session.getJobDescription(),
-                questions.questionText(session.getQuestionsJson(), answer.getQuestionId()), transcript));
+        PracticeFollowUpContext context = context(session, questionList, answeredIndex, answer, transcript, nextRound);
+        PracticeFollowUpResult result = withTimeout(() -> provider.followUp(context));
         if (result.followUp() == null) {
             return PracticeFollowUpView.none(result.reason() == null
                     ? "回答已经比较完整，就不追问了" : result.reason());
         }
 
         PracticeQuestion question = sessionService.appendFollowUpQuestion(
-                sessionId, result.followUp(), FOLLOW_UP_CATEGORY);
-        log.info("练习 {} 生成追问：{}（题目 {}）", sessionId,
+                sessionId, answeredIndex, answer.getQuestionId(), result.followUp(), FOLLOW_UP_CATEGORY);
+        log.info("练习 {} 生成第 {} 轮追问：{}（题目 {}）", sessionId, nextRound,
                 LogSanitizer.truncate(result.followUp(), 60), question.id());
-        return new PracticeFollowUpView(question, result.reason(), provider.modelName());
+        return new PracticeFollowUpView(question, result.reason(), provider.modelName(), nextRound);
+    }
+
+    /**
+     * 把"原题 + 到目前为止的每一轮问答"整理成上下文。
+     *
+     * 题干与转写都从库里现取：追问链跨了好几次请求，只有库里的才是真的。
+     */
+    private PracticeFollowUpContext context(PracticeSessionEntity session, List<PracticeQuestion> questionList,
+                                            int answeredIndex, PracticeAnswerEntity answer,
+                                            String transcript, int nextRound) {
+        String rootQuestion = questions.questionText(session.getQuestionsJson(), answer.getQuestionId());
+        int rootIndex = PracticeQuestionCatalog.rootIndexOf(questionList, answeredIndex);
+        if (answeredIndex < 0 || rootIndex < 0) {
+            return new PracticeFollowUpContext(session.getRole(), session.getJobDescription(),
+                    rootQuestion, List.of(new PracticeFollowUpContext.Turn(rootQuestion, transcript)), nextRound);
+        }
+
+        Map<Integer, String> transcripts = new HashMap<>();
+        for (PracticeAnswerEntity item : answers.findAllBySessionIdOrderByQuestionIndexAsc(session.getId())) {
+            transcripts.put(item.getQuestionIndex(), item.getTranscriptText());
+        }
+        rootQuestion = questionList.get(rootIndex).text();
+
+        List<PracticeFollowUpContext.Turn> turns = new ArrayList<>();
+        for (int index = rootIndex; index <= answeredIndex && index < questionList.size(); index++) {
+            String text = questionList.get(index).text();
+            String spoken = index == answeredIndex ? transcript : transcripts.get(index);
+            turns.add(new PracticeFollowUpContext.Turn(text, spoken));
+        }
+        return new PracticeFollowUpContext(session.getRole(), session.getJobDescription(),
+                rootQuestion, turns, nextRound);
     }
 
     /** 优先用分析已经转写好的文本；没有就现转一次（这是"当场追问"的代价）。 */

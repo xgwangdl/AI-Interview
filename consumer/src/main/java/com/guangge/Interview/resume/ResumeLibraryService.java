@@ -17,6 +17,8 @@ import com.guangge.Interview.resume.export.ResumeLayout;
 import com.guangge.Interview.resume.export.ResumePdfExporter;
 import com.guangge.Interview.resume.export.ResumeTheme;
 import com.guangge.Interview.resume.export.ResumeThemeResolver;
+import com.guangge.Interview.quota.ModelCallGuard;
+import com.guangge.Interview.quota.ModelLease;
 import com.guangge.Interview.util.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +55,7 @@ public class ResumeLibraryService {
     private final ResumePdfExporter pdfExporter;
     private final ResumeThemeResolver themeResolver;
     private final ResumeDraftProvider draftProvider;
+    private final ModelCallGuard modelCalls;
 
     public ResumeLibraryService(ResumeLibraryRepository resumes,
                                ResumeOptimizationRepository optimizations,
@@ -61,7 +64,8 @@ public class ResumeLibraryService {
                                ResumeDocxExporter docxExporter,
                                ResumePdfExporter pdfExporter,
                                ResumeThemeResolver themeResolver,
-                               ResumeDraftProvider draftProvider) {
+                               ResumeDraftProvider draftProvider,
+                               ModelCallGuard modelCalls) {
         this.resumes = resumes;
         this.optimizations = optimizations;
         this.provider = provider;
@@ -70,6 +74,7 @@ public class ResumeLibraryService {
         this.pdfExporter = pdfExporter;
         this.themeResolver = themeResolver;
         this.draftProvider = draftProvider;
+        this.modelCalls = modelCalls;
     }
 
     // ---------- 从零创建（见 docs/RESUME-REQUIREMENTS.md §4.8）----------
@@ -81,7 +86,9 @@ public class ResumeLibraryService {
      * 用户什么素材都没给也要能出结果 —— 那是一份带占位符的骨架，而不是报错。
      */
     public ResumeDraftView draft(String ownerId, ResumeDraftRequests.Draft materials) {
-        ResumeDraftView view = generate(() -> draftProvider.draft(materials), "生成");
+        // 额度不足时 429 直接从 call 里抛出去，不会被 generate 的 catch 兜成 502「生成失败」
+        ResumeDraftView view = modelCalls.call(ownerId, "简历生成",
+                () -> generate(() -> draftProvider.draft(materials), "生成"));
         log.info("生成简历草稿：{} 字，{} 条追问，{} 处待补充（owner={}）",
                 view.rawText().length(), view.questions().size(), view.placeholders().size(), ownerId);
         return view;
@@ -97,8 +104,8 @@ public class ResumeLibraryService {
         if (value.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "补充内容不能为空");
         }
-        ResumeDraftView view = generate(
-                () -> draftProvider.refine(current, value, questions), "补全");
+        ResumeDraftView view = modelCalls.call(ownerId, "简历补全",
+                () -> generate(() -> draftProvider.refine(current, value, questions), "补全"));
         log.info("补全简历草稿：{} 字，{} 处待补充（owner={}）",
                 view.rawText().length(), view.placeholders().size(), ownerId);
         return view;
@@ -186,6 +193,13 @@ public class ResumeLibraryService {
 
     @Transactional
     public ResumeOptimizationView optimize(String ownerId, UUID resumeId, ResumeRequests.Optimize request) {
+        // 额度先扣：不够就别建这条记录，更不要在历史里留一条"失败"的优化
+        try (ModelLease lease = modelCalls.require(ownerId, "简历优化")) {
+            return optimizeWithin(ownerId, resumeId, request);
+        }
+    }
+
+    private ResumeOptimizationView optimizeWithin(String ownerId, UUID resumeId, ResumeRequests.Optimize request) {
         ResumeEntity resume = requireOwned(ownerId, resumeId);
         ResumeOptimizationEntity entity = new ResumeOptimizationEntity();
         entity.setId(UUID.randomUUID());

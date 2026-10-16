@@ -10,6 +10,7 @@ import com.guangge.Interview.coding.dto.Blank;
 import com.guangge.Interview.coding.dto.CaseResult;
 import com.guangge.Interview.coding.dto.ChoiceOption;
 import com.guangge.Interview.coding.dto.TestCase;
+import com.guangge.Interview.quota.ModelCallGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +46,7 @@ public class CodingSessionService {
     private final CodeSubmissionRepository submissions;
     private final CodingQuestionPlanService planner;
     private final CodeJudgeService judge;
+    private final ModelCallGuard modelCalls;
     private final ObjectMapper objectMapper;
     private final int retentionDays;
 
@@ -53,6 +55,7 @@ public class CodingSessionService {
                                 CodeSubmissionRepository submissions,
                                 CodingQuestionPlanService planner,
                                 CodeJudgeService judge,
+                                ModelCallGuard modelCalls,
                                 ObjectMapper objectMapper,
                                 @Value("${practice.coding.retention-days:7}") int retentionDays) {
         this.sessions = sessions;
@@ -60,6 +63,7 @@ public class CodingSessionService {
         this.submissions = submissions;
         this.planner = planner;
         this.judge = judge;
+        this.modelCalls = modelCalls;
         this.objectMapper = objectMapper;
         this.retentionDays = Math.max(1, retentionDays);
     }
@@ -84,7 +88,11 @@ public class CodingSessionService {
         // 先落会话：题目表对会话有外键，出题失败时整个事务回滚，不会留下空会话。
         sessions.save(session);
 
-        List<CodeQuestionEntity> planned = planner.generate(sessionId, request);
+        // 出题是系统里最贵的一步（题目 + 自检参照解），额度不够就别开这个头。
+        // 注意：出题内部可能重试若干轮，这里只记一次"用户操作"，
+        // 所以它挡的是"能开多少场"，不是"到底发了几次模型请求"。
+        List<CodeQuestionEntity> planned = modelCalls.call(ownerId, "笔试出题",
+                () -> planner.generate(sessionId, request));
         questions.saveAll(planned);
         session.setQuestionIdsJson(writeIds(planned));
         session.setUpdatedAt(Instant.now());
@@ -117,7 +125,10 @@ public class CodingSessionService {
                 .filter(item -> item.getSessionId().equals(session.getId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
 
-        JudgeOutcome outcome = judge.judge(question, answer, visibleOnly);
+        // 简答题靠模型按要点打分；编程 / 选择 / 填空只在沙箱里跑，不花模型的钱
+        JudgeOutcome outcome = QuestionType.SHORT_ANSWER.id().equals(question.getType())
+                ? modelCalls.call(ownerId, "简答判分", () -> judge.judge(question, answer, visibleOnly))
+                : judge.judge(question, answer, visibleOnly);
         if (visibleOnly) {
             // 运行不落库：结果直接回给前端。
             return new CodingSubmissionView(null, questionId, outcome.status(), outcome.passedCases(),

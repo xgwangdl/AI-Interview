@@ -3,11 +3,15 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePracticeStore } from '../stores/practice';
 import { buildArchive, loadArchive, trendPoints } from '../services/practiceArchive';
+import { buildMistakes, loadMistakes, retryMistake } from '../services/practiceMistakes';
+import { ElMessage } from 'element-plus';
 
 const router = useRouter();
 const practice = usePracticeStore();
 const archive = ref(null);
 const archiveLoading = ref(true);
+const mistakeBook = ref(null);
+const retrying = ref('');
 
 // 折线画布用固定尺寸 + 自己算坐标：省一个图表库依赖，也不用联网装包
 const TREND_WIDTH = 320;
@@ -15,7 +19,10 @@ const TREND_HEIGHT = 108;
 const trendDots = computed(() => trendPoints(archive.value?.trend, TREND_WIDTH, TREND_HEIGHT));
 const trendPath = computed(() => trendDots.value.map((dot) => `${dot.x},${dot.y}`).join(' '));
 
-onMounted(loadArchiveSummary);
+onMounted(() => {
+  loadArchiveSummary();
+  loadMistakeBook();
+});
 
 async function loadArchiveSummary() {
   archiveLoading.value = true;
@@ -26,6 +33,38 @@ async function loadArchiveSummary() {
     archive.value = null;
   } finally {
     archiveLoading.value = false;
+  }
+}
+
+/**
+ * 错题本。
+ *
+ * 和训练档案一样是增强项：拿不到就不显示这一块，不能拖累练习列表。
+ */
+async function loadMistakeBook() {
+  try {
+    mistakeBook.value = buildMistakes(await loadMistakes(5));
+  } catch {
+    mistakeBook.value = null;
+  }
+}
+
+/**
+ * 重练这道题：后端建成一场只有这道题的练习，然后照常走设备检测。
+ *
+ * 本地要先刷新一次练习列表 —— 设备检测页是从本地列表里找这场练习的。
+ */
+async function retryMistakeQuestion(item) {
+  if (retrying.value) return;
+  retrying.value = item.questionId;
+  try {
+    const created = await retryMistake(item.questionId);
+    await practice.loadFromServer();
+    router.push(`/practice/device-check?id=${created.id}`);
+  } catch (error) {
+    ElMessage.error(error?.message || '暂时无法开始这次重练，请稍后再试。');
+  } finally {
+    retrying.value = '';
   }
 }
 
@@ -144,6 +183,37 @@ function timeLabel(value) {
       </div>
     </section>
 
+    <section v-if="mistakeBook && mistakeBook.total" class="mistake-section">
+      <div class="section-title">
+        <span>错题本</span>
+        <small class="archive-scope">{{ mistakeBook.scopeNote }}</small>
+      </div>
+      <div class="panel mistake-list">
+        <div v-for="item in mistakeBook.mistakes" :key="item.questionId" class="mistake-row">
+          <span class="mistake-score">
+            <strong>{{ item.label }}</strong>
+            <small v-if="item.gap">还差 {{ item.gap }} 分</small>
+            <small v-else>待评分</small>
+          </span>
+          <span class="mistake-main">
+            <strong>{{ item.text }}</strong>
+            <small>
+              <el-tag class="mistake-tag" size="small">{{ item.category }}</el-tag>
+              {{ item.role }}<template v-if="item.difficultyLabel"> · {{ item.difficultyLabel }}</template><template v-if="item.weakestLabel"> · 主要栽在{{ item.weakestLabel }}</template>
+              · {{ item.attemptsLabel }}
+            </small>
+          </span>
+          <el-button class="soft-button mistake-action" :loading="retrying === item.questionId"
+                     @click="retryMistakeQuestion(item)">
+            <el-icon><Refresh /></el-icon> 重练这道题
+          </el-button>
+        </div>
+        <p v-if="mistakeBook.total > mistakeBook.mistakes.length" class="mistake-more">
+          还有 {{ mistakeBook.total - mistakeBook.mistakes.length }} 道错题，练完这几道再回来看。
+        </p>
+      </div>
+    </section>
+
     <div class="dashboard-lower">
       <section class="recent-section">
         <div class="section-title"><span>最近练习</span><button class="link-button" @click="router.push('/history')">全部记录 <el-icon><ArrowRight /></el-icon></button></div>
@@ -219,6 +289,19 @@ function timeLabel(value) {
 .archive-empty strong { color: #46524c; font-size: 14px; }
 .archive-empty p { max-width: 460px; margin: 0; color: #8d9792; font-size: 13px; line-height: 1.75; }
 .archive-card .primary-button.el-button, .archive-card .soft-button.el-button { width: 100%; margin-top: 10px; }
+.mistake-section { margin-bottom: 28px; }
+.mistake-list { padding: 6px 0; box-shadow: none; }
+.mistake-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 16px; border-bottom: 1px solid #eef1ee; }
+.mistake-row:last-child { border-bottom: 0; }
+.mistake-score { display: grid; gap: 3px; }
+.mistake-score strong { color: #c2691f; font-size: 20px; font-weight: 650; line-height: 1.1; }
+.mistake-score small { color: #9aa39f; font-size: 12px; }
+.mistake-main { display: grid; min-width: 0; gap: 6px; }
+.mistake-main strong { color: #34403a; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.mistake-main small { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: #8d9792; font-size: 12px; }
+.mistake-tag.el-tag { border-color: #e6ebe8; background: #f4f7f5; color: #6c7a73; }
+.mistake-action.el-button { flex: none; }
+.mistake-more { margin: 8px 16px 4px; color: #98a29d; font-size: 12px; }
 .section-title { margin-bottom: 13px; }
 .recent-list { overflow: hidden; box-shadow: none; }
 .recent-row { display: flex; width: 100%; min-height: 69px; align-items: center; gap: 12px; padding: 0 15px; border: 0; border-bottom: 1px solid #eef1ee; background: white; text-align: left; }
@@ -234,4 +317,5 @@ function timeLabel(value) {
 @media(max-width: 1080px) { .archive-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }.archive-grid > :last-child { grid-column: 1 / -1; } }
 @media(max-width: 920px) { .dashboard-lower { grid-template-columns: 1fr; }.guidance-section { display: none; }.archive-grid { grid-template-columns: 1fr; }.archive-grid > :last-child { grid-column: auto; } }
 @media(max-width: 680px) { .overview-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }.overview-card { min-height: 130px; padding: 13px; }.overview-card:last-child { grid-column: 1 / -1; min-height: 133px; }.overview-number { font-size: 25px; }.recent-row { gap: 8px; padding: 0 10px; }.recent-date, .recent-arrow { display: none; }.recent-main span { max-width: 160px; } }
+@media(max-width: 680px) { .mistake-row { grid-template-columns: 68px minmax(0, 1fr); gap: 10px; padding: 11px 12px; }.mistake-action.el-button { grid-column: 1 / -1; }.mistake-score strong { font-size: 17px; } }
 </style>

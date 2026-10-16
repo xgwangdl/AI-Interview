@@ -7,6 +7,7 @@ import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.service.PracticeQuestionCatalog;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import com.guangge.Interview.quota.ModelCallGuard;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -420,6 +421,7 @@ class AnalysisJobServiceTest {
         return new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, asr, evaluation, validator,
                 new PracticeQuestionCatalog(objectMapper), metrics,
                 mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class),
+                ModelCallGuard.inMemory(true, 10_000, 10),
                 maxAttempts, providerTimeoutMs,
                 1_000, 60_000);
     }

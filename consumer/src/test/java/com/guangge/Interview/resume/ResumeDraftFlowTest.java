@@ -7,6 +7,7 @@ import com.guangge.Interview.resume.dto.ResumeDraftView;
 import com.guangge.Interview.resume.export.ResumeDocxExporter;
 import com.guangge.Interview.resume.export.ResumePdfExporter;
 import com.guangge.Interview.resume.export.ResumeThemeResolver;
+import com.guangge.Interview.quota.ModelCallGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,8 @@ class ResumeDraftFlowTest {
 
     private final ResumeLibraryService service = new ResumeLibraryService(
             resumes, optimizations, optimizationProvider, new ObjectMapper(),
-            new ResumeDocxExporter(), new ResumePdfExporter("", ""), themeResolver, draftProvider);
+            new ResumeDocxExporter(), new ResumePdfExporter("", ""), themeResolver, draftProvider,
+            ModelCallGuard.inMemory(true, 10_000, 10));
 
     @BeforeEach
     void stubModelName() {

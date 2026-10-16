@@ -97,6 +97,29 @@ export function savePreferences(payload) {
   return apiRequest('/me/preferences', { method: 'PUT', body: JSON.stringify(payload) });
 }
 
+/**
+ * 今天还能调多少次 AI。
+ *
+ * 后端对出题 / 追问 / 评分 / 简历优化 / 语音合成按账号计数，
+ * 撞到上限时返回 429 —— 提前显示剩余额度，用户才不会在练习中途被拦住。
+ */
+export function getModelUsage() {
+  return apiRequest('/me/model-usage');
+}
+
+/** 错题本：最好一次也没过线的题（详见 services/practiceMistakes.js）。 */
+export function getMistakes(limit = 5) {
+  return apiRequest(`/practice-archive/mistakes?limit=${encodeURIComponent(limit)}`);
+}
+
+/**
+ * 重练某道错题：后端直接建一场只有这道题的练习（题面就是原来那道），
+ * 前端拿到 id 后照常走设备检测 → 录制 → 报告。
+ */
+export function retryMistake(questionId) {
+  return apiRequest(`/practice-archive/mistakes/${encodeURIComponent(questionId)}/retry`, { method: 'POST' });
+}
+
 export function getSessions() {
   return apiRequest('/practice-sessions');
 }

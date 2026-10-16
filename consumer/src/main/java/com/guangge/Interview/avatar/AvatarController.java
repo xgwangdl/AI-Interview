@@ -6,6 +6,7 @@ import com.guangge.Interview.practice.dto.PracticeSessionView;
 import com.guangge.Interview.practice.security.OwnerResolver;
 import com.guangge.Interview.practice.service.PracticeReportService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
+import com.guangge.Interview.quota.ModelCallGuard;
 import com.guangge.Interview.util.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,16 +33,19 @@ public class AvatarController {
     private final PracticeSessionService practiceSessions;
     private final PracticeReportService practiceReports;
     private final AvatarProvider avatarProvider;
+    private final ModelCallGuard modelCalls;
 
     public AvatarController(
             OwnerResolver owners,
             PracticeSessionService practiceSessions,
             PracticeReportService practiceReports,
-            AvatarProvider avatarProvider) {
+            AvatarProvider avatarProvider,
+            ModelCallGuard modelCalls) {
         this.owners = owners;
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.avatarProvider = avatarProvider;
+        this.modelCalls = modelCalls;
     }
 
     @GetMapping("/{id}/questions/{questionIndex}/narration")
@@ -49,7 +53,11 @@ public class AvatarController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @PathVariable int questionIndex) {
-        return avatarProvider.narrate(request(authorization, id, questionIndex));
+        String owner = owners.requireOwner(authorization);
+        AvatarNarrationRequest narration = request(owner, id, questionIndex);
+        // 注意：这个接口只组装"该念什么"，不合成音频，所以不计数 ——
+        // 真正花钱的是下面取音频的那个（一次合成就一次计费）
+        return avatarProvider.narrate(narration);
     }
 
     @GetMapping(value = "/{id}/questions/{questionIndex}/narration/audio")
@@ -57,7 +65,9 @@ public class AvatarController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @PathVariable int questionIndex) {
-        SpeechAudio audio = synthesize(request(authorization, id, questionIndex));
+        String owner = owners.requireOwner(authorization);
+        AvatarNarrationRequest narration = request(owner, id, questionIndex);
+        SpeechAudio audio = modelCalls.call(owner, "面试官语音", () -> synthesize(narration));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
                 .contentType(MediaType.parseMediaType(audio.contentType()))
@@ -75,7 +85,9 @@ public class AvatarController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @PathVariable int questionIndex) {
-        return avatarProvider.narrate(sampleAnswerRequest(authorization, id, questionIndex));
+        String owner = owners.requireOwner(authorization);
+        AvatarNarrationRequest narration = sampleAnswerRequest(owner, id, questionIndex);
+        return avatarProvider.narrate(narration);
     }
 
     @GetMapping(value = "/{id}/questions/{questionIndex}/sample-answer/audio")
@@ -83,7 +95,9 @@ public class AvatarController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @PathVariable int questionIndex) {
-        SpeechAudio audio = synthesize(sampleAnswerRequest(authorization, id, questionIndex));
+        String owner = owners.requireOwner(authorization);
+        AvatarNarrationRequest narration = sampleAnswerRequest(owner, id, questionIndex);
+        SpeechAudio audio = modelCalls.call(owner, "示范回答语音", () -> synthesize(narration));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
                 .contentType(MediaType.parseMediaType(audio.contentType()))
@@ -107,8 +121,8 @@ public class AvatarController {
         }
     }
 
-    private AvatarNarrationRequest request(String authorization, UUID id, int questionIndex) {
-        PracticeSessionView session = practiceSessions.get(owners.requireOwner(authorization), id);
+    private AvatarNarrationRequest request(String owner, UUID id, int questionIndex) {
+        PracticeSessionView session = practiceSessions.get(owner, id);
         if (questionIndex < 0 || questionIndex >= session.questions().size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found in this session");
         }
@@ -118,8 +132,7 @@ public class AvatarController {
                 "/api/v1/practice-sessions/" + session.id() + "/questions/" + questionIndex + "/narration/audio");
     }
 
-    private AvatarNarrationRequest sampleAnswerRequest(String authorization, UUID id, int questionIndex) {
-        String owner = owners.requireOwner(authorization);
+    private AvatarNarrationRequest sampleAnswerRequest(String owner, UUID id, int questionIndex) {
         // 走报告：它已经做了归属校验，也把评分（含 sampleAnswer）组装好了，不必再查一遍库
         PracticeReportView report = practiceReports.report(owner, id);
         // 注意：report.questions() **只包含有作答的题**，所以数组下标不等于题号，必须按 questionIndex 找。

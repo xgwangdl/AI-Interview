@@ -25,18 +25,22 @@ public class SpringAiPracticeFollowUpProvider implements PracticeFollowUpProvide
     }
 
     @Override
-    public PracticeFollowUpResult followUp(String role, String jobDescription, String question, String answer) {
+    public PracticeFollowUpResult followUp(PracticeFollowUpContext context) {
         String raw = chatClient.prompt()
                 .user("""
                         目标岗位：%s
                         岗位描述：%s
 
-                        刚才问的问题是：%s
+                        这一题的原问题是：%s
 
-                        候选人的回答（语音转写，可能有错别字）：
+                        到目前为止关于这道题的问答（回答是语音转写，可能有错别字）：
                         %s
+
+                        这是第 %d 次追问。如果这是第二次追问，说明上一轮追问还是没问出细节 ——
+                        那就换一个角度（要一个数字、一次取舍、或者最后的结果），不要再重复上一个问法。
                         """.formatted(
-                        blank(role), blank(jobDescription), question, answer))
+                        blank(context.role()), blank(context.jobDescription()),
+                        blank(context.rootQuestion()), context.renderTurns(), context.round()))
                 .call()
                 .content();
         return validator.parse(raw);

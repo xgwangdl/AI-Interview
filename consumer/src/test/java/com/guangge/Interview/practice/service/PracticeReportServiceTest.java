@@ -58,6 +58,32 @@ class PracticeReportServiceTest {
     }
 
     @Test
+    void marksFollowUpAnswersAsFollowUps() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = session(sessionId, 2);
+        session.setQuestionsJson("""
+                [{"id":"q-1","text":"讲一个你主导的重构","category":"design"},
+                 {"id":"q-0-follow-1","text":"重构具体改了什么？","category":"follow_up"}]
+                """);
+        PracticeAnswerEntity first = answer(sessionId, UUID.randomUUID());
+        PracticeAnswerEntity followUp = answer(sessionId, UUID.randomUUID());
+        followUp.setQuestionIndex(1);
+        followUp.setQuestionId("q-0-follow-1");
+
+        PracticeReportView report = buildReport(session, List.of(first, followUp));
+
+        assertTrue(report.questions().get(0).followUp() == false);
+        PracticeReportView.QuestionReport marked = report.questions().get(1);
+        assertTrue(marked.followUp());
+        assertEquals("q-1", marked.parentQuestionId());
+        assertEquals(0, marked.parentQuestionIndex());
+        assertEquals(1, marked.followUpRound());
+        assertEquals("重构具体改了什么？", marked.questionText());
+        // 报告里要能说出"这几道题其实是追问"，否则用户会以为平白多考了几题
+        assertEquals(1, report.summary().followUpCount());
+    }
+
+    @Test
     void reportsAwaitingAnalysisWhenNothingHasBeenEvaluatedYet() {
         UUID sessionId = UUID.randomUUID();
         PracticeSessionEntity session = session(sessionId, 1);
@@ -104,7 +130,8 @@ class PracticeReportServiceTest {
                 "answerId", "questionIndex", "questionText", "transcriptText", "mediaUrl",
                 "mediaSignedUrl", "evaluation", "overallScore", "scores", "relevance",
                 "starStructure", "delivery", "fillerWordCount", "evidence", "startSeconds",
-                "endSeconds", "sampleAnswer", "analysis", "attempts", "error")) {
+                "endSeconds", "sampleAnswer", "analysis", "attempts", "error",
+                "followUp", "parentQuestionIndex", "followUpRound", "followUpCount")) {
             assertTrue(json.contains("\"" + field + "\""), "report JSON is missing field: " + field);
         }
     }

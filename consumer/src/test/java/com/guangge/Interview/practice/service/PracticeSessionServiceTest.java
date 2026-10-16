@@ -42,6 +42,52 @@ class PracticeSessionServiceTest {
     }
 
     @Test
+    void insertsFollowUpRightAfterTheQuestionItDigsInto() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = new PracticeSessionEntity();
+        session.setId(sessionId);
+        session.setQuestionsJson("""
+                [{"id":"q-1","text":"第一题","category":"design"},
+                 {"id":"q-2","text":"第二题","category":"design"}]
+                """);
+        session.setQuestionCount(2);
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+
+        PracticeQuestion created = service.appendFollowUpQuestion(sessionId, 0, "q-1", "你刚才说的重构改了哪里？", "follow_up");
+
+        // 插在末尾会让前端的题号与服务端错位（保存回答直接 400），所以必须插在原题后面
+        assertEquals("[q-1, q-0-follow-1, q-2]", idsInOrder(session));
+        assertEquals(3, session.getQuestionCount());
+        assertEquals("q-0-follow-1", created.id());
+    }
+
+    @Test
+    void fallsBackToAppendingWhenTheParentIsNotWhereWeThinkItIs() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = new PracticeSessionEntity();
+        session.setId(sessionId);
+        session.setQuestionsJson("[{\"id\":\"q-1\",\"text\":\"第一题\",\"category\":\"design\"}]");
+        session.setQuestionCount(1);
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+
+        // 题号对不上（旧数据、客户端与服务端不同步）：宁可放到末尾，也不能让追问把练习打断
+        service.appendFollowUpQuestion(sessionId, 0, "q-999", "换个问法", "follow_up");
+
+        assertEquals("[q-1, q-0-follow-1]", idsInOrder(session));
+    }
+
+    private static String idsInOrder(PracticeSessionEntity session) {
+        try {
+            List<PracticeQuestion> questions = new ObjectMapper().readValue(
+                    session.getQuestionsJson(),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<PracticeQuestion>>() { });
+            return questions.stream().map(PracticeQuestion::id).toList().toString();
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    @Test
     void hidesSessionsOwnedByAnotherUser() {
         UUID sessionId = UUID.randomUUID();
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.empty());

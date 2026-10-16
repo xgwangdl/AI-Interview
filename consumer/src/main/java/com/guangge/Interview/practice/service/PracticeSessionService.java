@@ -246,22 +246,37 @@ public class PracticeSessionService {
      *
      * 题目列表与题目数量必须一起改：前端按 questionCount 显示进度，
      * 报告页按 questionsJson 取题干 —— 只改一个就会出现"第 6/5 题"这种自相矛盾的状态。
+     *
+     * 位置是**插在被打断的那道题后面**，不是追加到末尾：前端也是这么插的
+     * （`draft.questions.splice(currentIndex + 1, 0, ...)`），两边一旦不一致，
+     * 下一道题的 questionIndex 就对不上，保存回答会直接 400。
      */
     @Transactional
-    public PracticeQuestion appendFollowUpQuestion(UUID sessionId, String text, String category) {
+    public PracticeQuestion appendFollowUpQuestion(UUID sessionId, int afterIndex, String parentQuestionId,
+                                                   String text, String category) {
         PracticeSessionEntity session = sessions.findById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice session not found"));
         List<PracticeQuestion> questions = new ArrayList<>(readQuestions(session.getQuestionsJson()));
-        int followUpIndex = (int) questions.stream()
-                .filter(question -> category != null && category.equals(question.category()))
-                .count() + 1;
-        PracticeQuestion question = new PracticeQuestion(
-                "q-%d-follow-%d".formatted(questions.size(), followUpIndex), text, category);
-        questions.add(question);
+        // 位置校验：只有"列表里的第 afterIndex 道题确实是父题"时才插在它后面，
+        // 否则退回追加到末尾 —— 宁可在题序上保守一点，也不能让用户答到一半报错。
+        int position = afterIndex >= 0 && afterIndex < questions.size()
+                && questions.get(afterIndex).id().equals(parentQuestionId)
+                ? afterIndex + 1 : questions.size();
+        PracticeQuestion question = new PracticeQuestion(nextFollowUpId(questions, afterIndex), text, category);
+        questions.add(position, question);
         session.setQuestionsJson(writeQuestions(questions));
         session.setQuestionCount(questions.size());
         sessions.save(session);
         return question;
+    }
+
+    /** 追问 id 要唯一且看得出挂在谁的下面（`q-3-follow-2` = 第 3 题的第二次追问）。 */
+    private static String nextFollowUpId(List<PracticeQuestion> questions, int parentIndex) {
+        for (int round = 1; ; round++) {
+            String candidate = "q-%d-follow-%d".formatted(Math.max(parentIndex, 0), round);
+            boolean taken = questions.stream().anyMatch(question -> candidate.equals(question.id()));
+            if (!taken) return candidate;
+        }
     }
 
     /** 当场追问要现转写：结果落回回答上，随后的批量分析就不用再转一次。 */

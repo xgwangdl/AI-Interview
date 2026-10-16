@@ -1328,3 +1328,67 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 | 容器全栈 | `docker compose --profile full up -d` 起 4 个容器；经 nginx 登录 200、`/api/v1/practice-archive` 正常、`GET /login` 走 SPA、健康检查 **UP** |
 | 容器内 PDF | 容器里导出简历 PDF：200 / `application/pdf` / 25291 字节 / `%PDF` 头 —— Alpine 的文泉驿字体路径生效 |
 | 迁移 | 启动即执行 V9；成绩档案表里 smoke 1 条、guangge 5 条（回填成功） |
+
+### 2026-10-16 三项新做：错题本 + 追问进阶 + 成本护栏
+
+需求文档：[MISTAKE-BOOK-REQUIREMENTS.md](MISTAKE-BOOK-REQUIREMENTS.md)、[COST-GUARD-REQUIREMENTS.md](COST-GUARD-REQUIREMENTS.md)、
+追问进阶写在 [PRACTICE-ARCHIVE-REQUIREMENTS.md](PRACTICE-ARCHIVE-REQUIREMENTS.md) §2.2.1。
+
+**① 错题本（把没答好的那道题练到过线）**
+
+训练档案只能回答"哪一维弱"，回答不了"该再练哪道题"；而且**题面根本留不住** ——
+成绩档案里只有分数和 `question_id`，场次 7 天到期后 `questions_json` 一起被清掉。所以先把题留住：
+
+- 迁移 `V10`：成绩档案加 `question_text / question_category / interview_type / interviewer_style`，
+  并从还在保留期内的场次**回填**历史（真实库里 5 条 guangge + 1 条 smoke 都补上了题面）；
+- 错题判定：同一道题**最好一次**都没到 75 分才算错题（与档案的短板阈值同一个数），练过线自动出本；
+- 一键重练：`POST /api/v1/practice-archive/mistakes/{questionId}/retry` 直接建一场**单题**练习
+  （题面与题目 id 沿用原题、设置沿用原场次、默认开追问），前端拿到 id 后走原有链路（设备检测 → 录制 → 报告），
+  不为新功能再写一套界面；
+- 追问不算错题（`question_category = follow_up` 排除）：要重练的是原题。
+
+**② 追问进阶（连续追问 + 报告里标出追问）**
+
+- 同一道原题最多追问 **2 轮**（根问题 → 追问 1 → 追问 2），一场 3 次的上限不变；
+  第二次追问会把**前面每一轮的问答**一起给模型，并要求换角度（要数字/取舍/结果），避免换个说法重复上一问；
+- 报告里每道题带 `followUp / parentQuestionId / parentQuestionIndex / followUpRound`，摘要带 `followUpCount`；
+  前端把追问缩进排在被追问的那道题下面，写明"面试官追问 · 关于第 N 题"，报告开头也说明"含 N 个追问"。
+
+**顺手修掉一个真缺陷**：追问过去是**追加到题目列表末尾**，而前端是**插在被打断的那道题后面**。
+两边不一致的后果是：在一场 5 题的练习里，第 1 题追问之后，第 2 题开始每一题的 `questionIndex` 都错位，
+保存回答会直接 400（"Question does not belong to this position in the session"）。
+现在两端都插在原题后面，`PracticeSessionService.appendFollowUpQuestion` 还会校验"那个位置确实是父题"，
+对不上就退回追加（宁可题序保守，也不让用户答到一半报错）。
+
+**另一个小缺口**：`followUpNotice` 在前端收集了却从来没渲染过 —— 追问失败、额度用完都只有一行看不见的字。
+现在它显示在题干下面。
+
+**③ 成本护栏（每个账号的每日与并发上限）**
+
+过去所有花钱的动作（出题 / 追问 / 转写 / 评分 / 简答判分 / 简历 / 语音合成）**没有任何计量**，
+一个账号连点"生成题目"就能把共享额度烧光。
+
+- `quota/ModelCallGuard`：按"账号 + 自然日"计数（默认 120 次）与在飞并发（默认 3 个），
+  计数放 **Redis**（多实例共享、重启不丢），Redis 不可用时退到**进程内存**并记一条警告；
+- 同步入口拿不到额度 → **429 + 人话**（"今天的 AI 额度已经用完了（每天 120 次，明天 0 点重置）"）；
+- **异步分析链路拿不到额度 → 顺延**：任务回到 `pending`、`nextAttemptAt` 指到额度重置后（错开 0-120 秒），
+  不消耗重试次数、不进死信队列 —— 用户第二天看到的是正常报告，而不是"分析失败"；
+- 追问这类"少一次也不影响练习"的调用降级为**不追问 + 说明原因**；
+- `GET /api/v1/me/model-usage` + 顶栏额度条（剩 10% 变琥珀色、用完变红）。
+
+**验证（都是真后端 + 真库 + 真模型）**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 单测 | 后端 199 → **221 个**（错题本 6、追问链 4、额度守卫 5、报告追问标记 1、题目目录 4、档案写入 1、原有用例适配）；前端 92 → **103 个** |
+| 迁移与回填 | 启动日志 `Migrating schema "public" to version "10 - mistake book"`；`practice_score_archive` 里 6 条历史全部带上题面、分类、面试类型 |
+| 错题本接口 | `GET /practice-archive/mistakes`：guangge 5 条（5/20/20/20/30 分，最差在最前），每条带题面、分类、岗位、"主要栽在哪个维度" |
+| 重练闭环 | `POST .../mistakes/q-1/retry` → `questionCount=1`、题面与 id 不变、设置沿用（behavioral/balanced/standard）、默认开追问；浏览器点按钮后落到设备检测页（`data/screenshots/mistake-retry-device-check.png`），验证完的练习已删除 |
+| 追问链 | 真实模型两次追问：「能具体说说是怎么合并数据库调用和加缓存的吗？」→「合并数据库调用时遇到过什么挑战吗？」；第二次带着第一轮问答；第三轮被挡（"这道题已经追问过 2 次"）。题序与插入位置用 SQL 核对：`vfy-q-1, q-0-follow-1, q-1-follow-1` |
+| 额度真的挡住 | 把上限压到 2：前两次真模型出题成功，第三次 **429**（`{code:429, message:"今天的 AI 额度已经用完了（每天 2 次，明天 0 点重置）"}`）；额度键在 Redis 里；重启后当天已用次数不清零；同时 `GET .../narration/audio` 也是 429 而不是 500 |
+| 浏览器 | `node web/scripts/verify-mistake-book.mjs`：顶栏显示"今日 AI 额度 118/120 · 00:00 重置"，错题本 5 行，点「重练这道题」→ 设备检测页（截图 `data/screenshots/mistake-book.png`） |
+| 可复现脚本 | `scripts/verify-mistakes-and-quota.ps1`（22/22 通过）、`scripts/verify-quota-limit.ps1`（9/9 通过）、`web/scripts/verify-mistake-book.mjs` |
+
+**这次的坑**（记下来省下一次）：`ModelCallGuard` 有两个构造器，Spring 不会自己挑，
+不标 `@Autowired` 就去找无参构造器 —— 编译没问题，启动直接 `No default constructor found`。
+单测构造得出来，所以只有真启动才发现。

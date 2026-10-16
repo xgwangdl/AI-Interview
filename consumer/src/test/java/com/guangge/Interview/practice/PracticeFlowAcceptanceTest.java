@@ -31,6 +31,7 @@ import com.guangge.Interview.practice.archive.PracticeScoreArchiveService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
 import com.guangge.Interview.practice.storage.LocalMediaStorage;
 import com.guangge.Interview.practice.storage.MediaStorage;
+import com.guangge.Interview.quota.ModelCallGuard;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -107,7 +108,8 @@ class PracticeFlowAcceptanceTest {
         sessionService = new PracticeSessionService(sessions, answers, mediaStorage, objectMapper,
                 scoreArchive, 7);
         jobService = new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, transcribingAsr(),
-                evaluatingProvider(), validator, catalog, metrics, scoreArchive, 3, 60_000, 1_000, 60_000);
+                evaluatingProvider(), validator, catalog, metrics, scoreArchive,
+                ModelCallGuard.inMemory(true, 10_000, 10), 3, 60_000, 1_000, 60_000);
         reportService = new PracticeReportService(sessions, answers, jobs, validator, signedUrls, catalog);
 
         stubRepositories();
