@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, '../../docs/images');
 const BASE = process.env.BASE_URL || 'http://localhost:5173';
+const API = process.env.API_URL || 'http://localhost:8088';
 const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const USER = process.env.DEMO_USER || 'smoke';
 const CODE = process.env.DEMO_CODE || '123456';
@@ -38,6 +39,8 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 const log = (message) => console.log(`  ${message}`);
+let token = null;
+let sessionId = null;
 
 try {
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
@@ -45,6 +48,7 @@ try {
   await page.fill('input[placeholder="输入密码"]', CODE);
   await page.click('button:has-text("安全登录")');
   await page.waitForURL((url) => !url.pathname.includes('login'), { timeout: 20000 });
+  token = await page.evaluate(() => localStorage.getItem('token'));
   log('已登录');
 
   await page.goto(`${BASE}/practice/setup`, { waitUntil: 'networkidle' });
@@ -66,7 +70,26 @@ try {
   }
   await enter.first().click();
   await page.waitForURL(/\/session/, { timeout: 25000 });
+  sessionId = new URL(page.url()).pathname.split('/')[2];
   log('已进入面试间');
+
+  // 假摄像头会渲染一块绿色测试画面。截图时改成简洁占位，避免 README 主图看起来像设备故障。
+  await page.addStyleTag({ content: `
+    .self-preview video { visibility: hidden !important; }
+    .self-preview { background: #24342c !important; }
+    .self-preview::after {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-content: center;
+      color: #b8cbbf;
+      font-size: 11px;
+      letter-spacing: .08em;
+      content: "实时画面预览";
+    }
+    .recording-indicator { z-index: 2; }
+  ` });
 
   // 等配音请求与素材加载
   await page.waitForTimeout(6000);
@@ -177,5 +200,15 @@ try {
     }
   }
 } finally {
-  await browser.close();
+  try {
+    if (token && sessionId) {
+      const response = await fetch(`${API}/api/v1/practice-sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) log('已清理截图用练习');
+    }
+  } finally {
+    await browser.close();
+  }
 }
