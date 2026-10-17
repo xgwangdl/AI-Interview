@@ -2,6 +2,37 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   latencyLabel, pickVoice, reportRows, sessionSubtitle, submitAudioTurn, submitTextTurn,
 } from './language';
+import { encodeWav } from './audioRecorder';
+
+describe('encodeWav（浏览器直录 16k WAV，省掉 ffmpeg）', () => {
+  async function headerOf(blob) {
+    const bytes = new Uint8Array(await blob.slice(0, 44).arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    return {
+      riff: String.fromCharCode(...bytes.slice(0, 4)),
+      wave: String.fromCharCode(...bytes.slice(8, 12)),
+      format: view.getUint16(20, true),
+      channels: view.getUint16(22, true),
+      rate: view.getUint32(24, true),
+      bits: view.getUint16(34, true),
+      data: String.fromCharCode(...bytes.slice(36, 40)),
+    };
+  }
+
+  it('写出的头是 PCM / 单声道 / 16k / 16bit', async () => {
+    const blob = encodeWav([new Float32Array(16000).fill(0.25)], 16000);
+    const header = await headerOf(blob);
+
+    expect(header).toMatchObject({ riff: 'RIFF', wave: 'WAVE', format: 1, channels: 1, rate: 16000, bits: 16, data: 'data' });
+    expect(blob.size).toBe(44 + 16000 * 2);
+  });
+
+  it('44.1k/48k 的采样会重采样到 16k，时长不变', async () => {
+    const blob = encodeWav([new Float32Array(48000)], 48000);
+
+    expect(blob.size).toBe(44 + 16000 * 2);
+  });
+});
 
 describe('pickVoice（浏览器语音）', () => {
   const voices = [

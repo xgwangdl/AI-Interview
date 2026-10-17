@@ -13,14 +13,13 @@ import java.util.Optional;
  * 音色不是拍脑袋定的，来自 2026-10-17 的真实探针（`VoiceCapabilityProbe`）：
  * - 英语：cosyvoice-v2 合成英文后送 ASR 往返能识别出 billing / latency，可用；
  * - 日语：**所有可用 DashScope 音色都把日语按中文读音念**（识别回来是"瞿影先献基叔…"），
- *   所以日语走浏览器语音（`speechSynthesis`），服务端不出音频；
- * - 日语的**识别**是好的：真人发音 `ありがとう` / `アイスクリーム` 用 `ja` hint 都能正确识别。
+ *   实际试用后用户反馈"完全不可用"，所以**暂时下线**。代码结构保留（加回 ja 的配置即可），
+ *   但上线前必须先解决日语服务端音色（或确认浏览器语音可用）。
  */
 @Component
 public class LanguageCatalog {
 
     public static final String ENGLISH = "en";
-    public static final String JAPANESE = "ja";
     public static final int DEFAULT_MAX_TURNS = 8;
     public static final int MAX_TURNS_LIMIT = 20;
     public static final List<String> LEVELS = List.of("beginner", "intermediate", "advanced");
@@ -33,36 +32,21 @@ public class LanguageCatalog {
         LANGUAGES.put(ENGLISH, new LanguageSpec(
                 ENGLISH, "English", "en", "cosyvoice-v2", "longxiaochun_v2", "en-US", true,
                 "服务端音色（cosyvoice-v2），可直接在小人身上播放"));
-        LANGUAGES.put(JAPANESE, new LanguageSpec(
-                JAPANESE, "日本語", "ja", null, null, "ja-JP", false,
-                "浏览器语音：DashScope 现有音色会把日语按中文读音念；本机没有日语语音时下一轮只能看文字"));
-
-        SCENARIOS.put(ENGLISH, Map.of(
-                "interview", new LanguageScenario("interview", "面试",
-                        "面试官会先让你介绍最近的项目，然后顺着你的回答追问细节。",
-                        "用英语讲清一个项目：背景、你的动作、结果。",
-                        "Thanks for joining today. Could you start by walking me through your most recent project?"),
-                "standup", new LanguageScenario("standup", "工作沟通",
-                        "像每日站会一样汇报：昨天做了什么、今天计划什么、有没有阻塞。",
-                        "用 3 句话完成一次站会汇报，并说清一个阻塞。",
-                        "Morning! Let's do a quick stand-up. What did you get done yesterday, and is anything blocking you?"),
-                "daily", new LanguageScenario("daily", "日常口语",
-                        "咖啡店点单：说清要什么、杯型、要不要堂食。",
-                        "完成一次点单，并回答店员的一个追问。",
-                        "Hi there, welcome in! What can I get for you today?")));
-        SCENARIOS.put(JAPANESE, Map.of(
-                "interview", new LanguageScenario("interview", "面试",
-                        "面试官会用敬语提问，先自我介绍，再讲一个项目。",
-                        "用日语完成 30 秒自我介绍，并说明一次团队协作。",
-                        "本日はお時間をいただきありがとうございます。まず、簡単に自己紹介をお願いできますか。"),
-                "standup", new LanguageScenario("standup", "工作沟通",
-                        "像朝会一样汇报昨天、今天和阻塞，注意用敬体。",
-                        "用 3 句话完成一次朝会汇报，并说明一个风险。",
-                        "おはようございます。昨日やったことと、今日の予定を簡単に共有していただけますか。"),
-                "daily", new LanguageScenario("daily", "日常口语",
-                        "在便利店点单：说清要什么、要不要加热。",
-                        "完成一次点单，并回答店员的一个追问。",
-                        "いらっしゃいませ。ご注文はお決まりですか。")));
+        // 用 LinkedHashMap 而不是 Map.of：Map.of 的迭代顺序未定义，首页第一个场景会随机变
+        Map<String, LanguageScenario> english = new LinkedHashMap<>();
+        english.put("interview", new LanguageScenario("interview", "面试",
+                "面试官会先让你介绍最近的项目，然后顺着你的回答追问细节。",
+                "用英语讲清一个项目：背景、你的动作、结果。",
+                "Thanks for joining today. Could you start by walking me through your most recent project?"));
+        english.put("standup", new LanguageScenario("standup", "工作沟通",
+                "像每日站会一样汇报：昨天做了什么、今天计划什么、有没有阻塞。",
+                "用 3 句话完成一次站会汇报，并说清一个阻塞。",
+                "Morning! Let's do a quick stand-up. What did you get done yesterday, and is anything blocking you?"));
+        english.put("daily", new LanguageScenario("daily", "日常口语",
+                "咖啡店点单：说清要什么、杯型、要不要堂食。",
+                "完成一次点单，并回答店员的一个追问。",
+                "Hi there, welcome in! What can I get for you today?"));
+        SCENARIOS.put(ENGLISH, english);
     }
 
     public Optional<LanguageSpec> language(String code) {

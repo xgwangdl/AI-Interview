@@ -162,6 +162,14 @@ async function finish() {
 async function speak(text, turn = null) {
   stopSpeaking();
   if (!text) return;
+  const mode = localStorage.getItem('language-voice-mode') || 'browser';
+  const voice = pickVoice(voices.value, session.value?.browserVoice);
+  // 默认走系统语音：文字一到就开口，不用等服务端那 2 秒；
+  // 选了"服务端音色"（或本机没有对应语音）时再取服务端音频。
+  if (mode === 'browser' && voice) {
+    speakBrowser(text, voice);
+    return;
+  }
   if (turn?.replyAudioUrl) {
     try {
       const blob = await fetchAudio(turn.replyAudioUrl);
@@ -170,21 +178,21 @@ async function speak(text, turn = null) {
       audio = new Audio(audioUrl);
       audio.onended = stopSpeaking;
       speaking.value = true;
-      audio.play().catch(() => speakBrowser(text));
+      audio.play().catch(() => speakBrowser(text, voice));
       return;
     } catch {
       // 服务端音频取不到就退回浏览器语音，不让用户干等
     }
   }
-  speakBrowser(text);
+  speakBrowser(text, voice);
 }
 
-function speakBrowser(text) {
+function speakBrowser(text, picked = null) {
   if (typeof window === 'undefined' || !window.speechSynthesis) {
     ElMessage.warning('这台设备没有语音合成，先看文字。');
     return;
   }
-  const voice = pickVoice(voices.value, session.value?.browserVoice);
+  const voice = picked || pickVoice(voices.value, session.value?.browserVoice);
   if (!voice) {
     ElMessage.warning('本机没有这门语言的语音，先看文字。');
     return;

@@ -16,9 +16,10 @@ class LanguageCatalogTest {
     private final LanguageCatalog catalog = new LanguageCatalog();
 
     @Test
-    @DisplayName("英语与日语都在，每门语言三个场景且都有固定开场白")
-    void exposesBothLanguagesWithScenarios() {
-        assertThat(catalog.languages()).extracting(LanguageSpec::code).containsExactly("en", "ja");
+    @DisplayName("目前只上线英语；日语暂时下线（音色不可用），每门语言三个场景且都有固定开场白")
+    void exposesEnglishWithScenarios() {
+        assertThat(catalog.languages()).extracting(LanguageSpec::code).containsExactly("en");
+        assertThat(catalog.language("ja")).isEmpty();
         for (LanguageSpec language : catalog.languages()) {
             assertThat(catalog.scenarios(language.code())).hasSize(3)
                     .allSatisfy(scenario -> {
@@ -29,14 +30,8 @@ class LanguageCatalogTest {
     }
 
     @Test
-    @DisplayName("日语没有服务端音色：走浏览器语音，别拿中文音色硬念")
-    void japaneseFallsBackToTheBrowserVoice() {
-        LanguageSpec japanese = catalog.language("ja").orElseThrow();
-        assertThat(japanese.asrHint()).isEqualTo("ja");
-        assertThat(japanese.serverVoice()).isFalse();
-        assertThat(japanese.ttsModel()).isNull();
-        assertThat(japanese.browserVoice()).isEqualTo("ja-JP");
-
+    @DisplayName("英语有服务端音色，同时保留浏览器语音标签（用户可选更快的系统语音）")
+    void englishHasBothVoices() {
         LanguageSpec english = catalog.language("en").orElseThrow();
         assertThat(english.serverVoice()).isTrue();
         assertThat(english.ttsModel()).isEqualTo("cosyvoice-v2");

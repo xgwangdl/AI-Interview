@@ -36,8 +36,8 @@ public class LanguageSessionService {
     public static final String ACTIVE = "active";
     public static final String FINISHED = "finished";
     public static final String ABANDONED = "abandoned";
-    /** 给模型的上下文：最近 6 轮够用了，再长只会拖慢首句、也更贵。 */
-    private static final int HISTORY_TURNS = 6;
+    /** 给模型的上下文：最近 4 轮够用了，再长只会拖慢首句、也更贵。 */
+    private static final int HISTORY_TURNS = 4;
 
     private final LanguageSessionRepository sessions;
     private final LanguageTurnRepository turns;
@@ -141,10 +141,6 @@ public class LanguageSessionService {
             LanguageCoachResult result = coach.reply(coachRequest(session, spec, scenario, transcript.text()));
             int llmMs = (int) (System.currentTimeMillis() - llmStarted);
 
-            long ttsStarted = System.currentTimeMillis();
-            byte[] replyAudio = speech.synthesize(result.reply(), spec).orElse(null);
-            int ttsMs = (int) (System.currentTimeMillis() - ttsStarted);
-
             LanguageTurnEntity entity = new LanguageTurnEntity();
             entity.setId(turnId);
             entity.setSessionId(id);
@@ -155,14 +151,10 @@ public class LanguageSessionService {
             entity.setTranscript(transcript.text());
             entity.setReplyText(result.reply());
             entity.setFeedbackJson(write(result.feedback()));
-            if (replyAudio != null) {
-                entity.setReplyAudioKey("lang-" + turnId + "-reply");
-                mediaStorage.store(entity.getReplyAudioKey(), new java.io.ByteArrayInputStream(replyAudio),
-                        replyAudio.length);
-            }
             entity.setAsrMs(asrMs);
             entity.setLlmMs(llmMs);
-            entity.setTtsMs(ttsMs);
+            // 配音不在这一轮里做：先把文字回给用户，音频点"听回复"时再合成（见 speech()）。
+            // 这样 2 秒多的合成不再挡在"看到回复"前面。
             entity.setTotalMs((int) (System.currentTimeMillis() - startedAt));
             entity.setStatus("answered");
             entity.setCreatedAt(Instant.now());
@@ -170,7 +162,7 @@ public class LanguageSessionService {
             session.setTurnCount(index);
             sessions.save(session);
             log.info("外语对话 {}/{} 完成：{}ms（asr {} / llm {} / tts {}）", id, index,
-                    entity.getTotalMs(), asrMs, llmMs, ttsMs);
+                    entity.getTotalMs(), asrMs, llmMs, entity.getTtsMs());
             return turnView(entity, spec);
         } catch (LanguageSpeechException | LanguageCoachException exception) {
             // 这一轮没成，但会话必须能继续：把原因说清楚，不推进轮次
@@ -194,10 +186,6 @@ public class LanguageSessionService {
             long startedAt = System.currentTimeMillis();
             LanguageCoachResult result = coach.reply(coachRequest(session, spec, scenario, transcript));
             int llmMs = (int) (System.currentTimeMillis() - startedAt);
-            long ttsStarted = System.currentTimeMillis();
-            byte[] replyAudio = speech.synthesize(result.reply(), spec).orElse(null);
-            int ttsMs = (int) (System.currentTimeMillis() - ttsStarted);
-
             UUID turnId = UUID.randomUUID();
             LanguageTurnEntity entity = new LanguageTurnEntity();
             entity.setId(turnId);
@@ -206,13 +194,7 @@ public class LanguageSessionService {
             entity.setTranscript(transcript);
             entity.setReplyText(result.reply());
             entity.setFeedbackJson(write(result.feedback()));
-            if (replyAudio != null) {
-                entity.setReplyAudioKey("lang-" + turnId + "-reply");
-                mediaStorage.store(entity.getReplyAudioKey(), new java.io.ByteArrayInputStream(replyAudio),
-                        replyAudio.length);
-            }
             entity.setLlmMs(llmMs);
-            entity.setTtsMs(ttsMs);
             entity.setTotalMs((int) (System.currentTimeMillis() - startedAt));
             entity.setStatus("answered");
             entity.setCreatedAt(Instant.now());
@@ -284,6 +266,37 @@ public class LanguageSessionService {
         return new MediaFile(resource, reply ? "audio/wav" : turn.getAudioContentType());
     }
 
+    /**
+     * AI 回复的语音，**按需合成**。
+     *
+     * 不放在 `turn()` 里的原因：合成要 2 秒多，而用户真正在意的是"多久看到回复"。
+     * 文字先到，音频在用户点"听回复"（或前端自动请求）时再生成；同一轮只合成一次（落库复用）。
+     * 合成费用已经算在这一轮的额度里，不重复扣。
+     */
+    @Transactional
+    public MediaFile speech(String ownerId, UUID id, int turnIndex) throws IOException {
+        LanguageSessionEntity session = requireOwned(ownerId, id);
+        LanguageSpec spec = spec(session);
+        if (!spec.serverVoice()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "这门语言没有服务端音色");
+        }
+        LanguageTurnEntity turn = turns.findBySessionIdAndTurnIndex(id, turnIndex)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "这一轮不存在"));
+        if (turn.getReplyAudioKey() == null) {
+            long startedAt = System.currentTimeMillis();
+            byte[] audio = speech.synthesize(turn.getReplyText(), spec)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "语音合成暂不可用，先看文字"));
+            String key = "lang-" + turn.getId() + "-reply";
+            mediaStorage.store(key, new java.io.ByteArrayInputStream(audio), audio.length);
+            turn.setReplyAudioKey(key);
+            turn.setTtsMs((int) (System.currentTimeMillis() - startedAt));
+            turns.save(turn);
+        }
+        Resource resource = mediaStorage.find(turn.getReplyAudioKey())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "音频已被清理"));
+        return new MediaFile(resource, "audio/wav");
+    }
+
     private void deleteWithMedia(LanguageSessionEntity session) throws IOException {
         for (LanguageTurnEntity turn : turns.findAllBySessionIdOrderByTurnIndexAsc(session.getId())) {
             if (turn.getAudioKey() != null) mediaStorage.delete(turn.getAudioKey());
@@ -353,8 +366,9 @@ public class LanguageSessionService {
                 readFeedback(turn.getFeedbackJson()),
                 turn.getAudioKey() == null ? null
                         : "/api/v1/language-sessions/" + turn.getSessionId() + "/turns/" + turn.getTurnIndex() + "/audio?side=user",
-                turn.getReplyAudioKey() == null ? null
-                        : "/api/v1/language-sessions/" + turn.getSessionId() + "/turns/" + turn.getTurnIndex() + "/audio?side=reply",
+                // 有服务端音色就给"按需合成"的地址：文字先到，点听的时候再花那 2 秒
+                !spec.serverVoice() ? null
+                        : "/api/v1/language-sessions/" + turn.getSessionId() + "/turns/" + turn.getTurnIndex() + "/speech",
                 !spec.serverVoice(),
                 new LanguageTurnView.Latency(turn.getAsrMs(), turn.getLlmMs(), turn.getTtsMs(), turn.getTotalMs()),
                 turn.getStatus());

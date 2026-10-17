@@ -21,6 +21,8 @@ const scenario = ref('');
 const level = ref('intermediate');
 const maxTurns = ref(8);
 const voiceHint = ref('');
+// 声音偏好：系统语音（浏览器，快）默认；服务端音色更统一，但要多等约 2 秒。
+const voiceMode = ref(localStorage.getItem('language-voice-mode') || 'browser');
 
 onMounted(load);
 
@@ -47,6 +49,11 @@ function chooseLanguage(code) {
   const list = options.value?.languages?.find((item) => item.code === code)?.scenarios || [];
   scenario.value = list[0]?.id || '';
   checkVoice();
+}
+
+function changeVoiceMode(value) {
+  voiceMode.value = value;
+  localStorage.setItem('language-voice-mode', value);
 }
 
 /**
@@ -120,17 +127,18 @@ function scenarioTitle(session) {
         <h1>外语口语练习</h1>
         <p>选一个场景，和 AI 一句一句聊。说完先给回复，再指出这一句怎么说得更好。</p>
       </div>
-      <el-tag class="tag-muted">L1 轮次对话 · 每轮 2-4 秒</el-tag>
+      <el-tag class="tag-muted">L1 轮次对话 · 每轮约 3-6 秒</el-tag>
     </div>
 
     <section v-if="options" class="panel setup-panel">
       <div class="field-row">
         <span class="field-label">语言</span>
-        <el-radio-group :model-value="language" class="language-tabs" @change="chooseLanguage">
+        <el-radio-group v-if="options.languages.length > 1" :model-value="language" class="language-tabs" @change="chooseLanguage">
           <el-radio-button v-for="item in options.languages" :key="item.code" :value="item.code">
             {{ item.displayName }}<small>{{ LANGUAGE_LABELS[item.code] }}</small>
           </el-radio-button>
         </el-radio-group>
+        <strong v-else class="single-language">{{ currentLanguage?.displayName }}</strong>
       </div>
 
       <div class="field-row">
@@ -152,6 +160,11 @@ function scenarioTitle(session) {
         <span class="field-label second">轮数</span>
         <el-select v-model="maxTurns" class="small-select">
           <el-option v-for="count in [4, 8, 12]" :key="count" :label="`${count} 轮`" :value="count" />
+        </el-select>
+        <span class="field-label second">AI 声音</span>
+        <el-select :model-value="voiceMode" class="small-select wide" @change="changeVoiceMode">
+          <el-option label="系统语音（更快）" value="browser" />
+          <el-option label="服务端音色（更自然）" value="server" />
         </el-select>
       </div>
 
@@ -199,6 +212,8 @@ function scenarioTitle(session) {
 .scenario-card span { color: #8d9792; font-size: 12px; line-height: 1.7; }
 .scenario-card.active { border-color: #9dc7ac; background: #f5faf6; }
 .small-select { width: 130px; }
+.small-select.wide { width: 190px; }
+.single-language { padding-top: 9px; color: #34403a; font-size: 15px; }
 .goal-line { margin: 0; padding: 10px 12px; border-radius: 6px; background: #f4f7f5; color: #5d6a64; font-size: 13px; }
 .voice-hint { display: flex; align-items: center; gap: 6px; margin: 0; color: #a9722f; font-size: 12px; line-height: 1.7; }
 .start-button { justify-self: start; }

@@ -49,26 +49,16 @@ try {
   // 侧栏入口
   await page.locator('.main-nav button:has-text("外语口语")').click();
   await page.waitForURL((url) => url.pathname === '/language', { timeout: 15000 });
-  await page.waitForSelector('.language-tabs', { timeout: 15000 });
+  await page.waitForSelector('.setup-panel', { timeout: 15000 });
   await page.waitForTimeout(500);
-  check('两门语言可选', await page.locator('.language-tabs .el-radio-button').count() === 2);
+  check('日语已下线：只提供英语', (await page.locator('.language-tabs').count()) === 0
+    && (await page.locator('.single-language').innerText()).includes('English'));
   check('英语有三个场景', await page.locator('.scenario-card').count() === 3,
     (await page.locator('.scenario-card strong').allInnerTexts()).join(' / '));
+  check('有 AI 声音选项（系统的/服务端的）', await page.locator('.small-select.wide').count() === 1);
   await shot('language-setup');
 
-  // 切到日语：应当提示"本机没有日语语音"（这台机器没有 ja 系统语音）
-  await page.locator('.language-tabs .el-radio-button:has-text("日本語")').click();
-  await page.waitForTimeout(400);
-  const hint = await page.locator('.voice-hint').count()
-    ? (await page.locator('.voice-hint').innerText()).replace(/\s+/g, ' ')
-    : '（本机有日语语音，未提示）';
-  console.log(`  日语语音提示：${hint}`);
-  check('日语场景也跟着切换', (await page.locator('.scenario-card').first().innerText()).includes('面试')
-    || (await page.locator('.scenario-card').count()) === 3);
-
-  // 切回英语并开始
-  await page.locator('.language-tabs .el-radio-button:has-text("English")').click();
-  await page.waitForTimeout(300);
+  // 开始
   await page.locator('button:has-text("开始对话")').click();
   await page.waitForURL((url) => /^\/language\/[0-9a-f-]{36}$/.test(url.pathname), { timeout: 20000 });
   sessionId = new URL(page.url()).pathname.split('/').pop();

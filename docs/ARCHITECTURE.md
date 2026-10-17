@@ -411,11 +411,11 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 简历生成/补全/优化、语音合成。异步链路拿不到额度时**顺延**（`AnalysisDeferredException` → 任务回到
 `pending` 并把 `nextAttemptAt` 指到额度重置后），不消耗重试次数、不进死信队列。
 
-### 5.10 `language` —— 外语口语（英语 / 日语，L1）
+### 5.10 `language` —— 外语口语（英语，L1；日语配置保留、暂未上线）
 
 | 类 | 职责 |
 | --- | --- |
-| `LanguageCatalog` | 语言 / 场景 / 水平的注册表；**音色能力写在配置里**（英语有服务端音色，日语没有 → 浏览器语音） |
+| `LanguageCatalog` | 语言 / 场景 / 水平的注册表；**音色能力写在配置里**（英语有服务端音色；日语音色不可用，暂时下线，加回只需补一条配置） |
 | `LanguageSessionService` | 开一场、同步跑一轮（转写 → 回复 → 合成）、结束出报告、保留期清理；每轮占 1 次额度 |
 | `LanguageSpeechService` | 按语言传 `language_hints` 调用 `paraformer-realtime-v2`；按语言选 TTS，日语明确不出音频 |
 | `SpringAiLanguageCoach` + `LanguageCoachValidator` | 回复与复盘；校验器挡住"编造用户原话"和"凑数建议"，回复/建议长度也在这里夹住 |

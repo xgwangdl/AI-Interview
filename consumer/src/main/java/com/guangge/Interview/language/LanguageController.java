@@ -121,8 +121,19 @@ public class LanguageController {
             @PathVariable UUID id,
             @PathVariable int turnIndex,
             @RequestParam(defaultValue = "user") String side) {
-        LanguageSessionService.MediaFile media =
-                sessions.media(owners.requireOwner(authorization), id, turnIndex, side);
+        return respond(sessions.media(owners.requireOwner(authorization), id, turnIndex, side));
+    }
+
+    /** AI 回复的语音：第一次请求时合成并落库，之后直接复用（见 LanguageSessionService.speech）。 */
+    @GetMapping("/language-sessions/{id}/turns/{turnIndex}/speech")
+    public ResponseEntity<Resource> speech(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @PathVariable int turnIndex) throws IOException {
+        return respond(sessions.speech(owners.requireOwner(authorization), id, turnIndex));
+    }
+
+    private static ResponseEntity<Resource> respond(LanguageSessionService.MediaFile media) {
         MediaType type = MediaType.APPLICATION_OCTET_STREAM;
         if (media.contentType() != null) {
             try {

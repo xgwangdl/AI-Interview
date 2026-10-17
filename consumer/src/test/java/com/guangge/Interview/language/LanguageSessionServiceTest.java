@@ -69,15 +69,15 @@ class LanguageSessionServiceTest {
         when(sessions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         LanguageSessionView view = service.create("smoke",
-                new LanguageSessionRequest("ja", "daily", "beginner", null));
+                new LanguageSessionRequest("en", "daily", "beginner", null));
 
         assertThat(stale.getStatus()).isEqualTo(LanguageSessionService.ABANDONED);
-        assertThat(view.language()).isEqualTo("ja");
+        assertThat(view.language()).isEqualTo("en");
         assertThat(view.maxTurns()).isEqualTo(LanguageCatalog.DEFAULT_MAX_TURNS);
         assertThat(view.level()).isEqualTo("beginner");
-        assertThat(view.opening()).contains("いらっしゃいませ");
+        assertThat(view.opening()).contains("welcome in");
         assertThat(view.turns()).isEmpty();
-        assertThat(view.serverVoice()).isFalse();
+        assertThat(view.serverVoice()).isTrue();
     }
 
     @Test

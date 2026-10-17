@@ -51,8 +51,16 @@ public class LanguageSpeechService {
         }
         long startedAt = System.currentTimeMillis();
         File wav = null;
+        boolean converted = false;
         try {
-            wav = AudioConverter.convertToWav(source);
+            // 前端现在直接录 16k 单声道 WAV：跳过 ffmpeg（省 0.3-0.8 秒）。
+            // 其它格式仍然走转换，行为不变。
+            if (isSixteenKMonoWav(source)) {
+                wav = source;
+            } else {
+                wav = AudioConverter.convertToWav(source);
+                converted = true;
+            }
             RecognitionParam param = RecognitionParam.builder()
                     .apiKey(transcriptionKey)
                     .model("paraformer-realtime-v2")
@@ -71,7 +79,7 @@ public class LanguageSpeechService {
         } catch (Exception exception) {
             throw new LanguageSpeechException("语音识别失败了：" + brief(exception), exception);
         } finally {
-            if (wav != null) {
+            if (converted && wav != null) {
                 try {
                     Files.deleteIfExists(wav.toPath());
                 } catch (Exception ignored) {
@@ -113,6 +121,35 @@ public class LanguageSpeechService {
         JsonNode root = objectMapper.readTree(raw);
         JsonNode sentences = root.get("sentences");
         return sentences == null || sentences.isEmpty() ? null : sentences.get(0).path("text").asText();
+    }
+
+    /** 只认"我们自己录的"那种最朴素的 44 字节头 WAV：PCM / 单声道 / 16k / 16bit。 */
+    static boolean isSixteenKMonoWav(File file) {
+        if (file == null || file.length() < 44) return false;
+        try (java.io.DataInputStream in = new java.io.DataInputStream(
+                new java.io.BufferedInputStream(new java.io.FileInputStream(file)))) {
+            byte[] header = new byte[44];
+            if (in.read(header) != 44) return false;
+            return new String(header, 0, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")
+                    && new String(header, 8, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("WAVE")
+                    && new String(header, 12, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("fmt ")
+                    && littleShort(header, 20) == 1
+                    && littleShort(header, 22) == 1
+                    && littleInt(header, 24) == 16000
+                    && littleShort(header, 34) == 16
+                    && new String(header, 36, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("data");
+        } catch (Exception exception) {
+            return false;
+        }
+    }
+
+    private static int littleShort(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+    }
+
+    private static int littleInt(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8)
+                | ((bytes[offset + 2] & 0xff) << 16) | ((bytes[offset + 3] & 0xff) << 24);
     }
 
     private static String truncate(String value, int max) {
