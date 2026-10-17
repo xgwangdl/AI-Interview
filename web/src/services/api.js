@@ -209,6 +209,33 @@ export function reEvaluateAnswer(answerId) {
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/re-evaluate`, { method: 'POST' });
 }
 
+/** 基于原回答生成改写（不新增事实/数字）。 */
+export function generateAnswerRewrite(answerId) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/rewrite`, { method: 'POST' });
+}
+
+export function saveAnswerRewrite(answerId, text) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/rewrite`, {
+    method: 'PUT',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function getAnswerRewrite(answerId) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/rewrite`);
+}
+
+/** 为同一道题新建一个 attempt（随后用 RetakeView 录制并上传）。 */
+export function createAnswerAttempt(sessionId, questionIndex) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(sessionId)}/questions/${questionIndex}/attempts`, {
+    method: 'POST',
+  });
+}
+
+export function discardAnswerAttempt(answerId) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/attempt`, { method: 'DELETE' });
+}
+
 export function tryCompleteSession(id) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(id)}/complete`, { method: 'POST' });
 }

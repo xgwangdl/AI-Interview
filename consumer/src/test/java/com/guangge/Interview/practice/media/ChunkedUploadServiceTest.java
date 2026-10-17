@@ -138,8 +138,8 @@ class ChunkedUploadServiceTest {
     }
 
     private PracticeAnswerView answerView(long size) {
-        return new PracticeAnswerView(answerId, 0, "q-0", "video/webm", size, 30, 0,
-                "awaiting_provider", null, null, null, "awaiting_provider", null);
+        return new PracticeAnswerView(answerId, 0, "q-0", 1, true, "video/webm", size, 30, 0,
+                "awaiting_provider", null, null, null, "awaiting_provider", null, null);
     }
 
     private String chunkKey(int index) {

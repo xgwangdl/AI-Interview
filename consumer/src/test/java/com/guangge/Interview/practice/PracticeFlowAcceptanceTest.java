@@ -170,7 +170,9 @@ class PracticeFlowAcceptanceTest {
             assertThrows(ResponseStatusException.class, () -> sessionService.getAnswerMedia(answerId));
             assertTrue(mediaStorage.find(answerId.toString()).isEmpty());
         }
-        assertTrue(answers.findAllBySessionIdOrderByQuestionIndexAsc(created.id()).isEmpty());
+        for (UUID answerId : answerIds) {
+            assertTrue(answers.findById(answerId).isEmpty());
+        }
     }
 
     private void stubRepositories() {
@@ -202,16 +204,31 @@ class PracticeFlowAcceptanceTest {
         });
         when(answers.findById(any(UUID.class))).thenAnswer(invocation ->
                 Optional.ofNullable(answerStore.get(invocation.getArgument(0, UUID.class))));
-        when(answers.findBySessionIdAndQuestionIndex(any(UUID.class), anyInt())).thenAnswer(invocation -> {
+        when(answers.findFirstBySessionIdAndQuestionIndexAndIsCurrentTrueOrderByAttemptDesc(
+                any(UUID.class), anyInt())).thenAnswer(invocation -> {
             UUID sessionId = invocation.getArgument(0, UUID.class);
             int index = invocation.getArgument(1, Integer.class);
             return answerStore.values().stream()
                     .filter(item -> sessionId.equals(item.getSessionId()) && item.getQuestionIndex() == index)
+                    .filter(PracticeAnswerEntity::isCurrent)
                     .findFirst();
+        });
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(any(UUID.class))).thenAnswer(invocation -> {
+            UUID sessionId = invocation.getArgument(0, UUID.class);
+            return answersOf(sessionId).stream().filter(PracticeAnswerEntity::isCurrent).toList();
         });
         when(answers.findAllBySessionIdOrderByQuestionIndexAsc(any(UUID.class))).thenAnswer(invocation -> {
             UUID sessionId = invocation.getArgument(0, UUID.class);
             return answersOf(sessionId);
+        });
+        when(answers.findAllBySessionIdOrderByQuestionIndexAscAttemptAsc(any(UUID.class))).thenAnswer(invocation -> {
+            UUID sessionId = invocation.getArgument(0, UUID.class);
+            return answersOf(sessionId);
+        });
+        when(answers.findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(any(UUID.class), anyInt())).thenAnswer(invocation -> {
+            UUID sessionId = invocation.getArgument(0, UUID.class);
+            int index = invocation.getArgument(1, Integer.class);
+            return answersOf(sessionId).stream().filter(item -> item.getQuestionIndex() == index).toList();
         });
         doAnswer(invocation -> {
             UUID sessionId = invocation.getArgument(0, UUID.class);

@@ -23,6 +23,14 @@ public class PracticeAnswerEntity {
     @Column(name = "question_id", nullable = false, length = 64)
     private String questionId;
 
+    /** 同一道题的第几次回答（1 起）。 */
+    @Column(name = "attempt", nullable = false)
+    private int attempt = 1;
+
+    /** 当前展示/计分的版本；重录后旧版本置 false。 */
+    @Column(name = "is_current", nullable = false)
+    private boolean isCurrent = true;
+
     @Column(name = "media_key", length = 100)
     private String mediaKey;
 
@@ -57,6 +65,15 @@ public class PracticeAnswerEntity {
     @Column(name = "evaluation_json", columnDefinition = "text")
     private String evaluationJson;
 
+    @Column(name = "rewrite_text", columnDefinition = "text")
+    private String rewriteText;
+
+    @Column(name = "rewrite_source", length = 16)
+    private String rewriteSource;
+
+    @Column(name = "rewrite_at")
+    private Instant rewriteAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -70,6 +87,10 @@ public class PracticeAnswerEntity {
     public void setQuestionIndex(int questionIndex) { this.questionIndex = questionIndex; }
     public String getQuestionId() { return questionId; }
     public void setQuestionId(String questionId) { this.questionId = questionId; }
+    public int getAttempt() { return attempt; }
+    public void setAttempt(int attempt) { this.attempt = attempt; }
+    public boolean isCurrent() { return isCurrent; }
+    public void setCurrent(boolean current) { this.isCurrent = current; }
     public String getMediaKey() { return mediaKey; }
     public void setMediaKey(String mediaKey) { this.mediaKey = mediaKey; }
     public String getMediaContentType() { return mediaContentType; }
@@ -92,6 +113,12 @@ public class PracticeAnswerEntity {
     public void setEvaluationStatus(String evaluationStatus) { this.evaluationStatus = evaluationStatus; }
     public String getEvaluationJson() { return evaluationJson; }
     public void setEvaluationJson(String evaluationJson) { this.evaluationJson = evaluationJson; }
+    public String getRewriteText() { return rewriteText; }
+    public void setRewriteText(String rewriteText) { this.rewriteText = rewriteText; }
+    public String getRewriteSource() { return rewriteSource; }
+    public void setRewriteSource(String rewriteSource) { this.rewriteSource = rewriteSource; }
+    public Instant getRewriteAt() { return rewriteAt; }
+    public void setRewriteAt(Instant rewriteAt) { this.rewriteAt = rewriteAt; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

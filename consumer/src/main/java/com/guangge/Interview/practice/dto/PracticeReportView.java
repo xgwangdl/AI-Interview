@@ -44,6 +44,8 @@ public record PracticeReportView(
             UUID answerId,
             int questionIndex,
             String questionId,
+            int attempt,
+            boolean isCurrent,
             String questionText,
             Integer durationSeconds,
             String transcriptStatus,
@@ -53,9 +55,19 @@ public record PracticeReportView(
             String evaluationStatus,
             String mediaUrl,
             String mediaSignedUrl,
+            String rewriteText,
+            String rewriteSource,
+            Instant rewriteAt,
             boolean followUp,
             String parentQuestionId,
             Integer parentQuestionIndex,
             int followUpRound,
-            EvaluationResult evaluation) { }
+            EvaluationResult evaluation,
+            /** 同一道题的所有尝试（旧 → 新），用于 before/after。 */
+            List<AttemptView> attempts) { }
+
+    public record AttemptView(UUID answerId, int attempt, boolean current, String transcriptText,
+                              String evaluationStatus, String mediaUrl, String mediaSignedUrl,
+                              EvaluationResult evaluation, String rewriteText, String rewriteSource,
+                              Instant rewriteAt, Instant createdAt) { }
 }

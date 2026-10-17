@@ -9,8 +9,13 @@ import java.util.UUID;
 
 public interface PracticeAnswerRepository extends JpaRepository<PracticeAnswerEntity, UUID> {
     List<PracticeAnswerEntity> findAllBySessionIdOrderByQuestionIndexAsc(UUID sessionId);
+    List<PracticeAnswerEntity> findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(UUID sessionId);
+    List<PracticeAnswerEntity> findAllBySessionIdOrderByQuestionIndexAscAttemptAsc(UUID sessionId);
+    List<PracticeAnswerEntity> findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(UUID sessionId, int questionIndex);
     long countBySessionIdIn(java.util.Collection<UUID> sessionIds);
-    Optional<PracticeAnswerEntity> findBySessionIdAndQuestionIndex(UUID sessionId, int questionIndex);
+    Optional<PracticeAnswerEntity> findFirstBySessionIdAndQuestionIndexAndIsCurrentTrueOrderByAttemptDesc(
+            UUID sessionId, int questionIndex);
+    long countBySessionIdAndQuestionIndex(UUID sessionId, int questionIndex);
     Optional<PracticeAnswerEntity> findByIdAndSessionId(UUID id, UUID sessionId);
     void deleteAllBySessionId(UUID sessionId);
 }

@@ -7,6 +7,8 @@ public record PracticeAnswerView(
         UUID id,
         int questionIndex,
         String questionId,
+        int attempt,
+        boolean isCurrent,
         String mediaContentType,
         Long mediaSizeBytes,
         Integer durationSeconds,
@@ -16,5 +18,6 @@ public record PracticeAnswerView(
         String transcriptOriginal,
         Instant transcriptEditedAt,
         String evaluationStatus,
+        String rewriteText,
         Instant createdAt) {
 }

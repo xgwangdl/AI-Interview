@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  apiRequest, getAnswerMedia, reEvaluateAnswer, tryLogin, tryPauseSession, tryRegister, trySyncSession,
-  updateAnswerTranscript,
+  apiRequest, createAnswerAttempt, generateAnswerRewrite, getAnswerMedia, reEvaluateAnswer,
+  saveAnswerRewrite, tryLogin, tryPauseSession, tryRegister, trySyncSession, updateAnswerTranscript,
 } from './api';
 
 function fakeResponse(status, body) {
@@ -95,6 +95,21 @@ describe('Phase 2 API', () => {
     });
     const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
     expect(body.mode).toBe('continuous');
+  });
+
+  it('改写与重录接口路径正确', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, '{}'));
+    await generateAnswerRewrite('a-1');
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/answers/a-1/rewrite');
+    expect(globalThis.fetch.mock.calls[0][1].method).toBe('POST');
+
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, '{}'));
+    await saveAnswerRewrite('a-1', 'better');
+    expect(globalThis.fetch.mock.calls[0][1].method).toBe('PUT');
+
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(201, '{}'));
+    await createAnswerAttempt('s-1', 2);
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/practice-sessions/s-1/questions/2/attempts');
   });
 });
 

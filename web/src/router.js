@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/goals/:id', name: 'goal-detail', component: () => import('./views/GoalDetailView.vue') },
     { path: '/practice/setup', name: 'setup', component: () => import('./views/SetupView.vue') },
     { path: '/practice/device-check', name: 'device-check', component: () => import('./views/DeviceCheckView.vue') },
+    { path: '/practice/:id/retake/:questionIndex', name: 'retake', component: () => import('./views/RetakeView.vue') },
     { path: '/practice/:id/session', name: 'session', component: () => import('./views/SessionView.vue') },
     { path: '/practice/:id/report', name: 'report', component: () => import('./views/ReportView.vue') },
     { path: '/history', name: 'history', component: () => import('./views/HistoryView.vue') },

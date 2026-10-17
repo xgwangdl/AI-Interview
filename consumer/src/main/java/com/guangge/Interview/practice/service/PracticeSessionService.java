@@ -144,12 +144,15 @@ public class PracticeSessionService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question does not belong to this position in the session");
         }
 
-        PracticeAnswerEntity answer = answers.findBySessionIdAndQuestionIndex(sessionId, request.questionIndex())
+        PracticeAnswerEntity answer = answers
+                .findFirstBySessionIdAndQuestionIndexAndIsCurrentTrueOrderByAttemptDesc(sessionId, request.questionIndex())
                 .orElseGet(() -> {
                     PracticeAnswerEntity created = new PracticeAnswerEntity();
                     created.setId(UUID.randomUUID());
                     created.setSessionId(sessionId);
                     created.setQuestionIndex(request.questionIndex());
+                    created.setAttempt(1);
+                    created.setCurrent(true);
                     created.setCreatedAt(Instant.now());
                     created.setTranscriptStatus("awaiting_provider");
                     created.setEvaluationStatus("awaiting_provider");
@@ -164,7 +167,9 @@ public class PracticeSessionService {
     @Transactional
     public PracticeAnswerView storeAnswerMedia(String ownerId, UUID answerId, String contentType, long size, InputStream content) throws IOException {
         PracticeAnswerEntity answer = requireOwnedAnswer(ownerId, answerId);
-        if (contentType == null || !contentType.toLowerCase().startsWith("video/")) {
+        // 脚本和部分浏览器会把视频标成 application/octet-stream；真实格式由媒体层使用方校验。
+        if (contentType == null || (!contentType.toLowerCase().startsWith("video/")
+                && !"application/octet-stream".equalsIgnoreCase(contentType))) {
             throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "A video file is required");
         }
         String key = answer.getId().toString();
@@ -172,6 +177,14 @@ public class PracticeSessionService {
         answer.setMediaKey(key);
         answer.setMediaContentType(contentType);
         answer.setMediaSizeBytes(size);
+        if (answer.getAttempt() > 1) {
+            // 新 attempt 在录像真正上传后才"生效"：上传失败时旧版本仍然是当前版本。
+            for (PracticeAnswerEntity item : answers.findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(
+                    answer.getSessionId(), answer.getQuestionIndex())) {
+                item.setCurrent(item.getId().equals(answer.getId()));
+                answers.save(item);
+            }
+        }
         return toAnswerView(answers.save(answer));
     }
 
@@ -204,7 +217,7 @@ public class PracticeSessionService {
     @Transactional
     public PracticeSessionView complete(String ownerId, UUID id) {
         PracticeSessionEntity session = requireOwnedSession(ownerId, id);
-        List<PracticeAnswerEntity> sessionAnswers = answers.findAllBySessionIdOrderByQuestionIndexAsc(id);
+        List<PracticeAnswerEntity> sessionAnswers = answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(id);
         if (sessionAnswers.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Record at least one answer before completing");
         }
@@ -224,6 +237,59 @@ public class PracticeSessionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Upload the answer video before completing it");
         }
         return toAnswerView(answer);
+    }
+
+    /**
+     * 重录这一题：把旧版本标成历史，新建 attempt+1 的当前版本。
+     *
+     * 每题最多 3 个 attempt；新版本还没有录像，前端随后上传并 complete。
+     */
+    @Transactional
+    public PracticeAnswerView createAttempt(String ownerId, UUID sessionId, int questionIndex) {
+        PracticeSessionEntity session = requireOwnedSession(ownerId, sessionId);
+        if ("completed".equals(session.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "已完成的练习不能重录");
+        }
+        List<PracticeQuestion> questions = readQuestions(session.getQuestionsJson());
+        if (questionIndex < 0 || questionIndex >= questions.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "题号超出范围");
+        }
+        List<PracticeAnswerEntity> history =
+                answers.findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(sessionId, questionIndex);
+        if (history.size() >= 3) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "每题最多重录 3 次");
+        }
+        PracticeAnswerEntity previous = history.stream().filter(PracticeAnswerEntity::isCurrent)
+                .findFirst().orElse(history.isEmpty() ? null : history.get(history.size() - 1));
+        PracticeQuestion question = questions.get(questionIndex);
+        PracticeAnswerEntity created = new PracticeAnswerEntity();
+        created.setId(UUID.randomUUID());
+        created.setSessionId(sessionId);
+        created.setQuestionIndex(questionIndex);
+        created.setQuestionId(question.id());
+        created.setAttempt(history.stream().mapToInt(PracticeAnswerEntity::getAttempt).max().orElse(0) + 1);
+        // 先不激活；录像上传成功后 storeAnswerMedia 才会把它设为当前版本
+        created.setCurrent(false);
+        if (previous != null) {
+            created.setRewriteText(previous.getRewriteText());
+            created.setRewriteSource(previous.getRewriteSource());
+            created.setRewriteAt(previous.getRewriteAt());
+        }
+        created.setCreatedAt(Instant.now());
+        created.setTranscriptStatus("awaiting_provider");
+        created.setEvaluationStatus("awaiting_provider");
+        return toAnswerView(answers.save(created));
+    }
+
+    /** 重录中途失败/退出：丢弃尚未生效的 attempt（当前版本不能丢）。 */
+    @Transactional
+    public void discardAttempt(String ownerId, UUID answerId) throws IOException {
+        PracticeAnswerEntity answer = requireOwnedAnswer(ownerId, answerId);
+        if (answer.isCurrent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "当前版本不能删除");
+        }
+        if (answer.getMediaKey() != null) mediaStorage.delete(answer.getMediaKey());
+        answers.delete(answer);
     }
 
     @Transactional
@@ -332,17 +398,18 @@ public class PracticeSessionService {
     }
 
     private List<PracticeAnswerView> answerViews(UUID sessionId) {
-        return answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId).stream()
+        return answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId).stream()
                 .map(this::toAnswerView)
                 .toList();
     }
 
     private PracticeAnswerView toAnswerView(PracticeAnswerEntity answer) {
         return new PracticeAnswerView(answer.getId(), answer.getQuestionIndex(), answer.getQuestionId(),
+                answer.getAttempt(), answer.isCurrent(),
                 answer.getMediaContentType(), answer.getMediaSizeBytes(), answer.getDurationSeconds(),
                 answer.getStartedAtOffsetSeconds(), answer.getTranscriptStatus(), answer.getTranscriptText(),
                 answer.getTranscriptOriginal(), answer.getTranscriptEditedAt(),
-                answer.getEvaluationStatus(), answer.getCreatedAt());
+                answer.getEvaluationStatus(), answer.getRewriteText(), answer.getCreatedAt());
     }
 
     private static String normalizeMode(String mode) {

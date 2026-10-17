@@ -186,7 +186,7 @@ class PracticeReportServiceTest {
         PracticeAnswerRepository answerRepository = mock(PracticeAnswerRepository.class);
         AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
         when(sessions.findByIdAndOwnerId(session.getId(), "alice")).thenReturn(Optional.of(session));
-        when(answerRepository.findAllBySessionIdOrderByQuestionIndexAsc(session.getId())).thenReturn(answers);
+        when(answerRepository.findAllBySessionIdOrderByQuestionIndexAscAttemptAsc(session.getId())).thenReturn(answers);
         when(jobRepository.findAllBySessionId(session.getId())).thenReturn(sessionJobs);
         return new PracticeReportService(
                 sessions, answerRepository, jobRepository, validator, signedUrls(),

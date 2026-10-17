@@ -1517,6 +1517,32 @@ Phase 6 接入题库后再替换为真实题目。连续面试、转写纠错、
 PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 403 拦住；已补上。
 另外 202 空 body 会让前端 `apiRequest` 解析失败（看起来像"保存失败"），已改为返回 `{"status":"pending"}`。
 
+### 2026-10-17 Phase 3：改写 + 重录 + before/after（已完成）
+
+按 [P0-RETENTION-REQUIREMENTS.md](P0-RETENTION-REQUIREMENTS.md) Phase 3 落地：
+
+- 迁移 `V15`：`practice_answers.attempt / is_current / rewrite_*`、`answer_rewrites` 历史表；
+  唯一约束改为 `(session_id, question_index, attempt)`；
+- AI 改写：`POST /answers/{id}/rewrite`，只优化表达、不新增数字；英文回答被改写成中文会被校验器拦住；
+- 用户编辑：`PUT /answers/{id}/rewrite`，允许用户补充真实信息（例如原语音没说出的年份）；
+- 重录：报告页「照着重录」→ `/practice/:id/retake/:index` → 录完才创建 attempt 并上传；
+  上传失败时旧版本仍是当前版本，不会留下空回答；
+- before/after：报告返回同一道题的所有 attempt（旧 → 新），当前版本用于趋势与成绩档案；
+  可点击旧版本在左侧播放器回看；
+- 当前版本才写成绩档案；旧 attempt 只保留在报告对照中。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端单测 | 251 → **259 个**（改写校验/服务、attempt 创建、失败 attempt 清理） |
+| 前端单测 | 125 → **126 个** |
+| 接口 E2E | `scripts/verify-phase3.ps1` **8/8**：AI 改写 → 用户编辑 → attempt 2 → 上传后切当前 → 报告 2 个版本 |
+| 浏览器 | `web/scripts/verify-phase3-browser.mjs` 全过：真实模型改写 → 编辑保存 → 照着重录 → before/after |
+
+**过程中的两个坑**：JPA 布尔字段叫 `current` 时，派生查询 `IsCurrentTrue` 找不到属性；
+改名为 `isCurrent` 解决。模型第一版把英文回答翻译成中文，已加提示词与校验器双重拦截。
+
 ### 2026-10-17 L2 实时通道（进行中，默认关闭）
 
 按用户要求开始做 L2：`spring-websocket` 通道 `/ws/language`（握手用查询串里的 token 验签）、

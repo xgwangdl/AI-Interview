@@ -12,6 +12,7 @@ import com.guangge.Interview.practice.dto.PracticeSessionRequest;
 import com.guangge.Interview.practice.dto.PracticeSessionView;
 import com.guangge.Interview.practice.dto.TranscriptEditRequest;
 import com.guangge.Interview.practice.transcript.TranscriptService;
+import com.guangge.Interview.practice.rewrite.AnswerRewriteService;
 import com.guangge.Interview.practice.media.MediaSignedUrlService;
 import com.guangge.Interview.practice.service.PracticeReportService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +55,7 @@ public class PracticeSessionController {
     private final com.guangge.Interview.practice.followup.PracticeFollowUpService followUps;
     private final com.guangge.Interview.goal.DailyPlanService dailyPlans;
     private final TranscriptService transcripts;
+    private final AnswerRewriteService rewrites;
 
     public PracticeSessionController(
             PracticeSessionService practiceSessions,
@@ -62,7 +65,8 @@ public class PracticeSessionController {
             OwnerResolver owners,
             com.guangge.Interview.practice.followup.PracticeFollowUpService followUps,
             com.guangge.Interview.goal.DailyPlanService dailyPlans,
-            TranscriptService transcripts) {
+            TranscriptService transcripts,
+            AnswerRewriteService rewrites) {
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.analysisJobs = analysisJobs;
@@ -71,6 +75,7 @@ public class PracticeSessionController {
         this.followUps = followUps;
         this.dailyPlans = dailyPlans;
         this.transcripts = transcripts;
+        this.rewrites = rewrites;
     }
 
     @PostMapping("/practice-sessions")
@@ -194,6 +199,46 @@ public class PracticeSessionController {
         // 202 必须带 body：前端 apiRequest 会统一解析 JSON，空 body 会变成 parse error，
         // 用户看到的是"保存失败"（实际请求已经成功）。
         return ResponseEntity.accepted().body(Map.of("status", "pending"));
+    }
+
+    /** 重录这一题：新建 attempt，返回一个新的 answerId（还没有录像）。 */
+    @PostMapping("/practice-sessions/{id}/questions/{questionIndex}/attempts")
+    public ResponseEntity<PracticeAnswerView> createAttempt(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @PathVariable int questionIndex) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(practiceSessions.createAttempt(owner(authorization), id, questionIndex));
+    }
+
+    @DeleteMapping("/answers/{answerId}/attempt")
+    public ResponseEntity<Void> discardAttempt(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId) throws java.io.IOException {
+        practiceSessions.discardAttempt(owner(authorization), answerId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/answers/{answerId}/rewrite")
+    public AnswerRewriteService.RewriteView generateRewrite(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId) {
+        return rewrites.generate(owner(authorization), answerId);
+    }
+
+    @PutMapping("/answers/{answerId}/rewrite")
+    public AnswerRewriteService.RewriteView saveRewrite(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId,
+            @Validated @RequestBody TranscriptEditRequest request) {
+        return rewrites.edit(owner(authorization), answerId, request.text());
+    }
+
+    @GetMapping("/answers/{answerId}/rewrite")
+    public AnswerRewriteService.RewriteView getRewrite(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId) {
+        return rewrites.get(owner(authorization), answerId);
     }
 
     /** 分析失败后由用户手动重试，返回重新排队后的报告。 */

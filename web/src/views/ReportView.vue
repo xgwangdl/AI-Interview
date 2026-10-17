@@ -5,7 +5,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { getMedia } from '../services/mediaStore';
 import {
-  getAnswerMedia, getPracticeReport, reEvaluateAnswer, retryPracticeAnalysis, updateAnswerTranscript,
+  generateAnswerRewrite, getAnswerMedia, getPracticeReport, reEvaluateAnswer,
+  retryPracticeAnalysis, saveAnswerRewrite, updateAnswerTranscript,
 } from '../services/api';
 import { buildQuestions, styleLabels, typeLabels } from '../data/questions';
 import DigitalHuman from '../components/DigitalHuman.vue';
@@ -39,10 +40,21 @@ const editingTranscript = ref(false);
 const transcriptDraft = ref('');
 const transcriptSaving = ref(false);
 const showTranscriptOriginal = ref(false);
+const rewriteDraft = ref('');
+const rewriteEditing = ref(false);
+const rewriting = ref(false);
+const savingRewrite = ref(false);
+const selectedAttemptId = ref('');
 const signedMediaUrl = computed(() => currentReport.value?.mediaSignedUrl || '');
 const evidenceList = computed(() => currentEvaluation.value?.evidence || []);
 /** 追问在这份报告里算"顺着上一题问的"，不算凭空多出来的一道题。 */
 const followUpCount = computed(() => report.value?.summary?.followUpCount || 0);
+
+watch(currentReport, (value) => {
+  rewriteDraft.value = value?.rewriteText || '';
+  rewriteEditing.value = false;
+  selectedAttemptId.value = value?.answerId || '';
+}, { immediate: true });
 
 function followUpLabel(index) {
   const item = report.value?.questions?.find((question) => question.questionIndex === index);
@@ -188,7 +200,12 @@ let reportPoller;
 const REPORT_POLL_MS = 10000;
 
 onMounted(() => {
-  if (session.value?.answers.length) selectQuestion(session.value.answers[0].questionIndex);
+  const requested = Number(route.query.index);
+  if (Number.isInteger(requested) && requested >= 0 && requested < questions.value.length) {
+    selectQuestion(requested);
+  } else if (session.value?.answers.length) {
+    selectQuestion(session.value.answers[0].questionIndex);
+  }
 });
 watch(() => route.params.id, () => { if (!session.value) router.replace('/history'); });
 // 直接打开或刷新报告页时，练习记录是异步从服务端拉取的。
@@ -244,6 +261,8 @@ async function selectQuestion(index) {
   finished.value = false;
   editingTranscript.value = false;
   showTranscriptOriginal.value = false;
+  rewriteEditing.value = false;
+  selectedAttemptId.value = '';
   revealedCount.value = 0;
   spokenSampleText.value = '';
   const requestId = ++mediaRequest;
@@ -293,6 +312,63 @@ async function saveTranscript() {
     ElMessage.error(error?.message || '保存转写失败');
   } finally {
     transcriptSaving.value = false;
+  }
+}
+
+async function generateRewrite() {
+  if (!currentReport.value?.answerId || rewriting.value) return;
+  rewriting.value = true;
+  try {
+    const result = await generateAnswerRewrite(currentReport.value.answerId);
+    rewriteDraft.value = result.rewriteText || '';
+    rewriteEditing.value = false;
+    // 报告是服务端组装的：生成成功后重新拉一次，页面才有 rewriteText / source 标签
+    await loadReport();
+    ElMessage.success('已生成改写；需要的话可以点「编辑」再改');
+  } catch (error) {
+    ElMessage.error(error?.message || '生成改写失败');
+  } finally {
+    rewriting.value = false;
+  }
+}
+
+async function saveRewrite() {
+  if (!currentReport.value?.answerId || savingRewrite.value) return;
+  const text = rewriteDraft.value.trim();
+  if (!text) {
+    ElMessage.warning('改写内容不能为空');
+    return;
+  }
+  savingRewrite.value = true;
+  try {
+    await saveAnswerRewrite(currentReport.value.answerId, text);
+    rewriteEditing.value = false;
+    ElMessage.success('改写已保存');
+    await loadReport();
+  } catch (error) {
+    ElMessage.error(error?.message || '保存改写失败');
+  } finally {
+    savingRewrite.value = false;
+  }
+}
+
+async function startRetake() {
+  if (!currentReport.value?.answerId) return;
+  router.push(`/practice/${route.params.id}/retake/${currentIndex.value}?sourceAnswerId=${currentReport.value.answerId}`);
+}
+
+async function playAttempt(attempt) {
+  if (!attempt) return;
+  selectedAttemptId.value = attempt.answerId;
+  if (activeUrl) URL.revokeObjectURL(activeUrl);
+  activeUrl = undefined;
+  try {
+    const blob = await getAnswerMedia(attempt.answerId);
+    activeUrl = URL.createObjectURL(blob);
+    mediaUrl.value = activeUrl;
+  } catch {
+    mediaUrl.value = attempt.mediaSignedUrl || '';
+    if (!mediaUrl.value) ElMessage.error('这段视频暂时无法读取');
   }
 }
 
@@ -370,6 +446,49 @@ onBeforeUnmount(() => {
           </p>
         </template>
       </div>
+      <div v-if="currentReport?.transcriptText" class="rewrite-panel panel">
+        <div class="transcript-edit-head">
+          <div>
+            <strong>回答改写</strong>
+            <el-tag v-if="currentReport?.rewriteText" class="tag-warn" size="small">{{ currentReport.rewriteSource === 'user' ? '已编辑' : 'AI 改写' }}</el-tag>
+            <small>只优化表达，不新增事实；改写后可照着重录。</small>
+          </div>
+          <div class="rewrite-actions">
+            <el-button class="soft-button" :loading="rewriting" @click="generateRewrite">
+              {{ currentReport?.rewriteText ? '重新生成' : '让 AI 改写' }}
+            </el-button>
+            <el-button v-if="currentReport?.rewriteText" class="soft-button" @click="rewriteEditing = !rewriteEditing">
+              {{ rewriteEditing ? '取消编辑' : '编辑' }}
+            </el-button>
+          </div>
+        </div>
+        <template v-if="rewriteEditing">
+          <el-input v-model="rewriteDraft" type="textarea" :rows="4" maxlength="4000" show-word-limit />
+          <div class="transcript-edit-actions">
+            <el-button class="soft-button" :disabled="savingRewrite" @click="rewriteEditing = false">取消</el-button>
+            <el-button class="primary-button" :loading="savingRewrite" @click="saveRewrite">保存改写</el-button>
+          </div>
+        </template>
+        <p v-else-if="currentReport?.rewriteText" class="rewrite-text">{{ currentReport.rewriteText }}</p>
+        <p v-else class="rewrite-empty">点「让 AI 改写」，基于你的原话生成一版更清楚的回答。</p>
+        <div v-if="currentReport?.rewriteText" class="rewrite-footer">
+          <button class="text-action" @click="startRetake"><el-icon><Refresh /></el-icon>照着重录（第 {{ (currentReport?.attempt || 1) + 1 }} 次）</button>
+          <small>每题最多 3 个版本</small>
+        </div>
+      </div>
+      <div v-if="(currentReport?.attempts?.length || 0) > 1" class="attempt-panel panel">
+        <div class="section-title">版本对比 <small>旧 → 新</small></div>
+        <div class="attempt-grid">
+          <button v-for="attempt in currentReport.attempts" :key="attempt.answerId" class="attempt-card"
+                  :class="{ current: attempt.current, selected: selectedAttemptId === attempt.answerId }"
+                  @click="playAttempt(attempt)">
+            <span>第 {{ attempt.attempt }} 次<el-tag v-if="attempt.current" class="tag-ready" size="small">当前</el-tag></span>
+            <strong>{{ attempt.evaluation?.overallScore != null ? attempt.evaluation.overallScore.toFixed(1) + ' 分' : '待评分' }}</strong>
+            <p>{{ attempt.transcriptText || '（还没有转写）' }}</p>
+          </button>
+        </div>
+        <p class="attempt-tip">点某个版本可以在左侧播放器回看；当前版本用于趋势与档案。</p>
+      </div>
       <div class="question-list"><button v-for="(question,index) in questions" :key="question.id" class="question-card panel" :class="{ active: currentIndex === index, 'is-follow-up': Boolean(followUpLabel(index)) }" @click="selectQuestion(index)"><span class="question-number">{{ String(index + 1).padStart(2,'0') }}</span><span class="question-info"><small>{{ followUpLabel(index) || question.category }}</small><strong>{{ question.text }}</strong></span><span class="question-duration">{{ session.answers.find((answer) => answer.questionIndex === index) ? formatDuration(session.answers.find((answer) => answer.questionIndex === index).durationSeconds) : '未回答' }}</span><el-icon v-if="currentIndex === index"><ArrowRight /></el-icon></button></div></section>
       <aside class="score-section"><div class="section-title">回答分析 <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? '已生成' : (reportLoading ? '分析中' : '等待接入') }}</el-tag></div><div class="score-panel panel"><template v-if="currentEvaluation"><div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>综合得分</span></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div><div class="delivery-list"><div><span>语速</span><i>{{ Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }} 字/分</i></div><div><span>停顿</span><i>{{ currentEvaluation.delivery.pauseCount }} 次 · 共 {{ currentEvaluation.delivery.totalPauseSeconds }} 秒</i></div><div><span>口头禅</span><i>{{ currentEvaluation.delivery.fillerWordCount }} 次</i></div></div></template><template v-else><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>{{ reportLoading ? '正在读取分析结果' : (report?.analysis?.status === 'failed' ? '分析失败' : '分析结果尚未生成') }}</strong><p>练习完成后台会自动转写并评分，完成后此处会展示逐题反馈。</p><el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">重试分析</el-button></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div></template><div class="rubric-legend"><div class="legend-title">评分口径</div><ul><li><strong>80-100</strong> 表现良好：切题、有细节与结果</li><li><strong>60-79</strong> 基本合格：答到了，但缺细节</li><li><strong>40-59</strong> 需要加强：泛泛而谈</li><li><strong>0-39</strong> 明显不足：几乎没有有效信息</li></ul><p>分数衡量的是这一段回答本身，不代表对你的整体评价。</p></div><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel"><div class="section-title">改进建议</div><ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul></div><div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel"><div class="section-title">优秀回答示例</div><div class="sample-row"><div class="sample-avatar"><DigitalHuman :speaking="sampleSpeaking" :amplitude="avatarAudio.amplitude" /></div><div class="sample-side"><button class="sample-play" :class="{ playing: sampleSpeaking }" :disabled="sampleLoading" @click="speakSampleAnswer"><el-icon><VideoPause v-if="sampleSpeaking" /><Microphone v-else /></el-icon><span>{{ sampleSpeaking ? '停止' : (sampleLoading ? '准备中…' : '让它回答') }}</span></button><small v-if="!sampleSpeaking && !sampleLoading">点这里，面试官会把这段示范答一遍</small><small v-else-if="sampleSpeaking">正在回答，字幕会跟着出现</small></div></div><p v-if="visibleSampleText" class="sample-text" :class="{ speaking: sampleSpeaking }">{{ visibleSampleText }}</p><p v-else class="sample-text sample-hidden">点「让它回答」，面试官会把这段示范答一遍，字幕随朗读出现。</p><p v-if="sampleTruncated" class="sample-note">示范回答较长，语音只念了前半段；点「停止」或播完后会显示完整文字。</p><p v-if="avatarError" class="sample-note error">{{ avatarError }}</p></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="evidenceList.length" class="evidence-list"><div v-for="(item, index) in evidenceList" :key="index" class="evidence-row"><button class="timeline-play" :aria-label="`播放证据 ${index + 1}`" :title="`播放证据 ${formatDuration(item.startSeconds)}`" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button><div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div><span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span></div></div><div v-else-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
     </div>
@@ -443,4 +562,18 @@ onBeforeUnmount(() => {
 .transcript-edit-bar .text-action { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--green); font-size: 12px; }
 .text-action.muted { color: #8d9792; }
 .transcript-original { margin: 0; padding: 7px 9px; border-radius: 6px; background: #f7f9f8; color: #7d8982; font-size: 12px; line-height: 1.7; }
+.rewrite-panel, .attempt-panel { display: grid; gap: 9px; margin-top: 9px; padding: 11px 12px; box-shadow: none; }
+.rewrite-actions { display: flex; gap: 7px; }
+.rewrite-text { margin: 0; padding: 9px 10px; border-radius: 6px; background: #f5faf6; color: #46524c; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+.rewrite-empty { margin: 0; color: #98a29d; font-size: 12px; }
+.rewrite-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rewrite-footer small { color: #98a29d; font-size: 11px; }
+.attempt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.attempt-card { display: grid; gap: 5px; padding: 9px 10px; border: 1px solid #eef1ee; border-radius: 7px; background: white; text-align: left; }
+.attempt-card.current { border-color: #b9d3c2; background: #f5faf6; }
+.attempt-card.selected { box-shadow: inset 0 0 0 1px var(--green); }
+.attempt-card > span { display: flex; align-items: center; gap: 5px; color: #7d8982; font-size: 11px; }
+.attempt-card strong { color: #2f3c35; font-size: 15px; }
+.attempt-card p { display: -webkit-box; overflow: hidden; margin: 0; color: #7d8982; font-size: 11px; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.attempt-tip { margin: 0; color: #98a29d; font-size: 11px; }
 </style>

@@ -103,7 +103,7 @@ public class AnalysisJobService {
     @Transactional
     public int enqueue(UUID sessionId) {
         int created = 0;
-        for (PracticeAnswerEntity answer : answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)) {
+        for (PracticeAnswerEntity answer : answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)) {
             if (enqueueAnswer(answer.getId())) created++;
         }
         return created;
@@ -406,7 +406,10 @@ public class AnalysisJobService {
                 answers.save(answer);
                 // 成绩另存一份长期档案：场次 7 天后会连回答一起清掉，档案要留下来（见 V9 迁移）
                 // 题面一起带上：错题本要靠它才能把"这道题"重练一遍（见 V10 迁移）
-                scoreArchive.record(session, answer, questionOf(session, answer.getQuestionId()), outcome.result());
+                // 旧 attempt 只保留在报告对照里，不覆盖当前成绩档案
+                if (answer.isCurrent()) {
+                    scoreArchive.record(session, answer, questionOf(session, answer.getQuestionId()), outcome.result());
+                }
             }
         }
     }

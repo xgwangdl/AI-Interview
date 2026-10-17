@@ -48,7 +48,7 @@ watch(() => route.name, (name, previous) => {
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
-const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', setup: '创建训练', 'device-check': '设备检测', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
+const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上

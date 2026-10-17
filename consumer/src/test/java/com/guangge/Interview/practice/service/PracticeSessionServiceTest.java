@@ -165,7 +165,7 @@ class PracticeSessionServiceTest {
         PracticeSessionEntity session = ownedSession(sessionId);
         PracticeAnswerEntity answer = answer(sessionId, null);
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(session));
-        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
                 () -> service.complete("alice", sessionId));
@@ -180,7 +180,7 @@ class PracticeSessionServiceTest {
         PracticeSessionEntity session = ownedSession(sessionId);
         PracticeAnswerEntity answer = answer(sessionId, mediaKey());
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(session));
-        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
         when(sessions.save(any(PracticeSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var completed = service.complete("alice", sessionId);
@@ -188,6 +188,43 @@ class PracticeSessionServiceTest {
         assertEquals("completed", completed.status());
         assertEquals(1, completed.answers().size());
         verify(sessions).save(session);
+    }
+
+    @Test
+    void createsAnInactiveNextAttempt() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = ownedSession(sessionId);
+        session.setQuestionsJson("[{\"id\":\"q-1\",\"text\":\"讲一个项目\",\"category\":\"项目\"}]");
+        session.setQuestionCount(1);
+        PracticeAnswerEntity first = answer(sessionId, mediaKey());
+        first.setAttempt(1);
+        first.setCurrent(true);
+        first.setRewriteText("改写版本");
+        when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(session));
+        when(answers.findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(sessionId, 0))
+                .thenReturn(List.of(first));
+        when(answers.save(any(PracticeAnswerEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var created = service.createAttempt("alice", sessionId, 0);
+
+        assertEquals(2, created.attempt());
+        assertEquals(false, created.isCurrent());
+        assertEquals("改写版本", created.rewriteText());
+        assertEquals("in_progress", session.getStatus());
+    }
+
+    @Test
+    void discardsOnlyAnInactiveAttempt() throws Exception {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = ownedSession(sessionId);
+        PracticeAnswerEntity attempt = answer(sessionId, null);
+        attempt.setAttempt(2);
+        attempt.setCurrent(false);
+        when(answers.findById(attempt.getId())).thenReturn(Optional.of(attempt));
+        when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(session));
+
+        service.discardAttempt("alice", attempt.getId());
+        verify(answers).delete(attempt);
     }
 
     @Test

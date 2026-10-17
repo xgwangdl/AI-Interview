@@ -89,7 +89,7 @@ class AnalysisJobServiceTest {
 
     @Test
     void queuesOneJobPerRecordedAnswer() {
-        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
         when(answers.findById(answerId)).thenReturn(Optional.of(answer));
         when(jobs.findByAnswerId(answerId)).thenReturn(Optional.empty());
 
@@ -101,7 +101,7 @@ class AnalysisJobServiceTest {
 
     @Test
     void skipsAnswersThatAreAlreadyQueued() {
-        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
         when(answers.findById(answerId)).thenReturn(Optional.of(answer));
         when(jobs.findByAnswerId(answerId)).thenReturn(Optional.of(pendingJob()));
 
@@ -114,7 +114,7 @@ class AnalysisJobServiceTest {
     @Test
     void skipsAnswersWithoutRecordedMedia() {
         answer.setMediaKey(null);
-        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
+        when(answers.findAllBySessionIdAndIsCurrentTrueOrderByQuestionIndexAsc(sessionId)).thenReturn(List.of(answer));
         when(answers.findById(answerId)).thenReturn(Optional.of(answer));
 
         assertEquals(0, service(stubAsr("..."), stubEvaluation(), 3).enqueue(sessionId));

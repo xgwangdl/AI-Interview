@@ -57,14 +57,21 @@ public class PracticeReportService {
     public PracticeReportView report(String ownerId, UUID sessionId) {
         PracticeSessionEntity session = sessions.findByIdAndOwnerId(sessionId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Practice session not found"));
-        List<PracticeAnswerEntity> sessionAnswers = answers.findAllBySessionIdOrderByQuestionIndexAsc(sessionId);
+        List<PracticeAnswerEntity> allAnswers =
+                answers.findAllBySessionIdOrderByQuestionIndexAscAttemptAsc(sessionId);
         List<PracticeQuestion> questionList = questionList(session);
         Map<String, String> followUpRoots = PracticeQuestionCatalog.followUpRoots(questionList);
 
         List<PracticeReportView.QuestionReport> questions = new ArrayList<>();
         List<EvaluationResult> evaluations = new ArrayList<>();
         int followUpAnswers = 0;
-        for (PracticeAnswerEntity answer : sessionAnswers) {
+        Map<Integer, List<PracticeAnswerEntity>> byQuestion = new java.util.LinkedHashMap<>();
+        for (PracticeAnswerEntity answer : allAnswers) {
+            byQuestion.computeIfAbsent(answer.getQuestionIndex(), ignored -> new ArrayList<>()).add(answer);
+        }
+        for (List<PracticeAnswerEntity> attempts : byQuestion.values()) {
+            PracticeAnswerEntity answer = attempts.stream().filter(PracticeAnswerEntity::isCurrent)
+                    .findFirst().orElse(attempts.get(attempts.size() - 1));
             EvaluationResult evaluation = readEvaluation(answer);
             if (evaluation != null) evaluations.add(evaluation);
             String parentQuestionId = followUpRoots.get(answer.getQuestionId());
@@ -74,6 +81,8 @@ public class PracticeReportService {
                     answer.getId(),
                     answer.getQuestionIndex(),
                     answer.getQuestionId(),
+                    answer.getAttempt(),
+                    answer.isCurrent(),
                     questionText(session, answer.getQuestionId()),
                     answer.getDurationSeconds(),
                     answer.getTranscriptStatus(),
@@ -83,12 +92,16 @@ public class PracticeReportService {
                     answer.getEvaluationStatus(),
                     "/api/v1/answers/" + answer.getId() + "/media",
                     signedUrls.issue(answer.getId()).url(),
+                    answer.getRewriteText(),
+                    answer.getRewriteSource(),
+                    answer.getRewriteAt(),
                     parentQuestionId != null,
                     parentQuestionId,
                     parentQuestionId == null ? null
                             : PracticeQuestionCatalog.indexOf(questionList, parentQuestionId),
                     index < 0 ? 0 : PracticeQuestionCatalog.followUpRoundOf(questionList, index),
-                    evaluation));
+                    evaluation,
+                    attempts.stream().map(item -> attemptView(item)).toList()));
         }
 
         PracticeReportView.AnalysisState analysis = analyze(jobs.findAllBySessionId(sessionId));
@@ -96,13 +109,23 @@ public class PracticeReportService {
         return new PracticeReportView(
                 session.getId(),
                 session.getRole(),
-                status(sessionAnswers.size(), evaluations.size(), analysis),
+                status(byQuestion.size(), evaluations.size(), analysis),
                 session.getQuestionCount(),
                 evaluations.size(),
                 Instant.now(),
                 summarize(evaluations, followUpAnswers),
                 analysis,
                 questions);
+    }
+
+    private PracticeReportView.AttemptView attemptView(PracticeAnswerEntity answer) {
+        return new PracticeReportView.AttemptView(
+                answer.getId(), answer.getAttempt(), answer.isCurrent(), answer.getTranscriptText(),
+                answer.getEvaluationStatus(),
+                "/api/v1/answers/" + answer.getId() + "/media",
+                signedUrls.issue(answer.getId()).url(),
+                readEvaluation(answer), answer.getRewriteText(), answer.getRewriteSource(),
+                answer.getRewriteAt(), answer.getCreatedAt());
     }
 
     private EvaluationResult readEvaluation(PracticeAnswerEntity answer) {
