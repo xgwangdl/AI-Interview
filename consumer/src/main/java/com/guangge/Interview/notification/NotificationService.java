@@ -1,6 +1,12 @@
 package com.guangge.Interview.notification;
 
 import com.guangge.Interview.data.Candidates;
+import com.guangge.Interview.cohort.AssignmentEntity;
+import com.guangge.Interview.cohort.AssignmentRepository;
+import com.guangge.Interview.cohort.CohortEntity;
+import com.guangge.Interview.cohort.CohortMemberEntity;
+import com.guangge.Interview.cohort.CohortMemberRepository;
+import com.guangge.Interview.cohort.CohortRepository;
 import com.guangge.Interview.goal.JobGoalEntity;
 import com.guangge.Interview.goal.JobGoalRepository;
 import com.guangge.Interview.goal.StudyPlanItemRepository;
@@ -48,6 +54,9 @@ public class NotificationService {
     private final NotificationLogRepository logs;
     private final CandidatesRepository candidates;
     private final StudyPlanItemRepository planItems;
+    private final AssignmentRepository assignments;
+    private final CohortMemberRepository cohortMembers;
+    private final CohortRepository cohorts;
     private final JobGoalRepository goals;
     private final WeeklyReportService weeklyReports;
     private final MailService mail;
@@ -56,7 +65,9 @@ public class NotificationService {
 
     public NotificationService(
             NotificationPreferenceRepository preferences, NotificationLogRepository logs,
-            CandidatesRepository candidates, StudyPlanItemRepository planItems, JobGoalRepository goals,
+            CandidatesRepository candidates, StudyPlanItemRepository planItems,
+            AssignmentRepository assignments, CohortMemberRepository cohortMembers, CohortRepository cohorts,
+            JobGoalRepository goals,
             WeeklyReportService weeklyReports, MailService mail,
             @Value("${app.public-base-url:http://localhost:5173}") String publicBaseUrl,
             @Value("${auth.token.secret}") String tokenSecret) {
@@ -64,6 +75,9 @@ public class NotificationService {
         this.logs = logs;
         this.candidates = candidates;
         this.planItems = planItems;
+        this.assignments = assignments;
+        this.cohortMembers = cohortMembers;
+        this.cohorts = cohorts;
         this.goals = goals;
         this.weeklyReports = weeklyReports;
         this.mail = mail;
@@ -161,6 +175,34 @@ public class NotificationService {
                                 + " 的面试就在 " + days + " 天后，今天建议练 3 题。",
                         publicBaseUrl + "/goals/" + goal.getId(), "查看目标与计划");
                 send(owner, "countdown", "距面试还有 " + days + " 天", html);
+            }
+        }
+    }
+
+    /** 作业截止前 1 天 / 当天提醒；已完成全部题目的成员不打扰。 */
+    @Scheduled(cron = "0 10 9 * * *", zone = "Asia/Shanghai")
+    public void sendAssignmentReminders() {
+        LocalDate today = LocalDate.now(ZONE);
+        Instant from = today.atStartOfDay(ZONE).toInstant();
+        Instant to = today.plusDays(2).atStartOfDay(ZONE).toInstant();
+        for (AssignmentEntity assignment : assignments.findAllByDueAtBetween(from, to)) {
+            CohortEntity cohort = cohorts.findById(assignment.getCohortId()).orElse(null);
+            if (cohort == null || cohort.getArchivedAt() != null) continue;
+            long days = ChronoUnit.DAYS.between(today, assignment.getDueAt().atZone(ZONE).toLocalDate());
+            for (CohortMemberEntity member : cohortMembers.findAllByCohortIdOrderByJoinedAtAsc(cohort.getId())) {
+                if (!"learner".equals(member.getRole())) continue;
+                String owner = member.getOwnerId();
+                long total = planItems.countByAssignmentIdAndOwnerId(assignment.getId(), owner);
+                long completed = planItems.countByAssignmentIdAndOwnerIdAndStatus(
+                        assignment.getId(), owner, "completed");
+                if (total == 0 || completed >= total) continue;
+                NotificationPreferenceEntity prefs = requirePreferences(owner);
+                if (!prefs.isEmailEnabled()) continue;
+                if (alreadySent(owner, "assignment", today.atStartOfDay(ZONE).toInstant())) continue;
+                String html = emailHtml("作业还有 " + (total - completed) + " 题没完成",
+                        "「" + assignment.getTitle() + "」" + (days <= 0 ? "今天截止。" : "将在 " + days + " 天后截止。"),
+                        publicBaseUrl + "/cohorts/" + cohort.getId(), "打开学习小组");
+                send(owner, "assignment", "作业还有 " + (total - completed) + " 题没完成", html);
             }
         }
     }

@@ -48,7 +48,7 @@ watch(() => route.name, (name, previous) => {
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
-const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', 'weekly-report': '本周报告', notifications: '提醒设置', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
+const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', 'weekly-report': '本周报告', notifications: '提醒设置', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', cohorts: '学习小组', 'cohort-detail': '小组详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
@@ -115,6 +115,7 @@ function accountCommand(command) {
       <nav class="main-nav" aria-label="主导航">
         <button :class="{ active: activeKey === 'dashboard' }" @click="navigate('/')"><el-icon><DataLine /></el-icon><span>训练总览</span></button>
         <button :class="{ active: ['goals', 'goal-new', 'goal-edit', 'goal-detail', 'today'].includes(route.name) }" @click="navigate('/goals')"><el-icon><Aim /></el-icon><span>求职目标</span></button>
+        <button :class="{ active: route.name === 'cohorts' || route.name === 'cohort-detail' }" @click="navigate('/cohorts')"><el-icon><UserFilled /></el-icon><span>学习小组</span></button>
         <button :class="{ active: route.name === 'setup' }" @click="navigate('/practice/setup')"><el-icon><CirclePlus /></el-icon><span>开始新练习</span></button>
         <button :class="{ active: route.name === 'coding-setup' }" @click="navigate('/coding')"><el-icon><EditPen /></el-icon><span>笔试练习</span></button>
         <button :class="{ active: route.name === 'language' || route.name === 'language-session' }" @click="navigate('/language')"><el-icon><ChatDotRound /></el-icon><span>外语口语</span></button>

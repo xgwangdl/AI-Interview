@@ -11,6 +11,9 @@ public interface StudyPlanItemRepository extends JpaRepository<StudyPlanItemEnti
 
     List<StudyPlanItemEntity> findAllByPlanIdAndPlanDateOrderByPositionAsc(UUID planId, LocalDate planDate);
 
+    List<StudyPlanItemEntity> findAllByOwnerIdAndPlanDateAndKindOrderByPositionAsc(
+            String ownerId, LocalDate planDate, String kind);
+
     List<StudyPlanItemEntity> findAllByPlanIdOrderByPlanDateAscPositionAsc(UUID planId);
 
     List<StudyPlanItemEntity> findAllByPlanIdIn(List<UUID> planIds);
@@ -23,4 +26,12 @@ public interface StudyPlanItemRepository extends JpaRepository<StudyPlanItemEnti
     Optional<StudyPlanItemEntity> findFirstBySessionId(UUID sessionId);
 
     long countByOwnerIdAndPlanDateAndStatus(String ownerId, LocalDate planDate, String status);
+
+    List<StudyPlanItemEntity> findAllByAssignmentIdAndOwnerIdOrderByPlanDateAscPositionAsc(UUID assignmentId, String ownerId);
+
+    boolean existsByAssignmentIdAndOwnerId(UUID assignmentId, String ownerId);
+
+    long countByAssignmentIdAndOwnerId(UUID assignmentId, String ownerId);
+
+    long countByAssignmentIdAndOwnerIdAndStatus(UUID assignmentId, String ownerId, String status);
 }

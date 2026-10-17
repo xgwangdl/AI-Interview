@@ -71,6 +71,16 @@ public class DailyPlanService {
         if (todayItems.isEmpty()) {
             todayItems = generateItems(ownerId, goal, plan, today);
         }
+        // 班级作业是独立计划：也要进入今天的队列，否则学员在首页看不到作业
+        List<StudyPlanItemEntity> assignmentItems =
+                items.findAllByOwnerIdAndPlanDateAndKindOrderByPositionAsc(ownerId, today, "assignment");
+        if (!assignmentItems.isEmpty()) {
+            java.util.Set<UUID> seen = todayItems.stream().map(StudyPlanItemEntity::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+            List<StudyPlanItemEntity> merged = new ArrayList<>(todayItems);
+            assignmentItems.stream().filter(item -> seen.add(item.getId())).forEach(merged::add);
+            todayItems = merged;
+        }
         return view(ownerId, today, goal, todayItems);
     }
 

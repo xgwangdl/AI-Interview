@@ -32,6 +32,10 @@ public class StudyPlanItemEntity {
     @Column(name = "session_id")
     private UUID sessionId;
 
+    /** 由班级作业生成的计划项；为空表示普通每日计划。 */
+    @Column(name = "assignment_id")
+    private UUID assignmentId;
+
     @Column(name = "question_ref", length = 120)
     private String questionRef;
 
@@ -65,6 +69,8 @@ public class StudyPlanItemEntity {
     public void setKind(String kind) { this.kind = kind; }
     public UUID getSessionId() { return sessionId; }
     public void setSessionId(UUID sessionId) { this.sessionId = sessionId; }
+    public UUID getAssignmentId() { return assignmentId; }
+    public void setAssignmentId(UUID assignmentId) { this.assignmentId = assignmentId; }
     public String getQuestionRef() { return questionRef; }
     public void setQuestionRef(String questionRef) { this.questionRef = questionRef; }
     public String getTitle() { return title; }

@@ -3,6 +3,9 @@ package com.guangge.Interview.notification;
 import com.guangge.Interview.data.Candidates;
 import com.guangge.Interview.goal.JobGoalRepository;
 import com.guangge.Interview.goal.StudyPlanItemRepository;
+import com.guangge.Interview.cohort.AssignmentRepository;
+import com.guangge.Interview.cohort.CohortMemberRepository;
+import com.guangge.Interview.cohort.CohortRepository;
 import com.guangge.Interview.mail.MailService;
 import com.guangge.Interview.progress.WeeklyReportService;
 import com.guangge.Interview.repository.CandidatesRepository;
@@ -32,11 +35,14 @@ class NotificationServiceTest {
     private final NotificationLogRepository logs = mock(NotificationLogRepository.class);
     private final CandidatesRepository candidates = mock(CandidatesRepository.class);
     private final StudyPlanItemRepository planItems = mock(StudyPlanItemRepository.class);
+    private final AssignmentRepository assignments = mock(AssignmentRepository.class);
+    private final CohortMemberRepository cohortMembers = mock(CohortMemberRepository.class);
+    private final CohortRepository cohorts = mock(CohortRepository.class);
     private final JobGoalRepository goals = mock(JobGoalRepository.class);
     private final WeeklyReportService weekly = mock(WeeklyReportService.class);
     private final MailService mail = mock(MailService.class);
     private final NotificationService service = new NotificationService(preferences, logs, candidates, planItems,
-            goals, weekly, mail, "http://localhost:5173", "test-secret");
+            assignments, cohortMembers, cohorts, goals, weekly, mail, "http://localhost:5173", "test-secret");
 
     private Candidates candidate;
 
