@@ -437,6 +437,27 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 规则：1 道薄弱维度 + 1 道错题（没有就岗位高频）+ 1 道岗位高频；题目在"开始"时用模板生成，
 不额外调用模型，所以首页到开口不被模型延迟卡住。计划项完成后更新目标进度；当天完成 ≥2 题记 1 天连续。
 
+### 5.12 `progress` —— 周报
+
+| 类 | 职责 |
+| --- | --- |
+| `WeeklyReportService` | 聚合一周的计划完成率、完成练习、当前回答、维度平均、较上周变化与最佳 before/after |
+| `WeeklyReportController` | `GET /api/v1/progress/weekly?week=YYYY-MM-DD` |
+| `WeeklyReportEntity` / `WeeklyReportRepository` | 同账号同周一份周报快照 |
+
+只统计 `status=completed` 的练习场次；刚创建的空场次会把数字撑得没有意义，因此排除。
+
+### 5.13 `notification` —— 提醒与退订
+
+| 类 | 职责 |
+| --- | --- |
+| `NotificationService` | 每日提醒、周报、面试倒计时、测试邮件、HMAC 退订 |
+| `NotificationController` | `/api/v1/me/notifications*` 与邮件底部退订接口 |
+| `NotificationPreferenceEntity` / `NotificationLogEntity` | 偏好与发送去重日志 |
+
+定时任务：每日提醒每 15 分钟检查一次（当天完成 2 题跳过）、周报周一 09:00、
+倒计时每天 09:05。同一账号同一类提醒在对应窗口内最多发一封；邮件未配置时记录 failed/skipped，不影响主流程。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -504,6 +525,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V13__job_goals_and_daily_plans.sql` | `job_goals` / `study_plans` / `study_plan_items` + `practice_sessions.goal_id` | 求职目标、每日计划与练习回挂目标 |
 | `V14__continuous_interview_and_transcript_revisions.sql` | `practice_sessions` / `practice_answers` / `answer_transcript_revisions` | 连续面试模式与暂停次数、转写原文/修正时间、修正审计 |
 | `V15__answer_attempts_and_rewrites.sql` | `practice_answers` / `answer_rewrites` | 同一道题最多 3 个 attempt、当前版本标记、改写正文与历史 |
+| `V16__weekly_reports_and_notifications.sql` | `weekly_reports` / `notification_preferences` / `notification_log` | 周报快照、邮件提醒偏好与去重日志 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

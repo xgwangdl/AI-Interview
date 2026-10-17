@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 public interface PracticeScoreRepository extends JpaRepository<PracticeScoreEntity, UUID> {
 
@@ -22,6 +23,8 @@ public interface PracticeScoreRepository extends JpaRepository<PracticeScoreEnti
     List<UUID> findRecentSessionIds(@Param("ownerId") String ownerId, Pageable pageable);
 
     List<PracticeScoreEntity> findAllByOwnerIdAndSessionIdIn(String ownerId, List<UUID> sessionIds);
+
+    List<PracticeScoreEntity> findAllByOwnerIdAndEvaluatedAtBetween(String ownerId, Instant from, Instant to);
 
     boolean existsBySessionIdAndQuestionId(UUID sessionId, String questionId);
 

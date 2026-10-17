@@ -199,6 +199,7 @@ function timeLabel(value) {
       <div class="section-title">
         <span>训练档案</span>
         <small class="archive-scope">{{ archive.scopeNote }}</small>
+        <button class="weekly-link" @click="router.push('/progress/weekly')">本周报告 <el-icon><ArrowRight /></el-icon></button>
       </div>
 
       <div v-if="archive.scoredSessions" class="archive-grid">
@@ -364,6 +365,7 @@ function timeLabel(value) {
 .dashboard-lower { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(250px, .85fr); gap: 21px; }
 .archive-section { margin-bottom: 28px; }
 .archive-scope { color: #98a29d; font-size: 12px; font-weight: 400; }
+.weekly-link { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--green); font-size: 12px; font-weight: 600; }
 .archive-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr); gap: 15px; }
 .archive-card { padding: 15px 17px 14px; box-shadow: none; }
 .archive-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }

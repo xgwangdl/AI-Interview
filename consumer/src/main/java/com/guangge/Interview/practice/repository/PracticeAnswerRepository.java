@@ -13,6 +13,7 @@ public interface PracticeAnswerRepository extends JpaRepository<PracticeAnswerEn
     List<PracticeAnswerEntity> findAllBySessionIdOrderByQuestionIndexAscAttemptAsc(UUID sessionId);
     List<PracticeAnswerEntity> findAllBySessionIdAndQuestionIndexOrderByAttemptAsc(UUID sessionId, int questionIndex);
     long countBySessionIdIn(java.util.Collection<UUID> sessionIds);
+    long countBySessionIdInAndIsCurrentTrue(java.util.Collection<UUID> sessionIds);
     Optional<PracticeAnswerEntity> findFirstBySessionIdAndQuestionIndexAndIsCurrentTrueOrderByAttemptDesc(
             UUID sessionId, int questionIndex);
     long countBySessionIdAndQuestionIndex(UUID sessionId, int questionIndex);

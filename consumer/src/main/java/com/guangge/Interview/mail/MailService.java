@@ -66,4 +66,23 @@ public class MailService {
         //邮件发送
         javaMailSender.send(mimeMessage);
     }
+
+    /** 纯 HTML 通知邮件（周报 / 每日提醒 / 倒计时），不依赖简历附件。 */
+    public void sendHtml(String to, String subject, String html) {
+        if (!StringUtils.hasText(to) || !StringUtils.hasText(mailUsername)) {
+            throw new IllegalStateException("邮件未配置或收件人为空");
+        }
+        MimeMessage message = javaMailSender.createMimeMessage();
+        try {
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            helper.setFrom(mailUsername);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setSentDate(new Date());
+            helper.setText(html, true);
+        } catch (MessagingException exception) {
+            throw new IllegalStateException("构建邮件失败", exception);
+        }
+        javaMailSender.send(message);
+    }
 }

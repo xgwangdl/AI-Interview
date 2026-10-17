@@ -48,7 +48,7 @@ watch(() => route.name, (name, previous) => {
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
-const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
+const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', 'weekly-report': '本周报告', notifications: '提醒设置', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
@@ -93,6 +93,10 @@ function navigate(path) {
 }
 
 function accountCommand(command) {
+  if (command === 'notifications') {
+    router.push('/settings/notifications');
+    return;
+  }
   if (command !== 'logout') return;
   ['token', 'userId', 'userName', 'username'].forEach((key) => localStorage.removeItem(key));
   window.location.assign('/login');
@@ -134,7 +138,7 @@ function accountCommand(command) {
           ></button>
         </div>
         <div class="privacy-note"><el-icon><Lock /></el-icon><span>录制内容仅保留 7 天<small>可随时删除练习数据</small></span></div>
-        <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+        <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="notifications"><el-icon><Bell /></el-icon>提醒设置</el-dropdown-item><el-dropdown-item command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
       </div>
     </aside>
 
