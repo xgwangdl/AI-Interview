@@ -73,6 +73,7 @@ public class PracticeSessionService {
         session.setQuestionCount(request.questionCount());
         session.setDurationMinutes(request.durationMinutes());
         session.setFollowUpEnabled(request.followUpEnabled());
+        session.setMode(normalizeMode(request.mode()));
         session.setQuestionsJson(writeQuestions(request.questions()));
         session.setStatus("in_progress");
         session.setCreatedAt(now);
@@ -113,6 +114,20 @@ public class PracticeSessionService {
         if (session.getStartedAt() == null) session.setStartedAt(Instant.now());
         if (!"completed".equals(session.getStatus())) session.setStatus("in_progress");
         return toView(sessions.save(session), answerViews(session.getId()));
+    }
+
+    /** 连续面试允许暂停一次；逐题模式没有这个动作。 */
+    @Transactional
+    public PracticeSessionView pause(String ownerId, UUID id) {
+        PracticeSessionEntity session = requireOwnedSession(ownerId, id);
+        if (!"continuous".equals(session.getMode())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "只有连续面试可以暂停");
+        }
+        if (session.getPausedCount() >= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "连续面试只能暂停一次");
+        }
+        session.setPausedCount(session.getPausedCount() + 1);
+        return toView(sessions.save(session), answerViews(id));
     }
 
     @Transactional
@@ -310,6 +325,7 @@ public class PracticeSessionService {
                 session.getJobDescription(), session.getResumeName(), session.getInterviewType(),
                 session.getDifficulty(), session.getInterviewerStyle(), session.getQuestionCount(),
                 session.getDurationMinutes(), session.isFollowUpEnabled(),
+                session.getMode(), session.getPausedCount(),
                 readQuestions(session.getQuestionsJson()), session.getStatus(),
                 session.getCreatedAt(), session.getStartedAt(), session.getCompletedAt(),
                 session.getRetentionUntil(), sessionAnswers);
@@ -325,7 +341,12 @@ public class PracticeSessionService {
         return new PracticeAnswerView(answer.getId(), answer.getQuestionIndex(), answer.getQuestionId(),
                 answer.getMediaContentType(), answer.getMediaSizeBytes(), answer.getDurationSeconds(),
                 answer.getStartedAtOffsetSeconds(), answer.getTranscriptStatus(), answer.getTranscriptText(),
+                answer.getTranscriptOriginal(), answer.getTranscriptEditedAt(),
                 answer.getEvaluationStatus(), answer.getCreatedAt());
+    }
+
+    private static String normalizeMode(String mode) {
+        return "continuous".equalsIgnoreCase(mode) ? "continuous" : "per_question";
     }
 
     private String writeQuestions(List<PracticeQuestion> questions) {

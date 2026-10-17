@@ -10,6 +10,8 @@ import com.guangge.Interview.practice.dto.MediaSignedUrlView;
 import com.guangge.Interview.practice.dto.PracticeReportView;
 import com.guangge.Interview.practice.dto.PracticeSessionRequest;
 import com.guangge.Interview.practice.dto.PracticeSessionView;
+import com.guangge.Interview.practice.dto.TranscriptEditRequest;
+import com.guangge.Interview.practice.transcript.TranscriptService;
 import com.guangge.Interview.practice.media.MediaSignedUrlService;
 import com.guangge.Interview.practice.service.PracticeReportService;
 import com.guangge.Interview.practice.service.PracticeSessionService;
@@ -36,6 +38,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Validated
@@ -49,6 +52,7 @@ public class PracticeSessionController {
     private final OwnerResolver owners;
     private final com.guangge.Interview.practice.followup.PracticeFollowUpService followUps;
     private final com.guangge.Interview.goal.DailyPlanService dailyPlans;
+    private final TranscriptService transcripts;
 
     public PracticeSessionController(
             PracticeSessionService practiceSessions,
@@ -57,7 +61,8 @@ public class PracticeSessionController {
             MediaSignedUrlService signedUrls,
             OwnerResolver owners,
             com.guangge.Interview.practice.followup.PracticeFollowUpService followUps,
-            com.guangge.Interview.goal.DailyPlanService dailyPlans) {
+            com.guangge.Interview.goal.DailyPlanService dailyPlans,
+            TranscriptService transcripts) {
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.analysisJobs = analysisJobs;
@@ -65,6 +70,7 @@ public class PracticeSessionController {
         this.owners = owners;
         this.followUps = followUps;
         this.dailyPlans = dailyPlans;
+        this.transcripts = transcripts;
     }
 
     @PostMapping("/practice-sessions")
@@ -92,6 +98,13 @@ public class PracticeSessionController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id) {
         return practiceSessions.start(owner(authorization), id);
+    }
+
+    @PostMapping("/practice-sessions/{id}/pause")
+    public PracticeSessionView pause(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id) {
+        return practiceSessions.pause(owner(authorization), id);
     }
 
     @PostMapping("/practice-sessions/{id}/answers")
@@ -161,6 +174,26 @@ public class PracticeSessionController {
         PracticeAnswerView answer = practiceSessions.completeAnswer(owner(authorization), answerId);
         analysisJobs.enqueueAnswer(answerId);
         return answer;
+    }
+
+    /** 人工修正转写：只改文本，保留原转写审计。 */
+    @org.springframework.web.bind.annotation.PatchMapping("/answers/{answerId}/transcript")
+    public TranscriptService.TranscriptEditView editTranscript(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId,
+            @Validated @RequestBody TranscriptEditRequest request) {
+        return transcripts.edit(owner(authorization), answerId, request.text());
+    }
+
+    /** 修正后重新评分：只重跑这一题，旧分数由分析任务覆盖。 */
+    @PostMapping("/answers/{answerId}/re-evaluate")
+    public ResponseEntity<Map<String, String>> reEvaluate(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID answerId) {
+        transcripts.reEvaluate(owner(authorization), answerId);
+        // 202 必须带 body：前端 apiRequest 会统一解析 JSON，空 body 会变成 parse error，
+        // 用户看到的是"保存失败"（实际请求已经成功）。
+        return ResponseEntity.accepted().body(Map.of("status", "pending"));
     }
 
     /** 分析失败后由用户手动重试，返回重新排队后的报告。 */

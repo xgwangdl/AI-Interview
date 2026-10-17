@@ -78,6 +78,8 @@ public class PracticeReportService {
                     answer.getDurationSeconds(),
                     answer.getTranscriptStatus(),
                     answer.getTranscriptText(),
+                    answer.getTranscriptOriginal(),
+                    answer.getTranscriptEditedAt(),
                     answer.getEvaluationStatus(),
                     "/api/v1/answers/" + answer.getId() + "/media",
                     signedUrls.issue(answer.getId()).url(),

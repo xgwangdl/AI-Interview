@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,15 +50,19 @@ class PracticeScoreArchiveServiceTest {
     }
 
     @Test
-    @DisplayName("同一场次的同一道题只写一次：分析任务重试不会写出重复分数")
+    @DisplayName("同一场次的同一道题只有一条：重评分覆盖旧分数，不新增记录")
     void isIdempotent() {
         PracticeSessionEntity session = session();
         PracticeAnswerEntity answer = answer(session.getId());
-        when(scores.existsBySessionIdAndQuestionId(session.getId(), "q-2")).thenReturn(true);
+        PracticeScoreEntity existing = new PracticeScoreEntity();
+        existing.setId(UUID.randomUUID());
+        when(scores.findFirstBySessionIdAndQuestionId(session.getId(), "q-2"))
+                .thenReturn(Optional.of(existing));
 
         service.record(session, answer, evaluation());
 
-        verify(scores, never()).save(any());
+        verify(scores).save(existing);
+        assertThat(existing.getOverallScore()).isEqualByComparingTo("78.5");
     }
 
     @Test

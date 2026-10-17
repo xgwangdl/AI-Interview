@@ -17,6 +17,8 @@ public record PracticeSessionView(
         int questionCount,
         int durationMinutes,
         boolean followUpEnabled,
+        String mode,
+        int pausedCount,
         List<PracticeQuestion> questions,
         String status,
         Instant createdAt,

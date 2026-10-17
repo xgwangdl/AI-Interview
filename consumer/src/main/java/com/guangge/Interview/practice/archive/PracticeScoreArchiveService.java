@@ -46,10 +46,15 @@ public class PracticeScoreArchiveService {
     public void record(PracticeSessionEntity session, PracticeAnswerEntity answer, PracticeQuestion question,
                        EvaluationResult result) {
         if (session == null || answer == null || result == null || result.scores() == null) return;
-        if (scores.existsBySessionIdAndQuestionId(session.getId(), answer.getQuestionId())) return;
 
-        PracticeScoreEntity entity = new PracticeScoreEntity();
-        entity.setId(UUID.randomUUID());
+        // 转写修正后重评分会再次调用：已有记录要覆盖分数，而不是直接 return（否则档案永远停在旧分）。
+        PracticeScoreEntity entity = scores
+                .findFirstBySessionIdAndQuestionId(session.getId(), answer.getQuestionId())
+                .orElseGet(() -> {
+                    PracticeScoreEntity created = new PracticeScoreEntity();
+                    created.setId(UUID.randomUUID());
+                    return created;
+                });
         entity.setOwnerId(session.getOwnerId());
         entity.setSessionId(session.getId());
         entity.setSessionCreatedAt(session.getCreatedAt() == null ? Instant.now() : session.getCreatedAt());

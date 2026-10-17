@@ -250,7 +250,7 @@ class PracticeFlowAcceptanceTest {
                 .mapToObj(index -> new PracticeQuestion("q-" + index, "第 " + index + " 题", "design"))
                 .toList();
         return new PracticeSessionRequest("Java 后端", "Light", "负责订单系统", "resume.pdf", null,
-                "technical", "standard", "balanced", 5, 20, false, questions);
+                "technical", "standard", "balanced", 5, 20, false, "per_question", questions);
     }
 
     private static AsrProvider transcribingAsr() {

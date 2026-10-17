@@ -199,6 +199,7 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `dto` | `PracticeSessionRequest`、`PracticeAnswerRequest`、`PracticeReportView` 等 | API 模型 |
 | `plan` | `QuestionPlanController` / `QuestionPlanService` / `SpringAiQuestionPlanProvider` / `QuestionPlanValidator` | AI 出题，输出同样要过结构校验 |
 | `followup` | `PracticeFollowUpService` / `SpringAiPracticeFollowUpProvider` / `PracticeFollowUpValidator` | 面试官追问：同步转写 + 一次模型判断，追问插在被追问的那道题后面（同一道题最多 2 轮，一场最多 3 次） |
+| `transcript` | `TranscriptService` | 人工修正转写、保留原始文本与审计、单题重评分；每题最多修正 3 次 |
 | `archive` | `PracticeArchiveService` / `PracticeScoreArchiveService` / `PracticeArchiveController` | 训练档案：跨场次的趋势与短板；成绩与录像分开长期保留（V9） |
 | `mistakes` | `MistakeBookService` / `MistakeBookView` | 错题本：最好一次没过 75 分的题 + 一键单题重练（V10） |
 | `resume` | `ResumeController` / `ResumeExtractionService` | 上传 PDF/Word，用 Apache Tika 抽文本 |
@@ -500,6 +501,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V11__language_practice.sql` | `language_sessions` / `language_turns` | 外语口语：会话（语言/场景/水平/轮数/报告）+ 每一轮（录音、转写、回复、建议、四段耗时） |
 | `V12__language_stream_timing.sql` | `language_turns` | L2 首字/首帧耗时（实时通道当前默认关闭） |
 | `V13__job_goals_and_daily_plans.sql` | `job_goals` / `study_plans` / `study_plan_items` + `practice_sessions.goal_id` | 求职目标、每日计划与练习回挂目标 |
+| `V14__continuous_interview_and_transcript_revisions.sql` | `practice_sessions` / `practice_answers` / `answer_transcript_revisions` | 连续面试模式与暂停次数、转写原文/修正时间、修正审计 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

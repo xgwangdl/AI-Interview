@@ -234,6 +234,7 @@ public class DailyPlanService {
                 1,
                 4,
                 true,
+                "per_question",
                 List.of(new PracticeQuestion("plan-" + item.getId(), text, category(item))));
     }
 

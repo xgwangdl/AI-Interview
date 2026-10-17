@@ -55,6 +55,7 @@ export function trySyncSession(session) {
       questionCount: session.questionCount,
       durationMinutes: session.durationMinutes,
       followUpEnabled: Boolean(session.followUpEnabled),
+      mode: session.mode || 'per_question',
       questions: session.questions,
     }),
   });
@@ -129,6 +130,10 @@ export function tryStartSession(id) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(id)}/start`, { method: 'POST' });
 }
 
+export function tryPauseSession(id) {
+  return apiRequest(`/practice-sessions/${encodeURIComponent(id)}/pause`, { method: 'POST' });
+}
+
 export function trySaveAnswer(id, answer) {
   return apiRequest(`/practice-sessions/${encodeURIComponent(id)}/answers`, {
     method: 'POST',
@@ -189,6 +194,19 @@ export function abortMediaUpload(answerId, totalChunks) {
 
 export function tryCompleteAnswer(answerId) {
   return apiRequest(`/answers/${encodeURIComponent(answerId)}/complete`, { method: 'POST' });
+}
+
+/** 人工修正转写（只改文本，不改视频）。 */
+export function updateAnswerTranscript(answerId, text) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/transcript`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+/** 修正后只重算这一题。 */
+export function reEvaluateAnswer(answerId) {
+  return apiRequest(`/answers/${encodeURIComponent(answerId)}/re-evaluate`, { method: 'POST' });
 }
 
 export function tryCompleteSession(id) {

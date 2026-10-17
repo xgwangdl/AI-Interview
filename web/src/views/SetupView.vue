@@ -15,9 +15,16 @@ const formRef = ref();
 const resumeName = ref('');
 const resumeText = ref('');
 const resumeStatus = ref('');
-const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20, followUpEnabled: true });
+const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20, followUpEnabled: true, mode: 'per_question' });
 const goalId = ref('');
 watch(() => form.questionCount, (count) => { form.durationMinutes = count * 4; });
+watch(() => form.mode, (mode) => {
+  if (mode === 'continuous') {
+    form.questionCount = 5;
+    form.durationMinutes = 20;
+    form.followUpEnabled = true;
+  }
+});
 const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
 
 /**
@@ -149,6 +156,12 @@ async function resolveQuestions() {
 
         <section class="form-section panel">
           <div class="form-section-title"><span class="number-badge">02</span><div><strong>练习偏好</strong><small>选择本轮面试的节奏与风格</small></div></div>
+          <el-form-item label="面试方式">
+            <el-radio-group v-model="form.mode" class="choice-grid mode-grid">
+              <el-radio-button value="per_question"><span class="choice-title">逐题练习</span><span class="choice-subtitle">每题录完可回看重录，适合第一次练</span></el-radio-button>
+              <el-radio-button value="continuous"><span class="choice-title">连续面试</span><span class="choice-subtitle">一次开始连续作答，中间只允许暂停一次，更接近真实面试</span></el-radio-button>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="面试类型"><el-radio-group v-model="form.interviewType" class="choice-grid">
             <el-radio-button value="behavioral"><span class="choice-title">综合行为</span><span class="choice-subtitle">讲经历与协作，例：和同事意见不合怎么处理</span></el-radio-button>
             <el-radio-button value="technical"><span class="choice-title">技术能力</span><span class="choice-subtitle">考原理与设计，例：接口为什么会重复下单</span></el-radio-button>
@@ -174,7 +187,7 @@ async function resolveQuestions() {
         </section>
       </div>
       <aside class="setup-aside">
-        <div class="summary-card panel"><div class="section-title">本次练习</div><div class="summary-role">{{ form.role || '待填写岗位' }}</div><div class="summary-company">{{ form.company || '目标公司未填写' }}</div><div class="summary-divider"></div><div class="summary-row"><span>面试类型</span><strong>{{ { behavioral: '综合行为', technical: '技术能力', manager: '管理岗位' }[form.interviewType] }}</strong></div><div class="summary-row"><span>预计题目</span><strong>{{ form.questionCount }} 道</strong></div><div class="summary-row"><span>预计时长</span><strong>约 {{ form.durationMinutes }} 分钟</strong></div><div class="summary-row"><span>录像保存</span><strong>服务端 · 7 天</strong></div></div>
+        <div class="summary-card panel"><div class="section-title">本次练习</div><div class="summary-role">{{ form.role || '待填写岗位' }}</div><div class="summary-company">{{ form.company || '目标公司未填写' }}</div><div class="summary-divider"></div><div class="summary-row"><span>面试方式</span><strong>{{ form.mode === 'continuous' ? '连续面试' : '逐题练习' }}</strong></div><div class="summary-row"><span>面试类型</span><strong>{{ { behavioral: '综合行为', technical: '技术能力', manager: '管理岗位' }[form.interviewType] }}</strong></div><div class="summary-row"><span>预计题目</span><strong>{{ form.questionCount }} 道</strong></div><div class="summary-row"><span>预计时长</span><strong>约 {{ form.durationMinutes }} 分钟</strong></div><div class="summary-row"><span>录像保存</span><strong>服务端 · 7 天</strong></div></div>
         <div class="privacy-card"><el-icon><Lock /></el-icon><div><strong>你的练习由你掌控</strong><p>设备录制需要你主动授权。每题独立保存，可重录、回看或立即删除。</p></div></div>
         <el-button class="primary-button continue-button" :loading="submitting" :disabled="submitting"
                    @click="continueToDevices">继续检测设备 <el-icon><ArrowRight /></el-icon></el-button>
@@ -190,7 +203,7 @@ async function resolveQuestions() {
 .resume-upload-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; padding: 12px; border: 1px dashed #dce4de; border-radius: 6px; background: #fafcfb; }.resume-copy { display: flex; min-width: 0; align-items: center; gap: 10px; }.resume-icon { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border-radius: 6px; background: var(--blue-soft); color: var(--blue); }.resume-copy strong { display: block; overflow: hidden; color: #47534d; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.resume-copy small { display: block; margin-top: 4px; color: #98a19c; font-size: 13px; }.upload-label { display: inline-flex; flex: none; align-items: center; gap: 5px; color: var(--green); font-size: 13px; font-weight: 600; cursor: pointer; }.upload-label input { display: none; }
 /* 面试类型与面试官风格共用同一套「标题 + 说明」卡片：
    标题 12px、说明 11px，说明文字要能换行，否则 Element 的 nowrap 会把长句挤成一行溢出。 */
-.choice-grid { display: grid; width: 100%; grid-template-columns: repeat(3,1fr); gap: 9px; }.choice-grid :deep(.el-radio-button) { width: 100%; }.choice-grid :deep(.el-radio-button__inner) { display: grid; width: 100%; height: auto; min-height: 76px; align-content: center; gap: 5px; padding: 10px 11px; border: 1px solid #e2e7e3 !important; border-radius: 6px !important; box-shadow: none !important; text-align: left; white-space: normal; line-height: 1.45; }.choice-grid :deep(.el-radio-button:first-child .el-radio-button__inner),.choice-grid :deep(.el-radio-button:last-child .el-radio-button__inner) { border-left: 1px solid #e2e7e3; border-radius: 6px; }.choice-grid :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { border-color: var(--green) !important; background: #f0f8f4; color: var(--green-dark); }.choice-title { font-size: 14px; font-weight: 600; }.choice-subtitle { color: #5f6d66; font-size: 14px; line-height: 1.5; }
+.choice-grid { display: grid; width: 100%; grid-template-columns: repeat(3,1fr); gap: 9px; }.mode-grid { grid-template-columns: repeat(2,1fr); }.choice-grid :deep(.el-radio-button) { width: 100%; }.choice-grid :deep(.el-radio-button__inner) { display: grid; width: 100%; height: auto; min-height: 76px; align-content: center; gap: 5px; padding: 10px 11px; border: 1px solid #e2e7e3 !important; border-radius: 6px !important; box-shadow: none !important; text-align: left; white-space: normal; line-height: 1.45; }.choice-grid :deep(.el-radio-button:first-child .el-radio-button__inner),.choice-grid :deep(.el-radio-button:last-child .el-radio-button__inner) { border-left: 1px solid #e2e7e3; border-radius: 6px; }.choice-grid :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { border-color: var(--green) !important; background: #f0f8f4; color: var(--green-dark); }.choice-title { font-size: 14px; font-weight: 600; }.choice-subtitle { color: #5f6d66; font-size: 14px; line-height: 1.5; }
 .lower-fields { margin-top: 5px; }.lower-fields :deep(.el-select) { width: 100%; }
 .setup-aside { position: sticky; top: 82px; }.summary-card { padding: 17px; box-shadow: none; }.summary-card .section-title { margin-bottom: 17px; }.summary-role { color: #35413b; font-size: 16px; font-weight: 650; }.summary-company { margin-top: 5px; color: #98a29d; font-size: 13px; }.summary-divider { margin: 16px 0 13px; border-top: 1px solid #edf0ed; }.summary-row { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0; color: #818c86; font-size: 13px; }.summary-row strong { color: #4c5952; font-size: 13px; font-weight: 600; }.privacy-card { display: flex; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid #dcece2; border-radius: 6px; background: #eff7f1; color: var(--green); }.privacy-card > .el-icon { flex: none; margin-top: 2px; }.privacy-card strong { color: #3d7458; font-size: 13px; }.privacy-card p { margin: 5px 0 0; color: #718d7b; font-size: 13px; line-height: 1.6; }.continue-button { width: 100%; }
 .focus-banner { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 13px 15px; border-color: #f0dcc6; background: #fdf6ee; box-shadow: none; }

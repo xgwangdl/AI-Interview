@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getAnswerMedia, tryLogin, tryRegister } from './api';
+import {
+  apiRequest, getAnswerMedia, reEvaluateAnswer, tryLogin, tryPauseSession, tryRegister, trySyncSession,
+  updateAnswerTranscript,
+} from './api';
 
 function fakeResponse(status, body) {
   return {
@@ -57,6 +60,41 @@ describe('apiRequest', () => {
     await apiRequest('/x', { method: 'POST', body: new FormData() });
 
     expect(fetchMock.mock.calls[0][1].headers['Content-Type']).toBeUndefined();
+  });
+});
+
+describe('Phase 2 API', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('转写修正走 PATCH', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, '{"transcriptText":"fixed"}'));
+    await updateAnswerTranscript('a-1', 'fixed');
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/answers/a-1/transcript');
+    expect(globalThis.fetch.mock.calls[0][1].method).toBe('PATCH');
+  });
+
+  it('重评分与暂停都是 POST', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(202, '{}'));
+    await reEvaluateAnswer('a-1');
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/answers/a-1/re-evaluate');
+
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, '{}'));
+    await tryPauseSession('s-1');
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/practice-sessions/s-1/pause');
+  });
+
+  it('创建练习会把 continuous 模式带给后端', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(201, '{"id":"s-1"}'));
+    await trySyncSession({
+      role: 'Java 后端', interviewType: 'technical', difficulty: 'standard', interviewerStyle: 'balanced',
+      questionCount: 1, durationMinutes: 4, mode: 'continuous',
+      questions: [{ id: 'q-1', text: 'Q', category: 'design' }],
+    });
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body.mode).toBe('continuous');
   });
 });
 

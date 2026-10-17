@@ -70,10 +70,22 @@ public class PracticeSessionEntity {
     @Column(name = "follow_up_enabled", nullable = false)
     private boolean followUpEnabled;
 
+    /** per_question / continuous（Phase 2）。 */
+    @Column(name = "mode", nullable = false, length = 16)
+    private String mode = "per_question";
+
+    /** 连续面试允许暂停一次；这里记录实际暂停次数。 */
+    @Column(name = "paused_count", nullable = false)
+    private int pausedCount;
+
     public PracticeSessionEntity() { }
 
     public boolean isFollowUpEnabled() { return followUpEnabled; }
     public void setFollowUpEnabled(boolean followUpEnabled) { this.followUpEnabled = followUpEnabled; }
+    public String getMode() { return mode; }
+    public void setMode(String mode) { this.mode = mode; }
+    public int getPausedCount() { return pausedCount; }
+    public void setPausedCount(int pausedCount) { this.pausedCount = pausedCount; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }

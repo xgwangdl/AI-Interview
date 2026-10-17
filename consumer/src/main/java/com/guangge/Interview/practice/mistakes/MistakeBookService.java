@@ -140,6 +140,7 @@ public class MistakeBookService {
                 RETRY_DURATION_MINUTES,
                 // 重练一道题，追问正合适：就这一个话题往下挖，比再问十道新题有用
                 true,
+                "per_question",
                 List.of(question));
         return sessions.create(ownerId, request);
     }

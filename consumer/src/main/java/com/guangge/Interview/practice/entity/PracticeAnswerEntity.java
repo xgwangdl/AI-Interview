@@ -44,6 +44,13 @@ public class PracticeAnswerEntity {
     @Column(name = "transcript_text", columnDefinition = "text")
     private String transcriptText;
 
+    /** 第一次人工修正前的原转写；用于审计与"为什么分数变了"。 */
+    @Column(name = "transcript_original", columnDefinition = "text")
+    private String transcriptOriginal;
+
+    @Column(name = "transcript_edited_at")
+    private Instant transcriptEditedAt;
+
     @Column(name = "evaluation_status", nullable = false, length = 32)
     private String evaluationStatus;
 
@@ -77,6 +84,10 @@ public class PracticeAnswerEntity {
     public void setTranscriptStatus(String transcriptStatus) { this.transcriptStatus = transcriptStatus; }
     public String getTranscriptText() { return transcriptText; }
     public void setTranscriptText(String transcriptText) { this.transcriptText = transcriptText; }
+    public String getTranscriptOriginal() { return transcriptOriginal; }
+    public void setTranscriptOriginal(String transcriptOriginal) { this.transcriptOriginal = transcriptOriginal; }
+    public Instant getTranscriptEditedAt() { return transcriptEditedAt; }
+    public void setTranscriptEditedAt(Instant transcriptEditedAt) { this.transcriptEditedAt = transcriptEditedAt; }
     public String getEvaluationStatus() { return evaluationStatus; }
     public void setEvaluationStatus(String evaluationStatus) { this.evaluationStatus = evaluationStatus; }
     public String getEvaluationJson() { return evaluationJson; }

@@ -1492,6 +1492,31 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 **设计取舍**：Phase 1 的题目先用模板（不调用模型），保证"从首页到开口"不被模型延迟卡住；
 Phase 6 接入题库后再替换为真实题目。连续面试、转写纠错、改写重录、周报、提醒、小组仍按文档后续阶段做。
 
+### 2026-10-17 Phase 2：连续面试 + 转写纠错（已完成）
+
+按 [P0-RETENTION-REQUIREMENTS.md](P0-RETENTION-REQUIREMENTS.md) Phase 2 落地：
+
+- 迁移 `V14`：`practice_sessions.mode / paused_count`、`practice_answers.transcript_original / transcript_edited_at`、
+  `answer_transcript_revisions` 审计表；
+- 连续面试：默认 5 题 / 20 分钟；点一次「开始面试」后自动出题、自动录制、自动进入下一题；
+  不显示重录；单题 3 分钟上限；整场只允许暂停一次；题目导航禁用；
+- 转写纠错：报告页「转写校正」→ 保存后只重评分该题；保留原始转写；每题最多 3 次；评分档案同步覆盖；
+- 重评分：`POST /answers/{id}/re-evaluate` 把已有分析任务重置为 pending，不新增重复任务；
+- 设置页新增「逐题练习 / 连续面试」选择，连续模式会自动带 5 题 / 20 分钟。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端单测 | 247 → **251 个**（连续模式/暂停、转写审计/次数/重评分） |
+| 前端单测 | 122 → **125 个**（PATCH 转写、重评分、暂停、mode 透传） |
+| 接口 E2E | `scripts/verify-phase2.ps1` **11/11**：连续模式 → 暂停一次（第二次 409）→ 转写修正 → 重评分 202/pending → 第 4 次修正 409 → 清理 |
+| 浏览器 | `web/scripts/verify-phase2-browser.mjs` 全过：fake camera 下连续面试自动录制、无重录；报告页修正转写后显示"已人工修正" |
+
+**过程中修掉的真缺陷**：`WebConfig` 的 CORS `allowedMethods` 没有 `PATCH`，
+PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 403 拦住；已补上。
+另外 202 空 body 会让前端 `apiRequest` 解析失败（看起来像"保存失败"），已改为返回 `{"status":"pending"}`。
+
 ### 2026-10-17 L2 实时通道（进行中，默认关闭）
 
 按用户要求开始做 L2：`spring-websocket` 通道 `/ws/language`（握手用查询串里的 token 验签）、

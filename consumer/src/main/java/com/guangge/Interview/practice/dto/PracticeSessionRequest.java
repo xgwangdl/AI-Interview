@@ -24,5 +24,7 @@ public record PracticeSessionRequest(
         @Min(1) @Max(240) int durationMinutes,
         /** 允许面试官追问（默认关：每题会多一次转写与一次模型调用）。 */
         boolean followUpEnabled,
+        /** per_question / continuous。 */
+        @Size(max = 16) String mode,
         @NotNull @NotEmpty @Size(max = 20) List<@Valid PracticeQuestion> questions) {
 }

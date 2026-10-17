@@ -12,6 +12,7 @@ import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.storage.MediaStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -88,6 +89,28 @@ class PracticeSessionServiceTest {
     }
 
     @Test
+    void storesContinuousModeAndAllowsOnePause() {
+        PracticeSessionRequest request = new PracticeSessionRequest("Java 后端", null, null, null, null,
+                "technical", "standard", "balanced", 1, 20,
+                true, "continuous",
+                List.of(new PracticeQuestion("q-1", "Explain a design", "design")));
+        when(sessions.save(any(PracticeSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var created = service.create("alice", request);
+        ArgumentCaptor<PracticeSessionEntity> captor = ArgumentCaptor.forClass(PracticeSessionEntity.class);
+        verify(sessions).save(captor.capture());
+        when(sessions.findByIdAndOwnerId(created.id(), "alice")).thenReturn(Optional.of(captor.getValue()));
+
+        assertEquals("continuous", created.mode());
+        assertEquals(0, created.pausedCount());
+        var paused = service.pause("alice", created.id());
+        assertEquals(1, paused.pausedCount());
+        ResponseStatusException second = assertThrows(ResponseStatusException.class,
+                () -> service.pause("alice", created.id()));
+        assertEquals(HttpStatus.CONFLICT, second.getStatusCode());
+    }
+
+    @Test
     void hidesSessionsOwnedByAnotherUser() {
         UUID sessionId = UUID.randomUUID();
         when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.empty());
@@ -123,7 +146,7 @@ class PracticeSessionServiceTest {
     void createsSessionWithAuthenticatedOwnerAndRetentionDeadline() {
         PracticeSessionRequest request = new PracticeSessionRequest("Java 后端", null, null, null, null,
                 "technical", "standard", "balanced", 1, 4,
-                false,
+                false, "per_question",
                 List.of(new PracticeQuestion("q-1", "Explain a design", "design")));
         when(sessions.save(any(PracticeSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 

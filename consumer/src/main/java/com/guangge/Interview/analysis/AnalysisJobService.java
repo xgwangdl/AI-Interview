@@ -134,6 +134,28 @@ public class AnalysisJobService {
         return true;
     }
 
+    /**
+     * 转写修正后重新评分：已有任务重置为 pending，没有任务就新建。
+     *
+     * 不能复用 retryFailed：那只处理 failed 终态，已完成的旧评分不会重新跑。
+     */
+    @Transactional
+    public boolean reenqueueAnswer(UUID answerId) {
+        PracticeAnswerEntity answer = answers.findById(answerId).orElse(null);
+        if (answer == null || answer.getMediaKey() == null) return false;
+        AnalysisJobEntity job = jobs.findByAnswerId(answerId).orElse(null);
+        if (job == null) return enqueueAnswer(answerId);
+        job.setStatus(STATUS_PENDING);
+        job.setAttempts(0);
+        job.setLastError(null);
+        job.setNextAttemptAt(Instant.now());
+        job.setUpdatedAt(Instant.now());
+        jobs.save(job);
+        dlq.findById(job.getId()).ifPresent(dlq::delete);
+        metrics.recordRetry();
+        return true;
+    }
+
     @Scheduled(
             fixedDelayString = "${practice.analysis.poll-interval-ms:15000}",
             initialDelayString = "${practice.analysis.initial-delay-ms:30000}")

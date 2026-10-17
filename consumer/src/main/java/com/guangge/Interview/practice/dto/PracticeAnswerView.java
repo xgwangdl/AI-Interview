@@ -13,6 +13,8 @@ public record PracticeAnswerView(
         Integer startedAtOffsetSeconds,
         String transcriptStatus,
         String transcriptText,
+        String transcriptOriginal,
+        Instant transcriptEditedAt,
         String evaluationStatus,
         Instant createdAt) {
 }

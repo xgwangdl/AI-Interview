@@ -25,6 +25,8 @@ public interface PracticeScoreRepository extends JpaRepository<PracticeScoreEnti
 
     boolean existsBySessionIdAndQuestionId(UUID sessionId, String questionId);
 
+    Optional<PracticeScoreEntity> findFirstBySessionIdAndQuestionId(UUID sessionId, String questionId);
+
     long countByOwnerId(String ownerId);
 
     /**

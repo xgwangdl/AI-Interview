@@ -48,6 +48,8 @@ public record PracticeReportView(
             Integer durationSeconds,
             String transcriptStatus,
             String transcriptText,
+            String transcriptOriginal,
+            Instant transcriptEditedAt,
             String evaluationStatus,
             String mediaUrl,
             String mediaSignedUrl,

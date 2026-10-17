@@ -8,6 +8,7 @@ import { getMedia, saveMedia } from '../services/mediaStore';
 import { buildQuestions, styleLabels } from '../data/questions';
 import {
   getNarrationAudio, getQuestionNarration, requestFollowUp, tryCompleteAnswer, tryCompleteSession, trySaveAnswer,
+  tryPauseSession,
 } from '../services/api';
 import { uploadAnswerMediaWithFallback } from '../services/chunkedUpload';
 import DigitalHuman from '../components/DigitalHuman.vue';
@@ -40,6 +41,16 @@ const draft = practice.draft?.id === route.params.id ? practice.draft : practice
 const questions = computed(() => draft ? (draft.questions || buildQuestions(draft.role, draft.questionCount, draft.interviewType)) : []);
 const currentQuestion = computed(() => questions.value[currentIndex.value]);
 const answeredQuestions = computed(() => new Set(draft?.answers.map((answer) => answer.questionIndex) || []));
+const continuous = computed(() => draft?.mode === 'continuous');
+const sessionStarted = ref(false);
+const sessionElapsed = ref(0);
+const sessionPaused = ref(false);
+const pauseUsed = computed(() => (draft?.pausedCount || 0) >= 1);
+const finishing = ref(false);
+let sessionStartedAt = 0;
+let sessionPausedAt = 0;
+let sessionPausedMs = 0;
+let sessionTimer;
 
 /**
  * 当前这题是第几轮追问（0 = 原题）。
@@ -60,6 +71,7 @@ const questionKickerLabel = computed(() => (followUpRound.value > 0
   : (currentQuestion.value?.category || '')));
 const progress = computed(() => draft ? Math.round((answeredQuestions.value.size / questions.value.length) * 100) : 0);
 const formattedTime = computed(() => `${String(Math.floor(elapsed.value / 60)).padStart(2, '0')}:${String(elapsed.value % 60).padStart(2, '0')}`);
+const formattedSessionTime = computed(() => `${String(Math.floor(sessionElapsed.value / 60)).padStart(2, '0')}:${String(sessionElapsed.value % 60).padStart(2, '0')}`);
 // 数字人字幕只显示「朗读状态」。问题正文统一放在下方的问题卡片里：
 // 之前这里绑定的是整段问题文本，长句会溢出画面、压在小人身上被裁掉，
 // 用户看到的就是同一句问题出现两遍、而且上面那遍还看不全。
@@ -78,6 +90,7 @@ const narrationCaption = computed(() => {
 avatarAudio.on('ended', () => {
   speaking.value = false;
   setAvatarState(recorderState.value === 'recording' ? AVATAR_STATE.RECORDING : AVATAR_STATE.LISTENING);
+  scheduleAutoRecord();
 });
 
 // 播放失败（格式不支持、地址失效等）→ 记错误并恢复静止，不让嘴一直动。
@@ -110,7 +123,7 @@ onMounted(async () => {
   if (video.value) video.value.srcObject = stream;
   const nextQuestion = questions.value.findIndex((_, index) => !answeredQuestions.value.has(index));
   currentIndex.value = nextQuestion === -1 ? 0 : nextQuestion;
-  await loadNarration();
+  if (!continuous.value) await loadNarration();
 });
 
 watch(currentIndex, () => { loadNarration(); });
@@ -137,6 +150,10 @@ async function loadNarration() {
     setAvatarState(AVATAR_STATE.LISTENING);
   } finally {
     narrationLoading.value = false;
+    // 没有配音 / 自动播放被拦时，不能让连续面试停在"准备中"
+    if (continuous.value && sessionStarted.value && !speaking.value && !sessionPaused.value) {
+      scheduleAutoRecord();
+    }
   }
 }
 
@@ -216,6 +233,7 @@ function stopNarration() {
 
 function startRecording() {
   if (!stream?.active || recorderState.value === 'recording') return;
+  if (continuous.value && !sessionStarted.value) return;
   if (typeof MediaRecorder === 'undefined') {
     recorderState.value = 'error';
     ElMessage.error('当前浏览器不支持视频录制，请使用桌面版 Chrome 或 Edge。');
@@ -237,7 +255,13 @@ function startRecording() {
     recorderState.value = 'recording';
     // 用户开始回答：数字人进入「录制回答」状态（闭嘴、保持安静）
     setAvatarState(AVATAR_STATE.RECORDING);
-    elapsedTimer = window.setInterval(() => { elapsed.value = Math.floor((Date.now() - startedAt - pausedMilliseconds) / 1000); }, 250);
+    elapsedTimer = window.setInterval(() => {
+      const currentlyPaused = pausedAt ? Date.now() - pausedAt : 0;
+      elapsed.value = Math.max(0,
+        Math.floor((Date.now() - startedAt - pausedMilliseconds - currentlyPaused) / 1000));
+      // 连续面试单题 3 分钟上限：真实面试不会让人无限讲下去
+      if (continuous.value && elapsed.value >= 180 && recorderState.value === 'recording') void stopRecording();
+    }, 250);
   } catch {
     recorderState.value = 'error';
     ElMessage.error('此浏览器无法启动录制，请更新 Chrome 或 Edge 后重试。');
@@ -254,6 +278,76 @@ function pauseRecording() {
     pausedMilliseconds += Date.now() - pausedAt;
     pausedAt = undefined;
     recorderState.value = 'recording';
+  }
+}
+
+function startContinuous() {
+  if (!continuous.value || sessionStarted.value) return;
+  sessionStarted.value = true;
+  sessionPaused.value = false;
+  sessionStartedAt = Date.now();
+  sessionPausedMs = 0;
+  sessionElapsed.value = 0;
+  sessionTimer = window.setInterval(() => {
+    const paused = sessionPaused.value ? Date.now() - sessionPausedAt : 0;
+    sessionElapsed.value = Math.max(0, Math.floor((Date.now() - sessionStartedAt - sessionPausedMs - paused) / 1000));
+    if (sessionElapsed.value >= (draft.durationMinutes || 20) * 60 && !finishing.value) {
+      ElMessage.info('面试时间到了，正在结束练习。');
+      void finishPractice();
+    }
+  }, 500);
+  void loadNarration();
+}
+
+/** 题目朗读结束后自动开始录制；只在连续模式且未暂停时执行。 */
+function scheduleAutoRecord() {
+  if (!continuous.value || !sessionStarted.value || sessionPaused.value) return;
+  window.setTimeout(() => {
+    if (continuous.value && sessionStarted.value && !sessionPaused.value
+        && recorderState.value === 'idle' && !answeredQuestions.value.has(currentIndex.value)) {
+      startRecording();
+    }
+  }, 500);
+}
+
+/** 连续面试只允许暂停一次；第一次暂停会同步到后端计数。 */
+async function toggleSessionPause() {
+  if (!continuous.value || !sessionStarted.value) return;
+  if (!sessionPaused.value) {
+    if (pauseUsed.value) {
+      ElMessage.warning('连续面试只能暂停一次');
+      return;
+    }
+    if (recorderState.value === 'recording' && recorder?.state === 'recording') {
+      recorder.pause();
+      pausedAt = Date.now();
+      recorderState.value = 'paused';
+    }
+    sessionPaused.value = true;
+    sessionPausedAt = Date.now();
+    stopNarration();
+    try {
+      const remote = await tryPauseSession(draft.id);
+      draft.pausedCount = remote.pausedCount;
+      practice.saveDraft();
+    } catch (error) {
+      ElMessage.error(error?.message || '暂停失败');
+    }
+    return;
+  }
+
+  sessionPaused.value = false;
+  if (sessionPausedAt) {
+    sessionPausedMs += Date.now() - sessionPausedAt;
+    sessionPausedAt = 0;
+  }
+  if (recorderState.value === 'paused' && recorder?.state === 'paused') {
+    recorder.resume();
+    pausedMilliseconds += Date.now() - pausedAt;
+    pausedAt = undefined;
+    recorderState.value = 'recording';
+  } else {
+    scheduleAutoRecord();
   }
 }
 
@@ -296,6 +390,11 @@ async function persistAnswer() {
   practice.setAnswer(answer);
   recorderState.value = 'saved';
   savedAnswer.value = true;
+  if (continuous.value && !sessionPaused.value && !finishing.value) {
+    window.setTimeout(() => {
+      if (!sessionPaused.value && !finishing.value) void finishQuestion();
+    }, 600);
+  }
 }
 
 async function syncAnswer(answer, blob) {
@@ -343,7 +442,7 @@ async function finishQuestion() {
     savedAnswer.value = false;
     return;
   }
-  await finishPractice();
+  await finishPractice(continuous.value);
 }
 
 /**
@@ -396,29 +495,43 @@ async function retake() {
   savedAnswer.value = false;
 }
 
-async function finishPractice() {
+async function finishPractice(auto = false) {
+  if (finishing.value) return;
+  if (continuous.value && !sessionStarted.value) {
+    ElMessage.warning('请先开始连续面试。');
+    return;
+  }
   const done = draft.answers.length;
   if (!done) {
     ElMessage.warning('至少录制一道回答后才能结束练习。');
     return;
   }
-  try {
-    await ElMessageBox.confirm(`已录制 ${done} 道回答。结束后可以查看每题回放，并在设置分析服务后生成转写与评分。`, '结束本次练习？', { confirmButtonText: '结束练习', cancelButtonText: '继续练习', type: 'warning' });
-  } catch { return; }
+  if (auto !== true) {
+    try {
+      await ElMessageBox.confirm(`已录制 ${done} 道回答。结束后可以查看每题回放，并在设置分析服务后生成转写与评分。`, '结束本次练习？', { confirmButtonText: '结束练习', cancelButtonText: '继续练习', type: 'warning' });
+    } catch { return; }
+  }
+  finishing.value = true;
   await stopRecording();
   try {
     await syncPendingAnswers();
     await tryCompleteSession(draft.id);
   } catch (error) {
+    finishing.value = false;
     ElMessage.error(error.message || '无法完成练习，请检查连接后重试。');
     return;
   }
+  window.clearInterval(sessionTimer);
   practice.finishDraft();
   stopActiveStream();
   router.replace(`/practice/${route.params.id}/report`);
 }
 
 function selectQuestion(index) {
+  if (continuous.value) {
+    ElMessage.info('连续面试会按顺序自动进入下一题');
+    return;
+  }
   if (recorderState.value === 'recording' || recorderState.value === 'paused' || recorderState.value === 'saving') {
     ElMessage.warning('请先保存或结束当前录制。');
     return;
@@ -435,6 +548,7 @@ onBeforeUnmount(() => {
   avatarAudio.dispose();
   resetAvatarState();
   window.clearInterval(elapsedTimer);
+  window.clearInterval(sessionTimer);
   if (recorder && (recorder.state === 'recording' || recorder.state === 'paused')) recorder.stop();
   stopActiveStream();
 });
@@ -442,15 +556,55 @@ onBeforeUnmount(() => {
 
 <template>
   <section v-if="draft" class="session-page">
-    <div class="session-top"><button class="back-button" @click="router.push('/history')"><el-icon><ArrowLeft /></el-icon>退出练习</button><div class="session-meta"><span>{{ draft.role }}</span><i></i><span>{{ styleLabels[draft.interviewerStyle] }}</span><i></i><span>预计 {{ draft.durationMinutes }} 分钟</span></div><el-button class="end-button" @click="finishPractice">结束练习</el-button></div>
+    <div class="session-top"><button class="back-button" @click="router.push('/history')"><el-icon><ArrowLeft /></el-icon>退出练习</button><div class="session-meta"><span>{{ draft.role }}</span><i></i><span>{{ continuous ? '连续面试' : '逐题练习' }}</span><i></i><span>{{ styleLabels[draft.interviewerStyle] }}</span><i></i><span v-if="continuous && sessionStarted">总计时 {{ formattedSessionTime }} / {{ draft.durationMinutes }}:00</span><span v-else>预计 {{ draft.durationMinutes }} 分钟</span></div><div class="session-top-actions"><el-button v-if="continuous && sessionStarted" class="soft-button" :disabled="pauseUsed && !sessionPaused" @click="toggleSessionPause">{{ sessionPaused ? '继续面试' : '暂停面试' }}</el-button><el-button class="end-button" @click="finishPractice">结束练习</el-button></div></div>
     <div class="session-layout">
-      <aside class="question-rail panel"><div class="rail-header"><span>本轮问题</span><strong>{{ answeredQuestions.size }} / {{ questions.length }}</strong></div><div class="overall-progress"><span :style="{ width: `${progress}%` }"></span></div><button v-for="(question, index) in questions" :key="question.id" class="question-nav" :class="{ active: index === currentIndex, answered: answeredQuestions.has(index) }" @click="selectQuestion(index)"><span class="question-index">{{ answeredQuestions.has(index) ? '✓' : String(index + 1).padStart(2, '0') }}</span><span><small>{{ question.category }}</small><strong>{{ question.text }}</strong></span><el-icon v-if="index === currentIndex"><ArrowRight /></el-icon></button><div class="rail-note"><el-icon><Lock /></el-icon>每道回答独立录制与保存</div></aside>
+      <aside class="question-rail panel"><div class="rail-header"><span>本轮问题</span><strong>{{ answeredQuestions.size }} / {{ questions.length }}</strong></div><div class="overall-progress"><span :style="{ width: `${progress}%` }"></span></div><button v-for="(question, index) in questions" :key="question.id" class="question-nav" :class="{ active: index === currentIndex, answered: answeredQuestions.has(index) }" :disabled="continuous" @click="selectQuestion(index)"><span class="question-index">{{ answeredQuestions.has(index) ? '✓' : String(index + 1).padStart(2, '0') }}</span><span><small>{{ question.category }}</small><strong>{{ question.text }}</strong></span><el-icon v-if="index === currentIndex"><ArrowRight /></el-icon></button><div class="rail-note"><el-icon><Lock /></el-icon>{{ continuous ? '按顺序自动进行，不能跳到其他题' : '每道回答独立录制与保存' }}</div></aside>
 
       <div class="session-main">
         <div class="interviewer-panel panel"><div class="interviewer-screen"><DigitalHuman :audio-url="narrationBlobUrl" :speaking="speaking" :amplitude="avatarAudio.amplitude" /><div class="interviewer-info"><div class="interviewer-role">AI 面试官 · {{ styleLabels[draft.interviewerStyle] }}</div><div class="interviewer-status"><span class="voice-bars" :class="{ active: speaking }"><i></i><i></i><i></i><i></i></span>{{ narrationCaption }}</div><div class="interviewer-actions"><button v-if="narration?.audioAvailable && !narrationAudioFailed" class="narration-replay" :aria-label="speaking ? '暂停朗读' : '重播问题'" :title="speaking ? '暂停朗读' : '重播问题'" @click="replayNarration"><el-icon><VideoPause v-if="speaking" /><VideoPlay v-else /></el-icon>{{ speaking ? '暂停朗读' : '重播问题' }}</button><span class="interviewer-tip">配音：按音量驱动嘴型，非音素级口型同步</span></div><p v-if="avatarError" class="interviewer-error">{{ avatarError }}</p></div></div><div class="question-content"><div class="question-kicker" :class="{ 'is-follow-up': followUpRound > 0 }">QUESTION {{ String(currentIndex + 1).padStart(2,'0') }} <span>{{ questionKickerLabel }}</span></div><h1>{{ currentQuestion?.text }}</h1><p v-if="followUpNotice" class="follow-up-notice"><el-icon><ChatDotRound /></el-icon>{{ followUpNotice }}</p><p>建议使用具体事例展开：背景与目标、采取的行动、最终结果，以及你的复盘。</p></div></div>
 
-        <div class="recording-panel panel"><div class="self-preview"><video ref="video" autoplay muted playsinline></video><div v-if="!stream?.active" class="self-placeholder"><el-icon><UserFilled /></el-icon><small>设备连接中</small></div><div class="recording-indicator" :class="recorderState"><i></i>{{ recorderState === 'recording' ? '录制中' : recorderState === 'paused' ? '已暂停' : recorderState === 'saving' ? '保存中' : '摄像头已连接' }}</div></div><div class="record-controls"><div class="record-time"><span>{{ formattedTime }}</span><small>{{ recorderState === 'recording' ? '正在录制本题回答' : recorderState === 'paused' ? '录制已暂停' : recorderState === 'saved' ? '本题已保存，可重新录制' : '准备好后开始录制' }}</small></div><div class="record-buttons"><el-button v-if="recorderState === 'idle' || recorderState === 'error' || recorderState === 'saved'" class="record-button" @click="startRecording"><span class="record-dot"></span>{{ recorderState === 'saved' ? '重新录制' : '开始回答' }}</el-button><template v-else><el-button class="pause-button" :disabled="recorderState === 'saving'" @click="pauseRecording"><el-icon><VideoPause v-if="recorderState === 'recording'" /><VideoPlay v-else /></el-icon>{{ recorderState === 'recording' ? '暂停' : recorderState === 'paused' ? '继续' : '保存中' }}</el-button><el-button class="save-button" :disabled="recorderState === 'saving'" @click="stopRecording"><el-icon><CircleCheck /></el-icon>结束回答</el-button></template></div></div></div>
-        <div class="session-bottom"><span><el-icon><Lock /></el-icon>视频保留 7 天 · 可随时删除</span><el-button class="primary-button" :disabled="recorderState === 'recording' || recorderState === 'paused' || recorderState === 'saving'" @click="finishQuestion">{{ currentIndex === questions.length - 1 ? '完成并查看报告' : '保存并继续' }} <el-icon><ArrowRight /></el-icon></el-button></div>
+        <div class="recording-panel panel">
+          <div class="self-preview">
+            <video ref="video" autoplay muted playsinline></video>
+            <div v-if="!stream?.active" class="self-placeholder"><el-icon><UserFilled /></el-icon><small>设备连接中</small></div>
+            <div class="recording-indicator" :class="recorderState"><i></i>{{ recorderState === 'recording' ? '录制中' : recorderState === 'paused' ? '已暂停' : recorderState === 'saving' ? '保存中' : '摄像头已连接' }}</div>
+          </div>
+          <div class="record-controls">
+            <div class="record-time">
+              <span>{{ formattedTime }}</span>
+              <small>{{ continuous
+                ? (sessionPaused ? '面试已暂停' : recorderState === 'recording' ? '正在自动录制本题' : recorderState === 'saving' ? '正在保存本题' : '面试官读完后自动开始录制')
+                : (recorderState === 'recording' ? '正在录制本题回答' : recorderState === 'paused' ? '录制已暂停' : recorderState === 'saved' ? '本题已保存，可重新录制' : '准备好后开始录制') }}</small>
+            </div>
+            <div class="record-buttons">
+              <template v-if="!continuous">
+                <el-button v-if="recorderState === 'idle' || recorderState === 'error' || recorderState === 'saved'" class="record-button" @click="startRecording"><span class="record-dot"></span>{{ recorderState === 'saved' ? '重新录制' : '开始回答' }}</el-button>
+                <template v-else><el-button class="pause-button" :disabled="recorderState === 'saving'" @click="pauseRecording"><el-icon><VideoPause v-if="recorderState === 'recording'" /><VideoPlay v-else /></el-icon>{{ recorderState === 'recording' ? '暂停' : recorderState === 'paused' ? '继续' : '保存中' }}</el-button><el-button class="save-button" :disabled="recorderState === 'saving'" @click="stopRecording"><el-icon><CircleCheck /></el-icon>结束回答</el-button></template>
+              </template>
+              <template v-else>
+                <span class="continuous-record-hint">{{ recorderState === 'recording' ? '正在自动录制' : sessionPaused ? '已暂停' : '自动进行中' }}</span>
+                <el-button v-if="recorderState === 'error'" class="record-button" @click="startRecording">重试录制</el-button>
+                <el-button v-if="recorderState === 'recording' || recorderState === 'paused'" class="save-button" :disabled="recorderState === 'saving'" @click="stopRecording">结束本题</el-button>
+              </template>
+            </div>
+          </div>
+        </div>
+        <div class="session-bottom"><span><el-icon><Lock /></el-icon>视频保留 7 天 · 可随时删除</span><span v-if="continuous" class="auto-next-hint"><el-icon><Right /></el-icon>答完自动进入下一题，不需要手动保存</span><el-button v-else class="primary-button" :disabled="recorderState === 'recording' || recorderState === 'paused' || recorderState === 'saving'" @click="finishQuestion">{{ currentIndex === questions.length - 1 ? '完成并查看报告' : '保存并继续' }} <el-icon><ArrowRight /></el-icon></el-button></div>
+      </div>
+    </div>
+    <div v-if="continuous && !sessionStarted" class="continuous-intro-backdrop">
+      <div class="continuous-intro panel">
+        <div class="eyebrow">CONTINUOUS INTERVIEW</div>
+        <h2>连续面试</h2>
+        <p>开始后按顺序自动出题、自动录制、自动进入下一题；不能回看重录，整场只允许暂停一次。</p>
+        <ul>
+          <li>{{ questions.length }} 道题 · 约 {{ draft.durationMinutes }} 分钟</li>
+          <li>单题最长 3 分钟，答完或超时自动进入下一题</li>
+          <li>结束后统一转写、评分与复盘</li>
+        </ul>
+        <el-button class="primary-button" @click="startContinuous">
+          <el-icon><VideoPlay /></el-icon> 开始面试
+        </el-button>
       </div>
     </div>
   </section>
@@ -465,6 +619,15 @@ onBeforeUnmount(() => {
 .recording-panel { display: flex; min-height: 109px; gap: 14px; align-items: center; padding: 12px 14px; box-shadow: none; }.self-preview { position: relative; width: 126px; height: 80px; flex: none; overflow: hidden; border-radius: 5px; background: #26352e; }.self-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }.self-placeholder { display: grid; position: absolute; inset: 0; place-content: center; justify-items: center; gap: 4px; color: #dbe8df; font-size: 18px; }.self-placeholder small { font-size: 12px; }.recording-indicator { position: absolute; bottom: 5px; left: 5px; display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-radius: 3px; background: rgba(18,29,23,.75); color: white; font-size: 11px; }.recording-indicator i { width: 5px; height: 5px; border-radius: 50%; background: #7bbc8e; }.recording-indicator.recording i { background: #e46758; animation: blink .8s infinite alternate; }.recording-indicator.paused i { background: #e4b451; }.recording-indicator.saving i { background: #7ba0b2; }@keyframes blink { to { opacity: .25; } }
 .record-controls { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 10px; }.record-time { display: grid; gap: 4px; }.record-time > span { color: #38453e; font-size: 20px; font-variant-numeric: tabular-nums; font-weight: 650; }.record-time small { color: #97a19b; font-size: 12px; }.record-buttons { display: flex; flex-wrap: wrap; gap: 7px; }.record-button.el-button { height: 34px; border-color: #b44b3c; background: #bd5545; color: white; font-size: 13px; }.record-button.el-button:hover { border-color: #a44233; background: #a44233; }.record-dot { width: 7px; height: 7px; border-radius: 50%; background: white; }.pause-button.el-button,.save-button.el-button { height: 32px; padding: 0 10px; font-size: 13px; }.pause-button.el-button { border-color: #e3e8e4; color: #65726a; }.save-button.el-button { border-color: #cfe5d4; background: #eef7f0; color: #4b865e; }
 .session-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.session-bottom > span { display: inline-flex; align-items: center; gap: 5px; color: #8a958e; font-size: 12px; }.session-bottom .primary-button { height: 36px; }
+.session-top-actions { display: flex; align-items: center; gap: 8px; }
+.continuous-record-hint { display: inline-flex; align-items: center; color: #7d8982; font-size: 12px; }
+.auto-next-hint { color: #5d8b6c !important; }
+.continuous-intro-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(22, 31, 27, .42); }
+.continuous-intro { display: grid; width: min(460px, 100%); gap: 11px; padding: 25px 26px 23px; box-shadow: 0 20px 60px rgba(20, 35, 27, .22); }
+.continuous-intro h2 { margin: 0; color: #2f3c35; font-size: 24px; }
+.continuous-intro p { margin: 0; color: #6d7972; font-size: 13px; line-height: 1.8; }
+.continuous-intro ul { display: grid; gap: 5px; margin: 0; padding-left: 17px; color: #5d6a64; font-size: 13px; line-height: 1.7; }
+.continuous-intro .el-button { justify-self: start; margin-top: 5px; }
 .narration-replay { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #4f7a61; font-size: 12px; cursor: pointer; }
 .narration-replay:hover { color: #35624a; }
 @media(max-width: 920px) { .session-layout { grid-template-columns: 205px minmax(0,1fr); gap: 10px; }.question-nav { gap: 6px; padding: 10px 8px; }.session-meta { justify-content: center; } }
