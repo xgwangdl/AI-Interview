@@ -43,6 +43,11 @@ describe('apiRequest', () => {
     await expect(apiRequest('/x', { method: 'DELETE' })).resolves.toBeNull();
   });
 
+  it('201/202 空 body 返回 null，不抛 JSON 解析错误', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(201, ''));
+    await expect(apiRequest('/cohorts/x/peer-reviews', { method: 'POST' })).resolves.toBeNull();
+  });
+
   it('带上 Bearer token', async () => {
     localStorage.setItem('token', 'tok-1');
     const fetchMock = vi.fn().mockResolvedValue(fakeResponse(200, '{}'));

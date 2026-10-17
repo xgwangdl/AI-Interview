@@ -16,6 +16,7 @@ import {
   AVATAR_STATE, resetAvatarState, setAvatarError, setAvatarState, useAvatarState,
 } from '../services/avatarState';
 import { getSampleAnswerAudio, getSampleAnswerNarration } from '../services/api';
+import { listCohorts, requestHelp } from '../services/cohorts';
 
 const route = useRoute();
 const router = useRouter();
@@ -45,10 +46,15 @@ const rewriteEditing = ref(false);
 const rewriting = ref(false);
 const savingRewrite = ref(false);
 const selectedAttemptId = ref('');
+const cohorts = ref([]);
+const helpCohortId = ref('');
+const helpNote = ref('');
+const helpSending = ref(false);
 const signedMediaUrl = computed(() => currentReport.value?.mediaSignedUrl || '');
 const evidenceList = computed(() => currentEvaluation.value?.evidence || []);
 /** 追问在这份报告里算"顺着上一题问的"，不算凭空多出来的一道题。 */
 const followUpCount = computed(() => report.value?.summary?.followUpCount || 0);
+const learnerCohorts = computed(() => cohorts.value.filter((cohort) => cohort.role === 'learner'));
 
 watch(currentReport, (value) => {
   rewriteDraft.value = value?.rewriteText || '';
@@ -206,11 +212,21 @@ onMounted(() => {
   } else if (session.value?.answers.length) {
     selectQuestion(session.value.answers[0].questionIndex);
   }
+  loadHelpCohorts();
 });
 watch(() => route.params.id, () => { if (!session.value) router.replace('/history'); });
 // 直接打开或刷新报告页时，练习记录是异步从服务端拉取的。
 // 只监听路由参数会在 store 尚未就绪时错过加载，页面会永远停在「尚未生成」。
 watch(() => session.value?.id, (id) => { if (id) loadReport(); }, { immediate: true });
+
+async function loadHelpCohorts() {
+  try {
+    cohorts.value = await listCohorts();
+    if (learnerCohorts.value.length) helpCohortId.value = learnerCohorts.value[0].id;
+  } catch {
+    cohorts.value = [];
+  }
+}
 
 async function loadReport() {
   window.clearTimeout(reportPoller);
@@ -372,6 +388,25 @@ async function playAttempt(attempt) {
   }
 }
 
+async function submitHelp() {
+  if (!helpCohortId.value || !currentReport.value?.answerId || helpSending.value) return;
+  helpSending.value = true;
+  try {
+    await requestHelp(helpCohortId.value, {
+      sessionId: route.params.id,
+      questionIndex: currentIndex.value,
+      answerId: currentReport.value.answerId,
+      note: helpNote.value.trim() || null,
+    });
+    helpNote.value = '';
+    ElMessage.success('已发给助教，可以在小组详情里查看反馈');
+  } catch (error) {
+    ElMessage.error(error?.message || '发送失败');
+  } finally {
+    helpSending.value = false;
+  }
+}
+
 function playAt(offset) {
   if (!video.value || !mediaUrl.value || !Number.isFinite(video.value.duration)) return;
   video.value.currentTime = Math.max(0, Math.min(offset, video.value.duration - 0.1));
@@ -476,6 +511,18 @@ onBeforeUnmount(() => {
           <small>每题最多 3 个版本</small>
         </div>
       </div>
+      <div v-if="learnerCohorts.length && currentReport?.answerId" class="help-panel panel">
+        <div class="transcript-edit-head">
+          <div><strong>这题需要帮助？</strong><small>把这道题发给小组助教，不会公开录像和转写</small></div>
+        </div>
+        <div class="help-form">
+          <el-select v-model="helpCohortId" class="help-select">
+            <el-option v-for="cohort in learnerCohorts" :key="cohort.id" :label="cohort.name" :value="cohort.id" />
+          </el-select>
+          <el-input v-model="helpNote" maxlength="1000" placeholder="补充你想问的问题（选填）" />
+          <el-button class="soft-button" :loading="helpSending" @click="submitHelp">发给助教</el-button>
+        </div>
+      </div>
       <div v-if="(currentReport?.attempts?.length || 0) > 1" class="attempt-panel panel">
         <div class="section-title">版本对比 <small>旧 → 新</small></div>
         <div class="attempt-grid">
@@ -576,4 +623,8 @@ onBeforeUnmount(() => {
 .attempt-card strong { color: #2f3c35; font-size: 15px; }
 .attempt-card p { display: -webkit-box; overflow: hidden; margin: 0; color: #7d8982; font-size: 11px; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .attempt-tip { margin: 0; color: #98a29d; font-size: 11px; }
+.help-panel { display: grid; gap: 9px; margin-top: 9px; padding: 11px 12px; box-shadow: none; }
+.help-form { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.help-select { width: 100%; }
+@media (max-width: 700px) { .help-form { grid-template-columns: 1fr; }.help-form .el-button { justify-self: start; } }
 </style>

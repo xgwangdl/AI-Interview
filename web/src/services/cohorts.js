@@ -27,6 +27,43 @@ export function archiveCohort(id) {
   return apiRequest(`/cohorts/${encodeURIComponent(id)}/archive`, { method: 'POST' });
 }
 
+export function requestHelp(cohortId, payload) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/help`, {
+    method: 'POST', body: JSON.stringify(payload),
+  });
+}
+
+export function listHelp(cohortId, status = '') {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/help${query}`);
+}
+
+export function sendHelpFeedback(cohortId, helpId, text) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/help/${encodeURIComponent(helpId)}/feedback`, {
+    method: 'POST', body: JSON.stringify({ text }),
+  });
+}
+
+export function optInPeerReview(cohortId, enabled) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/members/me/peer-review`, {
+    method: 'PUT', body: JSON.stringify({ enabled }),
+  });
+}
+
+export function listPeerReviewTasks(cohortId, limit = 5) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/peer-reviews/tasks?limit=${encodeURIComponent(limit)}`);
+}
+
+export function submitPeerReview(cohortId, payload) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/peer-reviews`, {
+    method: 'POST', body: JSON.stringify(payload),
+  });
+}
+
+export function listReceivedPeerReviews(cohortId) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/peer-reviews/received`);
+}
+
 export function listAssignments(id) {
   return apiRequest(`/cohorts/${encodeURIComponent(id)}/assignments`);
 }

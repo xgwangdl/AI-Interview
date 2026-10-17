@@ -37,7 +37,14 @@ export async function apiRequest(path, options = {}) {
     throw error;
   }
   if (response.status === 204) return null;
-  return response.json();
+  // 201/202 也经常没有 body（例如“提交成功”）；先读文本，避免把空响应当成 JSON 解析错误。
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
 }
 
 export function trySyncSession(session) {

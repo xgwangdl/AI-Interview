@@ -464,6 +464,8 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 | --- | --- |
 | `CohortService` / `CohortController` | 创建小组、邀请码加入、成员与分数共享、归档 |
 | `AssignmentService` | 布置作业，为每位学员生成 `study_plan_items`（`kind=assignment`）；聚合完成看板 |
+| `CohortHelpService` | 学员针对某道题发求助、助教填写反馈、学员查看反馈 |
+| `PeerReviewService` | 匿名同伴互评：只展示转写、3 项评分 + 一句建议、去重与 opt-in |
 | `CohortEntity` / `CohortMemberEntity` / `AssignmentEntity` | 小组、成员角色、作业 |
 
 助教创建小组后成为 `coach`；作业项通过 `assignment_id` 挂到学员计划，并在
@@ -539,6 +541,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V15__answer_attempts_and_rewrites.sql` | `practice_answers` / `answer_rewrites` | 同一道题最多 3 个 attempt、当前版本标记、改写正文与历史 |
 | `V16__weekly_reports_and_notifications.sql` | `weekly_reports` / `notification_preferences` / `notification_log` | 周报快照、邮件提醒偏好与去重日志 |
 | `V17__learning_cohorts_and_assignments.sql` | `cohorts` / `cohort_members` / `assignments` + `study_plan_items.assignment_id` | 学习小组、邀请码、作业与完成看板 |
+| `V18__cohort_feedback_and_peer_reviews.sql` | `cohort_help_requests` / `peer_reviews` + `cohort_members.peer_review_enabled` | 学员求助、助教反馈、匿名同伴互评 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

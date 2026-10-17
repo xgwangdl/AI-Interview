@@ -13,5 +13,6 @@ public record CohortView(
         Instant createdAt,
         List<Member> members) {
 
-    public record Member(String owner, String role, boolean shareScores, Instant joinedAt) { }
+    public record Member(String owner, String role, boolean shareScores,
+                         boolean peerReviewEnabled, Instant joinedAt) { }
 }

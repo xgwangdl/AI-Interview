@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface PracticeSessionRepository extends JpaRepository<PracticeSessionEntity, UUID> {
     List<PracticeSessionEntity> findAllByOwnerIdOrderByCreatedAtDesc(String ownerId);
     List<PracticeSessionEntity> findAllByOwnerIdAndCreatedAtBetween(String ownerId, Instant from, Instant to);
+    List<PracticeSessionEntity> findAllByOwnerIdInAndStatusOrderByCreatedAtDesc(
+            java.util.Collection<String> ownerIds, String status);
     List<PracticeSessionEntity> findAllByOwnerIdAndGoalIdOrderByCreatedAtDesc(String ownerId, java.util.UUID goalId);
     Optional<PracticeSessionEntity> findByIdAndOwnerId(UUID id, String ownerId);
     List<PracticeSessionEntity> findAllByRetentionUntilBefore(Instant instant);

@@ -1593,6 +1593,27 @@ PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 40
 
 截图：`docs/images/24-cohort-coach.png`、`25-cohort-learner.png`。
 
+### 2026-10-17 Phase 6B/6C：助教反馈 + 匿名同伴互评（已完成）
+
+- 迁移 `V18`：`cohort_help_requests`、`peer_reviews`，并给成员加 `peer_review_enabled`；
+- 6B：学员在报告页选择小组 → 针对当前题发求助（可附一句问题）；
+  助教在小组详情看到待反馈队列，填写文字反馈；学员在小组详情看到反馈；
+- 6C：学员主动开启同伴互评后，可以看其他成员的**转写**并打 3 项分
+  （表达清晰 / 切题程度 / 细节深度）+ 一句建议；双方都是匿名别名，不暴露用户名；
+- 隐私：同伴互评**不展示录像、不展示转写原文给未开启的人**；关闭开关后不再参与；
+- 顺带修复前端 `apiRequest` 对 201/202 空 body 的解析错误：以前“提交成功但无 body”会显示成失败。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端单测 | **268 个** |
+| 前端单测 | **136 个** |
+| 接口 E2E | `scripts/verify-phase6bc.ps1` **7/7**：求助 → 反馈 → 互评开启 → 匿名任务 → 收到评价 |
+| 浏览器 | `web/scripts/verify-phase6bc-browser.mjs` 全过：助教回复、学员看反馈、提交互评、对方收到匿名评价 |
+
+截图：`docs/images/26-cohort-help-feedback.png`、`27-peer-review-form.png`、`28-peer-review-received.png`。
+
 ### 2026-10-17 L2 实时通道（进行中，默认关闭）
 
 按用户要求开始做 L2：`spring-websocket` 通道 `/ws/language`（握手用查询串里的 token 验签）、

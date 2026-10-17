@@ -118,7 +118,7 @@ public class CohortService {
     private CohortView view(CohortEntity cohort, String role) {
         List<CohortView.Member> memberViews = members.findAllByCohortIdOrderByJoinedAtAsc(cohort.getId()).stream()
                 .map(member -> new CohortView.Member(member.getOwnerId(), member.getRole(),
-                        member.isShareScores(), member.getJoinedAt()))
+                        member.isShareScores(), member.isPeerReviewEnabled(), member.getJoinedAt()))
                 .toList();
         return new CohortView(cohort.getId(), cohort.getName(), cohort.getInviteCode(), role,
                 memberViews.size(), cohort.getCreatedAt(), memberViews);

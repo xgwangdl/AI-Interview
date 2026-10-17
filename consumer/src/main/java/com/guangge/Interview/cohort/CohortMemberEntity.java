@@ -30,6 +30,9 @@ public class CohortMemberEntity {
     @Column(name = "share_scores", nullable = false)
     private boolean shareScores;
 
+    @Column(name = "peer_review_enabled", nullable = false)
+    private boolean peerReviewEnabled;
+
     @Column(name = "joined_at", nullable = false)
     private Instant joinedAt;
 
@@ -41,6 +44,8 @@ public class CohortMemberEntity {
     public void setRole(String role) { this.role = role; }
     public boolean isShareScores() { return shareScores; }
     public void setShareScores(boolean shareScores) { this.shareScores = shareScores; }
+    public boolean isPeerReviewEnabled() { return peerReviewEnabled; }
+    public void setPeerReviewEnabled(boolean peerReviewEnabled) { this.peerReviewEnabled = peerReviewEnabled; }
     public Instant getJoinedAt() { return joinedAt; }
     public void setJoinedAt(Instant joinedAt) { this.joinedAt = joinedAt; }
 

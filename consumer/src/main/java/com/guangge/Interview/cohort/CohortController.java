@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -24,11 +25,16 @@ public class CohortController {
     private final OwnerResolver owners;
     private final CohortService cohorts;
     private final AssignmentService assignments;
+    private final CohortHelpService help;
+    private final PeerReviewService peerReviews;
 
-    public CohortController(OwnerResolver owners, CohortService cohorts, AssignmentService assignments) {
+    public CohortController(OwnerResolver owners, CohortService cohorts, AssignmentService assignments,
+                            CohortHelpService help, PeerReviewService peerReviews) {
         this.owners = owners;
         this.cohorts = cohorts;
         this.assignments = assignments;
+        this.help = help;
+        this.peerReviews = peerReviews;
     }
 
     @PostMapping
@@ -101,5 +107,64 @@ public class CohortController {
             @PathVariable UUID id,
             @PathVariable UUID assignmentId) {
         return assignments.get(owners.requireOwner(authorization), id, assignmentId);
+    }
+
+    @PostMapping("/{id}/help")
+    public ResponseEntity<CohortHelpView> requestHelp(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @Valid @RequestBody CohortHelpRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(help.create(owners.requireOwner(authorization), id, request));
+    }
+
+    @GetMapping("/{id}/help")
+    public List<CohortHelpView> help(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @RequestParam(required = false) String status) {
+        return help.list(owners.requireOwner(authorization), id, status);
+    }
+
+    @PostMapping("/{id}/help/{helpId}/feedback")
+    public CohortHelpView feedback(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @PathVariable UUID helpId,
+            @Valid @RequestBody CohortHelpFeedbackRequest request) {
+        return help.feedback(owners.requireOwner(authorization), id, helpId, request.text());
+    }
+
+    @PutMapping("/{id}/members/me/peer-review")
+    public ResponseEntity<Void> peerReviewOptIn(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @RequestBody PeerReviewOptInRequest request) {
+        peerReviews.optIn(owners.requireOwner(authorization), id, request.enabled());
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/peer-reviews/tasks")
+    public List<PeerReviewTaskView> peerReviewTasks(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "5") int limit) {
+        return peerReviews.tasks(owners.requireOwner(authorization), id, limit);
+    }
+
+    @PostMapping("/{id}/peer-reviews")
+    public ResponseEntity<Void> submitPeerReview(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @Valid @RequestBody PeerReviewRequest request) {
+        peerReviews.submit(owners.requireOwner(authorization), id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @GetMapping("/{id}/peer-reviews/received")
+    public List<PeerReviewReceivedView> receivedPeerReviews(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id) {
+        return peerReviews.received(owners.requireOwner(authorization), id);
     }
 }

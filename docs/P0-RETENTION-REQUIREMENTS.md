@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档版本 | v1.0（待确认） |
 | 日期 | 2026-10-17 |
-| 状态 | **Phase 1-4 已实现并验证；Phase 5 暂停（未来小程序/App）；Phase 6A（学习小组 + 作业 + 完成看板 + 分数共享）已实现并验证**；6B/6C 待做 |
+| 状态 | **Phase 1-4 已实现并验证；Phase 5 暂停（未来小程序/App）；Phase 6A/6B/6C（小组、作业、完成看板、分数共享、助教反馈、匿名互评）均已实现并验证** |
 | 目标 | 把 Light-Interview 从"一次性面试练习工具"变成"围绕真实求职目标的训练系统" |
 | 关联 | [PRODUCT-GAP-ANALYSIS.md](PRODUCT-GAP-ANALYSIS.md)、[PRACTICE-ARCHIVE-REQUIREMENTS.md](PRACTICE-ARCHIVE-REQUIREMENTS.md)、[MISTAKE-BOOK-REQUIREMENTS.md](MISTAKE-BOOK-REQUIREMENTS.md) |
 
