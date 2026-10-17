@@ -163,6 +163,9 @@ cd web && npm install && npm run dev
 注册成功会直接进入工作台。演示账号是 `smoke / 123456`。
 需要批量造账号时也可以直接往 `candidates` 表插一行，明文口令首次登录后会自动升级成哈希。
 
+完整的 Windows 本地启动、重启、停止和排错步骤见
+[docs/LOCAL-STARTUP.md](docs/LOCAL-STARTUP.md)。
+
 **暂时没有百炼 API Key 也能试**：把 `PRACTICE_ASR_PROVIDER` 与 `PRACTICE_EVALUATION_PROVIDER`
 都设为 `stub`，整条流程照常跑完（转写与评分给占位结果）；拿到 Key 后填进 `.env` 即可切换成真实模型。
 上手流程见 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)，代码结构与扩展点见
