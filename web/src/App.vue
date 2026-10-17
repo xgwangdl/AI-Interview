@@ -48,7 +48,7 @@ watch(() => route.name, (name, previous) => {
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
-const pageTitle = computed(() => ({ dashboard: '训练总览', setup: '创建训练', 'device-check': '设备检测', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情' }[route.name] || '面试练习室'));
+const pageTitle = computed(() => ({ dashboard: '训练总览', setup: '创建训练', 'device-check': '设备检测', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
@@ -112,6 +112,7 @@ function accountCommand(command) {
         <button :class="{ active: activeKey === 'dashboard' }" @click="navigate('/')"><el-icon><DataLine /></el-icon><span>训练总览</span></button>
         <button :class="{ active: route.name === 'setup' }" @click="navigate('/practice/setup')"><el-icon><CirclePlus /></el-icon><span>开始新练习</span></button>
         <button :class="{ active: route.name === 'coding-setup' }" @click="navigate('/coding')"><el-icon><EditPen /></el-icon><span>笔试练习</span></button>
+        <button :class="{ active: route.name === 'language' || route.name === 'language-session' }" @click="navigate('/language')"><el-icon><ChatDotRound /></el-icon><span>外语口语</span></button>
         <button :class="{ active: route.name === 'resume-list' || route.name === 'resume-detail' || route.name === 'resume-new' }" @click="navigate('/resumes')"><el-icon><Document /></el-icon><span>我的简历</span></button>
         <button :class="{ active: activeKey === 'history' }" @click="navigate('/history')"><el-icon><Clock /></el-icon><span>练习记录</span></button>
       </nav>

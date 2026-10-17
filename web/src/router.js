@@ -17,6 +17,8 @@ const router = createRouter({
     { path: '/coding', name: 'coding-setup', component: () => import('./views/CodingSetupView.vue') },
     { path: '/coding/:id', name: 'coding-exam', component: () => import('./views/CodingExamView.vue') },
     { path: '/coding/:id/report', name: 'coding-report', component: () => import('./views/CodingReportView.vue') },
+    { path: '/language', name: 'language', component: () => import('./views/LanguageSetupView.vue') },
+    { path: '/language/:id', name: 'language-session', component: () => import('./views/LanguageSessionView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

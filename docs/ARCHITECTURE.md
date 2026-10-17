@@ -411,6 +411,19 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 简历生成/补全/优化、语音合成。异步链路拿不到额度时**顺延**（`AnalysisDeferredException` → 任务回到
 `pending` 并把 `nextAttemptAt` 指到额度重置后），不消耗重试次数、不进死信队列。
 
+### 5.10 `language` —— 外语口语（英语 / 日语，L1）
+
+| 类 | 职责 |
+| --- | --- |
+| `LanguageCatalog` | 语言 / 场景 / 水平的注册表；**音色能力写在配置里**（英语有服务端音色，日语没有 → 浏览器语音） |
+| `LanguageSessionService` | 开一场、同步跑一轮（转写 → 回复 → 合成）、结束出报告、保留期清理；每轮占 1 次额度 |
+| `LanguageSpeechService` | 按语言传 `language_hints` 调用 `paraformer-realtime-v2`；按语言选 TTS，日语明确不出音频 |
+| `SpringAiLanguageCoach` + `LanguageCoachValidator` | 回复与复盘；校验器挡住"编造用户原话"和"凑数建议"，回复/建议长度也在这里夹住 |
+| `LanguageController` | `/api/v1/language-*`，音频轮走 multipart，手打轮走 JSON |
+
+与面试模块的关键区别：**没有异步队列**。对话必须同步返回，否则"入队 + 15 秒轮询"就变成留言板。
+能力验证脚本是 `VoiceCapabilityProbe`（`-Dvoice.probe=true`），它不是 CI 的一部分。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -473,6 +486,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V8__resume_library.sql` | `resumes` / `resume_optimizations` | 简历库与按 JD 优化的历史（逐段改动 + 待补充占位符） |
 | `V9__score_archive_and_follow_up.sql` | `practice_score_archive` + `practice_sessions.follow_up_enabled` | 成绩与录像分开保留（只存分数与维度），并回填历史；追问开关 |
 | `V10__mistake_book.sql` | `practice_score_archive` | 题面 / 题目分类 / 面试类型与风格跟着成绩走，错题本才有题可重练；回填还在保留期内的历史 |
+| `V11__language_practice.sql` | `language_sessions` / `language_turns` | 外语口语：会话（语言/场景/水平/轮数/报告）+ 每一轮（录音、转写、回复、建议、四段耗时） |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -502,6 +516,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
 | AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 120 / 3 / Asia/Shanghai |
+| 外语口语 | `LANGUAGE_RETENTION_DAYS` | 7 |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
 | 模型 | `spring.ai.dashscope.*`（chat `qwen-max`、embedding `text-embedding-v2`、speech / transcription） | 统一读 `Ali_API_KEY` |
 
@@ -515,7 +530,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 文件 | 职责 |
 | --- | --- |
 | `main.js` / `App.vue` | 应用入口与整体布局 |
-| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`（错题本分页页） |
+| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`、`/language`、`/language/:id` |
 | `authGuard.js` | 路由守卫：未登录跳登录页 |
 | `views/` | 练习主线页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView`、`MistakeBookView`（简历与笔试的页面见下两行） |
 | `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |

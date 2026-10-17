@@ -8,11 +8,9 @@
 
 复现命令见文末。
 
-> **新需求（待确认，未实现）**：外语口语练习（英语 / 日语）。需求文档见
+> **外语口语（P1 已实现，L2 待做）**：英语 / 日语口语练习，需求文档见
 > [LANGUAGE-PRACTICE-REQUIREMENTS.md](LANGUAGE-PRACTICE-REQUIREMENTS.md)。
-> 结论先说：**"流畅"要分档** —— 轮次对话（L1，2-4 秒/轮）现在就能做；
-> 准实时（L2，1-1.5 秒 + 可打断）可行但要新建流式通道；
-> 全双工（L3）不建议承诺。文档里有延迟预算、P1/P2 范围、验收标准与需要你拍板的 7 个问题。
+> L1（轮次对话）已上线并实测；L2（流式、可打断）按计划等 L1 用出结论后再做。
 
 > **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
 > 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
@@ -1417,3 +1415,42 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 
 **测试**：后端 221 → **224 个**（分页切片、岗位筛选、空岗位归并各 1 条）；前端 103 → **108 个**
 （分页字段与两个入口的参数、store 的重练动作各若干条）。
+
+### 2026-10-17 新功能：外语口语 L1（英语 / 日语）
+
+需求见 [LANGUAGE-PRACTICE-REQUIREMENTS.md](LANGUAGE-PRACTICE-REQUIREMENTS.md)。用户先要 L2 流式，
+但同意先做 L1、把"对话有没有用"验证出来再换传输层。
+
+**先做了能力探针，没有拍脑袋**（`VoiceCapabilityProbe`，`-Dvoice.probe=true`）：
+
+| 能力 | 结论 | 证据 |
+| --- | --- | --- |
+| 英语识别/合成 | 可用 | 合成英文 → ASR 往返能识别出 billing / latency；`cosyvoice-v2/longxiaochun_v2` 最干净 |
+| 日语识别 | **可用** | 真人录音 `ありがとう` → `ありがとう？`、`アイスクリーム` → `アイスクリーム？`；hint=zh 时是乱码 |
+| 日语合成 | **不可用** | 所有可用 DashScope 音色把日语按中文读音念（"瞿影先献基叔…"），本机也没有日语系统语音 |
+
+所以落地方式是：**英语用服务端音色，日语用浏览器语音**（本机没有日语语音时只显示文字）。
+
+**做了什么**
+
+- 新模块 `language`：`LanguageCatalog`（语言/场景/水平注册表）、`LanguageSessionService`（同步一轮编排）、
+  `LanguageCoach` + 校验器（回复 ≤400 字、反馈 ≤2 条、**original 必须逐字出现在转写里**）、
+  `LanguageSpeechService`（按语言传 `language_hints`，日语明确不出服务端音频）；
+- 迁移 `V11`：`language_sessions` / `language_turns`（录音、回复、建议、asr/llm/tts/total 四段耗时）；
+- 接口：`/language-options`、会话 CRUD、`POST .../turns`（multipart 音频，**同步**返回）、
+  `.../turns/text`（手打降级）、`.../finish`（报告，幂等）、音频回放；
+- 前端：侧栏"外语口语" → 选语言/场景/水平 → 对话页（数字人 + 轮次卡 + 点一下说话 + 手打 + 结束复盘）；
+- 额度：每轮 1 次（沿用 `ModelCallGuard`）；同一账号只留一场进行中（新的把旧的标成 `abandoned`）。
+
+**验证（真后端 + 真模型 + 真语音）**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 接口 E2E | `scripts/verify-language-l1.ps1` **19/19**：英语真实录音 → 转写含 billing/latency → 英文回复 + 1 条建议 + 服务端音频可回放；日语真人录音 → `ありがとう？` → 日语回复、`replyAudioUrl=null`；复盘 4 项分 + 3 条改进；删除后 404 |
+| 实测延迟 | 一轮 **7.5s**（ASR 2.2s / LLM 3.0s / TTS 2.2s）—— 比文档的 2-4s 预算慢，已如实记进需求文档并列出三个可调旋钮 |
+| 浏览器 | `node web/scripts/verify-language-l1.mjs`：两门语言 + 3 场景、开场白显示、手打分轮、复盘四项分与改进（截图 `data/screenshots/language-setup.png`、`language-session-turn.png`、`language-report.png`） |
+| 复盘质量 | 首版让模型写出了"面试官应该怎么问"，改提示词后变成学习者视角："学习者能讲清结果，但缺少具体动作和背景信息" + 3 条可照说的示例句 |
+| 单测 | 后端 224 → **238 个**（语言注册表 4、反馈校验 4、会话编排 6）；前端 108 → **115 个** |
+
+**这次的坑**：PowerShell 的 `-Form @{ audio = Get-Item x.wav }` 会把音频标成 `application/octet-stream`，
+后端原来只收 `audio/*` 会 415；现在放行 octet-stream（真实格式由 ffmpeg 校验）。
