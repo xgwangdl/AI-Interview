@@ -12,6 +12,11 @@
 > [LANGUAGE-PRACTICE-REQUIREMENTS.md](LANGUAGE-PRACTICE-REQUIREMENTS.md)。
 > L1（轮次对话）已上线并实测；L2（流式、可打断）按计划等 L1 用出结论后再做。
 
+> **产品差距分析（2026-10-17）**：对照 Interviewer.AI、Final Round AI、牛客、面试鸭、Pramp、
+> interviewing.io 与 Google Interview Warmup 的公开功能，当前产品缺的不是 AI 能力，而是
+> "目标 → 每日计划 → 连续面试 → 改写重录 → 周报 → 真实结果"的闭环。完整差距、P0/P1/P2
+> 需求与 8 周路线见 [PRODUCT-GAP-ANALYSIS.md](PRODUCT-GAP-ANALYSIS.md)。
+
 > **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
 > 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
