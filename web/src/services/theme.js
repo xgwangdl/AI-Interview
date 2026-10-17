@@ -44,7 +44,11 @@ export function readLocalTheme() {
 }
 
 export function rememberTheme(name) {
-  localStorage.setItem(STORAGE_KEY, normalizeTheme(name));
+  const theme = normalizeTheme(name);
+  localStorage.setItem(STORAGE_KEY, theme);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('light-interview-theme-updated', { detail: { theme } }));
+  }
 }
 
 /** 启动时先把本地记录的主题用上，避免闪一下绿色再变成用户选的颜色。 */

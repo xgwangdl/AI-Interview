@@ -472,6 +472,23 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 `DailyPlanService.today` 里与普通每日计划合并，所以作业会出现在「今天练什么」。
 分数共享默认关闭；作业看板只显示学员，不把助教自己算进完成率。
 
+### 5.15 `profile` —— 个人资料、外观与账号安全
+
+| 类 | 职责 |
+| --- | --- |
+| `ProfileController` | `GET/PUT /api/v1/me/profile`；`PUT /api/v1/me/password` |
+| `ProfileService` | 读取和更新昵称、邮箱、时区、字号、减弱动效、主题色 |
+| `ProfileView` / `ProfileUpdateRequest` | 个人资料响应与带校验的更新请求 |
+| `PasswordChangeRequest` | 当前密码与新密码请求；实际校验和 BCrypt 写入由 `CandidatesService` 完成 |
+
+`candidates.candidate_name` 是历史数据归属键，个人资料页把它作为**只读登录名**展示，
+修改展示名称只写 `display_name`。时区使用 `ZoneId.of` 验证；主题色白名单与前端
+`web/src/services/theme.js` 保持一致。字号支持 `standard` / `large` / `xlarge`，
+前端通过根节点缩放保持文字与控件比例一致；减弱动效通过 `data-reduce-motion` 关闭非必要动画。
+
+偏好仍以 `candidates` 表为主：主题色继续兼容原来的 `/api/v1/me/preferences`，
+个人设置接口返回同一份主题值，避免侧栏快捷色点与设置页状态分叉。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -479,6 +496,8 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
   注册成功直接签发 token，前端不用再登录一次；
 - **登录**：`POST /login`，按用户名取账号后校验口令。历史数据的明文邀请码仍可登录，
   校验通过后就地升级成 BCrypt 哈希（老账号无需人工迁移）；
+- **个人资料**：`GET/PUT /api/v1/me/profile`，只允许修改昵称、邮箱、时区与外观偏好，
+  登录名不可改；`PUT /api/v1/me/password` 校验当前密码后写入新的 BCrypt 哈希；
 - **令牌**：HS256 JWT，密钥来自 `AUTH_TOKEN_SECRET`，默认有效期 15 分钟；
 - **传递**：`Authorization: Bearer <token>`；
 - **归属隔离**：`OwnerResolver` 把 token 解析成 owner，所有查询按 owner 过滤——
@@ -542,6 +561,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V16__weekly_reports_and_notifications.sql` | `weekly_reports` / `notification_preferences` / `notification_log` | 周报快照、邮件提醒偏好与去重日志 |
 | `V17__learning_cohorts_and_assignments.sql` | `cohorts` / `cohort_members` / `assignments` + `study_plan_items.assignment_id` | 学习小组、邀请码、作业与完成看板 |
 | `V18__cohort_feedback_and_peer_reviews.sql` | `cohort_help_requests` / `peer_reviews` + `cohort_members.peer_review_enabled` | 学员求助、助教反馈、匿名同伴互评 |
+| `V19__profile_settings.sql` | `candidates` 的 `display_name` / `timezone` / `font_scale` / `reduce_motion` / `created_at` | 个人资料、外观偏好与加入时间 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

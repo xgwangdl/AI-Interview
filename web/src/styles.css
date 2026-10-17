@@ -23,10 +23,19 @@
 }
 
 * { box-sizing: border-box; }
-body { min-width: 320px; margin: 0; }
+body { min-width: 320px; margin: 0; overflow-x: hidden; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
+#app { zoom: var(--ui-scale, 1); }
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; display: flex; width: 248px; flex-direction: column; padding: 27px 17px 16px; border-right: 1px solid var(--line); background: #fff; }
 .brand { display: flex; align-items: center; gap: 11px; margin: 1px 0 49px; padding: 0 8px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 16px; font-weight: 700; }
@@ -122,9 +131,11 @@ a { color: inherit; text-decoration: none; }
   .topbar { height: 58px; gap: 12px; padding: 0 15px; }
   .mobile-menu { display: grid; flex: none; }
   .breadcrumb { margin-right: auto; }
+  .breadcrumb > span, .breadcrumb > .el-icon { display: none; }
+  .breadcrumb strong { white-space: nowrap; }
   .topbar-actions { gap: 9px; }
   /* 手机上只留数字，重置时间与小字省掉：顶栏本来就窄 */
-  .quota-chip { padding: 4px 8px; font-size: 12px; }
+  .quota-chip { flex: none; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
   .quota-chip small { display: none; }
   .privacy-status { font-size: 0; }
   .privacy-status i { width: 7px; height: 7px; }

@@ -1,17 +1,20 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from './stores/practice';
-import { getPreferences, savePreferences } from './services/api';
+import { savePreferences } from './services/api';
 import { THEMES, applyTheme, bootstrapTheme, rememberTheme } from './services/theme';
 import { buildUsage, loadModelUsage } from './services/modelUsage';
+import {
+  applyAppearanceSettings, loadProfile, profileDisplayName, readCachedDisplayName, rememberDisplayName,
+} from './services/profile';
 
 const route = useRoute();
 const router = useRouter();
 const practice = usePracticeStore();
 const menuOpen = ref(false);
-const profileName = ref(localStorage.getItem('userName') || '练习者');
+const profileName = ref(readCachedDisplayName());
 // 主题先按本地记录渲染（避免闪一下默认色），登录后再用服务端的偏好覆盖。
 const theme = ref(bootstrapTheme());
 /** 今日 AI 额度：和主题色一样是"账号状态"，顶栏一直能看见 */
@@ -29,26 +32,39 @@ async function chooseTheme(name) {
 }
 
 async function loadThemePreference() {
+  await loadAccountProfile();
+}
+
+async function loadAccountProfile() {
+  if (!localStorage.getItem('token')) return;
   try {
-    const preference = await getPreferences();
-    if (preference?.theme) {
-      theme.value = preference.theme;
-      applyTheme(preference.theme);
-      rememberTheme(preference.theme);
-    }
+    const profile = await loadProfile();
+    profileName.value = profileDisplayName(profile);
+    rememberDisplayName(profileName.value);
+    applyAppearanceSettings(profile);
+    if (profile.theme && THEMES[profile.theme]) theme.value = profile.theme;
   } catch {
-    // 拉不到就用本地记录的主题。
+    // 个人资料接口不可用时保留本地昵称与主题，不阻塞练习流程。
   }
 }
+
+function syncProfileName(event) {
+  const name = event?.detail?.displayName;
+  if (name) profileName.value = name;
+}
+
+function syncTheme(event) {
+  if (THEMES[event?.detail?.theme]) theme.value = event.detail.theme;
+}
 watch(() => route.name, (name, previous) => {
-  profileName.value = localStorage.getItem('userName') || '练习者';
+  profileName.value = readCachedDisplayName();
   if (name !== 'login' && previous === 'login') {
     void refreshPractice();
     void loadThemePreference();
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
-const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', 'weekly-report': '本周报告', notifications: '提醒设置', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', cohorts: '学习小组', 'cohort-detail': '小组详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
+const pageTitle = computed(() => ({ dashboard: '训练总览', today: '今日训练', 'weekly-report': '本周报告', notifications: '提醒设置', 'profile-settings': '个人设置', goals: '求职目标', 'goal-new': '添加目标', 'goal-edit': '编辑目标', 'goal-detail': '目标详情', cohorts: '学习小组', 'cohort-detail': '小组详情', setup: '创建训练', 'device-check': '设备检测', retake: '照着改写重录', session: '模拟面试', report: '练习报告', history: '练习记录', mistakes: '错题本', 'coding-setup': '笔试练习', 'coding-exam': '笔试作答', 'coding-report': '笔试报告', 'resume-list': '我的简历', 'resume-new': '添加简历', 'resume-detail': '简历详情', language: '外语口语', 'language-session': '外语对话' }[route.name] || '面试练习室'));
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
@@ -81,10 +97,18 @@ async function refreshPractice() {
 }
 
 onMounted(() => {
+  window.addEventListener('light-interview-profile-updated', syncProfileName);
+  window.addEventListener('light-interview-theme-updated', syncTheme);
   if (route.name !== 'login') {
     void refreshPractice();
     void refreshUsage();
+    void loadAccountProfile();
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('light-interview-profile-updated', syncProfileName);
+  window.removeEventListener('light-interview-theme-updated', syncTheme);
 });
 
 function navigate(path) {
@@ -93,12 +117,16 @@ function navigate(path) {
 }
 
 function accountCommand(command) {
+  if (command === 'profile') {
+    router.push('/settings/profile');
+    return;
+  }
   if (command === 'notifications') {
     router.push('/settings/notifications');
     return;
   }
   if (command !== 'logout') return;
-  ['token', 'userId', 'userName', 'username'].forEach((key) => localStorage.removeItem(key));
+  ['token', 'userId', 'userName', 'username', 'light-interview-display-name'].forEach((key) => localStorage.removeItem(key));
   window.location.assign('/login');
 }
 </script>
@@ -139,7 +167,7 @@ function accountCommand(command) {
           ></button>
         </div>
         <div class="privacy-note"><el-icon><Lock /></el-icon><span>录制内容仅保留 7 天<small>可随时删除练习数据</small></span></div>
-        <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="notifications"><el-icon><Bell /></el-icon>提醒设置</el-dropdown-item><el-dropdown-item command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+        <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="profile"><el-icon><User /></el-icon>个人设置</el-dropdown-item><el-dropdown-item command="notifications"><el-icon><Bell /></el-icon>提醒设置</el-dropdown-item><el-dropdown-item divided command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
       </div>
     </aside>
 

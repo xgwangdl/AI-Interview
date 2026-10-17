@@ -3,6 +3,7 @@ package com.guangge.Interview.data;
 import jakarta.persistence.*;
 
 import java.sql.Date;
+import java.time.Instant;
 
 @Entity
 @Table(name = "candidates")
@@ -45,6 +46,22 @@ public class Candidates {
     // 个人页面主题色（green / blue / amber），为空表示用默认色。
     @Column(name = "theme", nullable = true, length = 32)
     private String theme;
+
+    // 展示昵称。登录名 candidate_name 继续作为数据归属键，不允许在资料页修改。
+    @Column(name = "display_name", length = 40)
+    private String displayName;
+
+    @Column(name = "timezone", nullable = false, length = 64)
+    private String timezone;
+
+    @Column(name = "font_scale", nullable = false, length = 16)
+    private String fontScale;
+
+    @Column(name = "reduce_motion", nullable = false)
+    private boolean reduceMotion;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 
     public Long getId() {
         return id;
@@ -116,5 +133,61 @@ public class Candidates {
 
     public void setTheme(String theme) {
         this.theme = theme;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public void setTimezone(String timezone) {
+        this.timezone = timezone;
+    }
+
+    public String getFontScale() {
+        return fontScale;
+    }
+
+    public void setFontScale(String fontScale) {
+        this.fontScale = fontScale;
+    }
+
+    public boolean isReduceMotion() {
+        return reduceMotion;
+    }
+
+    public void setReduceMotion(boolean reduceMotion) {
+        this.reduceMotion = reduceMotion;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @PrePersist
+    void applyProfileDefaults() {
+        if (displayName == null || displayName.isBlank()) {
+            displayName = name;
+        }
+        if (timezone == null || timezone.isBlank()) {
+            timezone = "Asia/Shanghai";
+        }
+        if (fontScale == null || fontScale.isBlank()) {
+            fontScale = "standard";
+        }
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 }

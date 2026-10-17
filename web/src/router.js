@@ -7,6 +7,7 @@ const router = createRouter({
     { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue') },
     { path: '/today', name: 'today', component: () => import('./views/TodayView.vue') },
     { path: '/progress/weekly', name: 'weekly-report', component: () => import('./views/WeeklyReportView.vue') },
+    { path: '/settings/profile', name: 'profile-settings', component: () => import('./views/ProfileSettingsView.vue') },
     { path: '/settings/notifications', name: 'notifications', component: () => import('./views/NotificationSettingsView.vue') },
     { path: '/goals', name: 'goals', component: () => import('./views/GoalListView.vue') },
     { path: '/goals/new', name: 'goal-new', component: () => import('./views/GoalFormView.vue') },

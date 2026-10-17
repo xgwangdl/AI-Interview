@@ -202,6 +202,7 @@ describe('令牌过期（401）的统一处理', () => {
     localStorage.setItem('token', 'expired');
     localStorage.setItem('userId', '7');
     localStorage.setItem('userName', 'alice');
+    localStorage.setItem('light-interview-display-name', '青禾');
     globalThis.fetch = vi.fn().mockResolvedValue(
       fakeResponse(401, JSON.stringify({ code: 401, message: 'Invalid or expired token', data: null })),
     );
@@ -211,6 +212,7 @@ describe('令牌过期（401）的统一处理', () => {
     expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('userId')).toBeNull();
     expect(localStorage.getItem('userName')).toBeNull();
+    expect(localStorage.getItem('light-interview-display-name')).toBeNull();
   });
 
   it('403 不当成令牌过期处理，本地凭证保留', async () => {

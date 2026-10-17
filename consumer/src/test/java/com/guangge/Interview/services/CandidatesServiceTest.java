@@ -136,6 +136,40 @@ class CandidatesServiceTest {
         verify(repository, never()).save(any(Candidates.class));
     }
 
+    @Test
+    void changesPasswordAfterVerifyingTheCurrentOne() {
+        Candidates stored = candidate("alice", encoder.encode("secret123"));
+        when(repository.findFirstByName("alice")).thenReturn(Optional.of(stored));
+
+        service.changePassword("alice", "secret123", "new-secret");
+
+        assertTrue(encoder.matches("new-secret", stored.getCode()));
+        verify(repository).save(stored);
+    }
+
+    @Test
+    void rejectsPasswordChangeWithWrongCurrentPassword() {
+        Candidates stored = candidate("alice", encoder.encode("secret123"));
+        when(repository.findFirstByName("alice")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.changePassword("alice", "wrong-password", "new-secret"));
+
+        assertEquals(400, exception.getStatusCode().value());
+        assertTrue(encoder.matches("secret123", stored.getCode()));
+        verify(repository, never()).save(any(Candidates.class));
+    }
+
+    @Test
+    void rejectsTooShortNewPassword() {
+        Candidates stored = candidate("alice", encoder.encode("secret123"));
+        when(repository.findFirstByName("alice")).thenReturn(Optional.of(stored));
+
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> service.changePassword("alice", "secret123", "12345")).getStatusCode().value());
+        verify(repository, never()).save(any(Candidates.class));
+    }
+
     private static Candidates candidate(String name, String code) {
         Candidates candidate = new Candidates();
         candidate.setName(name);
