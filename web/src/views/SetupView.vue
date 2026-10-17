@@ -26,6 +26,8 @@ const rules = { role: [{ required: true, message: '请填写目标岗位', trigg
  */
 const focusDimensions = ref([]);
 const focusLabels = computed(() => focusDimensions.value.map((key) => DIMENSION_LABELS[key] || key));
+/** 创建练习期间锁住按钮：出题 + 建会话可能要几秒，重复点会建出多场练习。 */
+const submitting = ref(false);
 
 onMounted(async () => {
   if (typeof route.query.role === 'string' && route.query.role) form.role = route.query.role;
@@ -69,6 +71,8 @@ async function onResumeChange(event) {
 }
 
 async function continueToDevices() {
+  if (submitting.value) return;
+  submitting.value = true;
   try {
     await formRef.value.validate();
     const questions = await resolveQuestions();
@@ -81,6 +85,8 @@ async function continueToDevices() {
     router.push(`/practice/device-check?id=${draft.id}`);
   } catch (error) {
     ElMessage.error(error.message || '无法创建练习，请检查后端连接。');
+  } finally {
+    submitting.value = false;
   }
 }
 
@@ -170,7 +176,8 @@ async function resolveQuestions() {
       <aside class="setup-aside">
         <div class="summary-card panel"><div class="section-title">本次练习</div><div class="summary-role">{{ form.role || '待填写岗位' }}</div><div class="summary-company">{{ form.company || '目标公司未填写' }}</div><div class="summary-divider"></div><div class="summary-row"><span>面试类型</span><strong>{{ { behavioral: '综合行为', technical: '技术能力', manager: '管理岗位' }[form.interviewType] }}</strong></div><div class="summary-row"><span>预计题目</span><strong>{{ form.questionCount }} 道</strong></div><div class="summary-row"><span>预计时长</span><strong>约 {{ form.durationMinutes }} 分钟</strong></div><div class="summary-row"><span>录像保存</span><strong>服务端 · 7 天</strong></div></div>
         <div class="privacy-card"><el-icon><Lock /></el-icon><div><strong>你的练习由你掌控</strong><p>设备录制需要你主动授权。每题独立保存，可重录、回看或立即删除。</p></div></div>
-        <el-button class="primary-button continue-button" @click="continueToDevices">继续检测设备 <el-icon><ArrowRight /></el-icon></el-button>
+        <el-button class="primary-button continue-button" :loading="submitting" :disabled="submitting"
+                   @click="continueToDevices">继续检测设备 <el-icon><ArrowRight /></el-icon></el-button>
       </aside>
     </el-form>
   </section>
