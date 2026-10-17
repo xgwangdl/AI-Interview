@@ -48,6 +48,7 @@ export function trySyncSession(session) {
       company: session.company,
       jobDescription: session.jobDescription,
       resumeName: session.resumeName,
+      goalId: session.goalId || null,
       interviewType: session.interviewType,
       difficulty: session.difficulty,
       interviewerStyle: session.interviewerStyle,

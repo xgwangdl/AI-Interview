@@ -22,6 +22,9 @@
 > 隐私与手机端；含数据模型、接口、验收标准与 6 个阶段。见
 > [P0-RETENTION-REQUIREMENTS.md](P0-RETENTION-REQUIREMENTS.md)。
 
+> **Phase 1 已实现（2026-10-17）**：求职目标（Goal）+ 今日 3 题 + 练习回挂目标 + 连续记录。
+> 迁移 `V13`；首页第一屏现在回答"距面试几天、今天练什么"，而不是只展示概览卡。
+
 > **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
 > 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
@@ -1464,6 +1467,30 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 
 **这次的坑**：PowerShell 的 `-Form @{ audio = Get-Item x.wav }` 会把音频标成 `application/octet-stream`，
 后端原来只收 `audio/*` 会 415；现在放行 octet-stream（真实格式由 ffmpeg 校验）。
+
+### 2026-10-17 Phase 1：求职目标 + 今日 3 题（已完成）
+
+按 [P0-RETENTION-REQUIREMENTS.md](P0-RETENTION-REQUIREMENTS.md) 的 Phase 1 落地：
+
+- 迁移 `V13`：`job_goals`、`study_plans`、`study_plan_items`，并给 `practice_sessions` 加 `goal_id`；
+- 目标：公司/岗位/JD/简历/轮次/面试时间/状态；首页选"最近要面试的未归档目标"，并算倒计时；
+- 今日 3 题：规则版 1 道薄弱项 + 1 道错题（没有则岗位高频）+ 1 道岗位高频；每天首次打开生成，当天不重复；
+- 开始计划项：后端直接建一场单题练习（错题项复用原题），不经过设备配置页，前端直接去设备检测；
+- 练习与目标关联：练习完成时自动把计划项标完成；连续记录按"当天完成 ≥2 题"算 1 天；
+- 目标详情：进度、维度平均、今日计划、关联练习；支持编辑/归档/删除（删除练习保留但解绑）；
+- 首页：第一屏是"当前目标 + 今天练什么"，原来的概览/档案/错题本下移。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端单测 | 238 → **247 个**（目标 CRUD/倒计时/越权/删除、今日计划规则、开始练习、连续记录） |
+| 前端单测 | 117 → **122 个**（目标文案、倒计时、进度、日期转换、计划接口） |
+| 接口 E2E | `scripts/verify-goals-phase1.ps1` **17/17**：建目标 → 3 题 → 开始一题（练习挂 goalId）→ 完成 2 题连续 1 天 → 编辑/查询 → 清理 |
+| 浏览器 | `node web/scripts/verify-goals-phase1.mjs` 全过：建目标 → 详情 3 题 → 首页目标卡+3 题 → 开始落到设备检测；截图 `data/screenshots/goal-detail.png`、`dashboard-goal-today.png` |
+
+**设计取舍**：Phase 1 的题目先用模板（不调用模型），保证"从首页到开口"不被模型延迟卡住；
+Phase 6 接入题库后再替换为真实题目。连续面试、转写纠错、改写重录、周报、提醒、小组仍按文档后续阶段做。
 
 ### 2026-10-17 L2 实时通道（进行中，默认关闭）
 

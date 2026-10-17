@@ -121,7 +121,7 @@ class PracticeSessionServiceTest {
 
     @Test
     void createsSessionWithAuthenticatedOwnerAndRetentionDeadline() {
-        PracticeSessionRequest request = new PracticeSessionRequest("Java 后端", null, null, null,
+        PracticeSessionRequest request = new PracticeSessionRequest("Java 后端", null, null, null, null,
                 "technical", "standard", "balanced", 1, 4,
                 false,
                 List.of(new PracticeQuestion("q-1", "Explain a design", "design")));

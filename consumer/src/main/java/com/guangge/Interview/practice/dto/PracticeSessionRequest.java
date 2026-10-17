@@ -15,6 +15,8 @@ public record PracticeSessionRequest(
         @Size(max = 200) String company,
         @Size(max = 10000) String jobDescription,
         @Size(max = 255) String resumeName,
+        /** 为空表示快速练习；有值时这场练习计入该目标的进度与计划。 */
+        java.util.UUID goalId,
         @NotBlank @Size(max = 32) String interviewType,
         @NotBlank @Size(max = 32) String difficulty,
         @NotBlank @Size(max = 32) String interviewerStyle,

@@ -62,6 +62,7 @@ public class PracticeSessionService {
         PracticeSessionEntity session = new PracticeSessionEntity();
         session.setId(UUID.randomUUID());
         session.setOwnerId(ownerId);
+        session.setGoalId(request.goalId());
         session.setRole(request.role().trim());
         session.setCompany(trimToNull(request.company()));
         session.setJobDescription(trimToNull(request.jobDescription()));
@@ -82,6 +83,21 @@ public class PracticeSessionService {
     @Transactional(readOnly = true)
     public List<PracticeSessionView> list(String ownerId) {
         return sessions.findAllByOwnerIdOrderByCreatedAtDesc(ownerId).stream()
+                .map(this::toViewWithAnswers)
+                .toList();
+    }
+
+    /** 把一场由"错题重练"创建的练习挂到目标上（用于每日计划里的错题项）。 */
+    @Transactional
+    public PracticeSessionView linkGoal(String ownerId, UUID sessionId, UUID goalId) {
+        PracticeSessionEntity session = requireOwnedSession(ownerId, sessionId);
+        session.setGoalId(goalId);
+        return toView(sessions.save(session), answerViews(sessionId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PracticeSessionView> listByGoal(String ownerId, UUID goalId) {
+        return sessions.findAllByOwnerIdAndGoalIdOrderByCreatedAtDesc(ownerId, goalId).stream()
                 .map(this::toViewWithAnswers)
                 .toList();
     }
@@ -290,7 +306,7 @@ public class PracticeSessionService {
     }
 
     private PracticeSessionView toView(PracticeSessionEntity session, List<PracticeAnswerView> sessionAnswers) {
-        return new PracticeSessionView(session.getId(), session.getRole(), session.getCompany(),
+        return new PracticeSessionView(session.getId(), session.getGoalId(), session.getRole(), session.getCompany(),
                 session.getJobDescription(), session.getResumeName(), session.getInterviewType(),
                 session.getDifficulty(), session.getInterviewerStyle(), session.getQuestionCount(),
                 session.getDurationMinutes(), session.isFollowUpEnabled(),

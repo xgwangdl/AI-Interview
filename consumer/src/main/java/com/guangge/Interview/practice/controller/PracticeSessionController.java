@@ -48,6 +48,7 @@ public class PracticeSessionController {
     private final MediaSignedUrlService signedUrls;
     private final OwnerResolver owners;
     private final com.guangge.Interview.practice.followup.PracticeFollowUpService followUps;
+    private final com.guangge.Interview.goal.DailyPlanService dailyPlans;
 
     public PracticeSessionController(
             PracticeSessionService practiceSessions,
@@ -55,13 +56,15 @@ public class PracticeSessionController {
             AnalysisJobService analysisJobs,
             MediaSignedUrlService signedUrls,
             OwnerResolver owners,
-            com.guangge.Interview.practice.followup.PracticeFollowUpService followUps) {
+            com.guangge.Interview.practice.followup.PracticeFollowUpService followUps,
+            com.guangge.Interview.goal.DailyPlanService dailyPlans) {
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.analysisJobs = analysisJobs;
         this.signedUrls = signedUrls;
         this.owners = owners;
         this.followUps = followUps;
+        this.dailyPlans = dailyPlans;
     }
 
     @PostMapping("/practice-sessions")
@@ -146,6 +149,7 @@ public class PracticeSessionController {
             @PathVariable UUID id) {
         PracticeSessionView completed = practiceSessions.complete(owner(authorization), id);
         analysisJobs.enqueue(id);
+        dailyPlans.sessionCompleted(id);
         return completed;
     }
 

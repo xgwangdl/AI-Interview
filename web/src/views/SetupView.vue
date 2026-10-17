@@ -6,6 +6,7 @@ import { usePracticeStore } from '../stores/practice';
 import { extractResume, planQuestions, trySyncSession } from '../services/api';
 import { buildQuestions } from '../data/questions';
 import { DIMENSION_LABELS } from '../services/practiceArchive';
+import { getGoal } from '../services/goals';
 
 const router = useRouter();
 const route = useRoute();
@@ -15,6 +16,7 @@ const resumeName = ref('');
 const resumeText = ref('');
 const resumeStatus = ref('');
 const form = reactive({ role: '', company: '', jobDescription: '', interviewType: 'behavioral', difficulty: 'standard', interviewerStyle: 'balanced', questionCount: 5, durationMinutes: 20, followUpEnabled: true });
+const goalId = ref('');
 watch(() => form.questionCount, (count) => { form.durationMinutes = count * 4; });
 const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
 
@@ -25,9 +27,20 @@ const rules = { role: [{ required: true, message: '请填写目标岗位', trigg
 const focusDimensions = ref([]);
 const focusLabels = computed(() => focusDimensions.value.map((key) => DIMENSION_LABELS[key] || key));
 
-onMounted(() => {
+onMounted(async () => {
   if (typeof route.query.role === 'string' && route.query.role) form.role = route.query.role;
   if (typeof route.query.company === 'string' && route.query.company) form.company = route.query.company;
+  if (typeof route.query.goalId === 'string' && route.query.goalId) {
+    goalId.value = route.query.goalId;
+    try {
+      const goal = await getGoal(goalId.value);
+      form.role = goal.role || form.role;
+      form.company = goal.company || form.company;
+      form.jobDescription = goal.jobDescription || form.jobDescription;
+    } catch {
+      goalId.value = '';
+    }
+  }
   focusDimensions.value = String(route.query.focus || '')
     .split(',')
     .map((key) => key.trim())
@@ -59,7 +72,7 @@ async function continueToDevices() {
   try {
     await formRef.value.validate();
     const questions = await resolveQuestions();
-    const draft = practice.createDraft({ ...form, resumeName: resumeName.value, questions });
+    const draft = practice.createDraft({ ...form, goalId: goalId.value || null, resumeName: resumeName.value, questions });
     const remote = await trySyncSession(draft);
     draft.id = remote.id;
     draft.createdAt = remote.createdAt;

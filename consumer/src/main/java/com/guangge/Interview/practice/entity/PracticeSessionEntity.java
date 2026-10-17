@@ -17,6 +17,10 @@ public class PracticeSessionEntity {
     @Column(name = "owner_id", nullable = false, length = 160)
     private String ownerId;
 
+    /** 关联的求职目标；为空表示快速练习。 */
+    @Column(name = "goal_id")
+    private UUID goalId;
+
     @Column(name = "role", nullable = false, length = 160)
     private String role;
 
@@ -75,6 +79,8 @@ public class PracticeSessionEntity {
     public void setId(UUID id) { this.id = id; }
     public String getOwnerId() { return ownerId; }
     public void setOwnerId(String ownerId) { this.ownerId = ownerId; }
+    public UUID getGoalId() { return goalId; }
+    public void setGoalId(UUID goalId) { this.goalId = goalId; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     public String getCompany() { return company; }

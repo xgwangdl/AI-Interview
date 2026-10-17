@@ -5,6 +5,9 @@ import { usePracticeStore } from '../stores/practice';
 import { buildArchive, loadArchive, trendPoints } from '../services/practiceArchive';
 import { buildMistakes, loadMistakes } from '../services/practiceMistakes';
 import { ElMessage } from 'element-plus';
+import {
+  getTodayPlan, goalProgressPercent, interviewLabel, listGoals, PLAN_KIND_LABELS, startPlanItem,
+} from '../services/goals';
 
 const router = useRouter();
 const practice = usePracticeStore();
@@ -12,6 +15,9 @@ const archive = ref(null);
 const archiveLoading = ref(true);
 const mistakeBook = ref(null);
 const retrying = ref('');
+const goals = ref([]);
+const todayPlan = ref(null);
+const startingPlanItem = ref('');
 
 // 折线画布用固定尺寸 + 自己算坐标：省一个图表库依赖，也不用联网装包
 const TREND_WIDTH = 320;
@@ -22,7 +28,40 @@ const trendPath = computed(() => trendDots.value.map((dot) => `${dot.x},${dot.y}
 onMounted(() => {
   loadArchiveSummary();
   loadMistakeBook();
+  loadGoalAndPlan();
 });
+
+const primaryGoal = computed(() => goals.value.find((goal) => goal.status !== 'archived') || null);
+const goalPercent = computed(() => goalProgressPercent(primaryGoal.value?.progress));
+
+/** 首页第一屏：目标卡 + 今日 3 题。没有目标也能拿到通用计划。 */
+async function loadGoalAndPlan() {
+  try {
+    goals.value = await listGoals();
+    todayPlan.value = await getTodayPlan();
+  } catch {
+    goals.value = [];
+    todayPlan.value = null;
+  }
+}
+
+async function startTodayItem(item) {
+  if (startingPlanItem.value) return;
+  startingPlanItem.value = item.id;
+  try {
+    const session = await startPlanItem(item.id);
+    await practice.loadFromServer();
+    router.push(`/practice/device-check?id=${session.id}`);
+  } catch (error) {
+    ElMessage.error(error?.message || '无法开始这一题');
+  } finally {
+    startingPlanItem.value = '';
+  }
+}
+
+function createPractice() {
+  router.push(primaryGoal.value ? `/practice/setup?goalId=${primaryGoal.value.id}` : '/practice/setup');
+}
 
 async function loadArchiveSummary() {
   archiveLoading.value = true;
@@ -93,8 +132,50 @@ function timeLabel(value) {
   <section class="dashboard-page">
     <div class="page-heading dashboard-heading">
       <div><div class="eyebrow">{{ dateLabel }}</div><h1>每一次练习，都让表达更清晰</h1><p>从一个真实岗位开始，循序完成练习、录制与复盘。</p></div>
-      <el-button class="primary-button" @click="router.push('/practice/setup')"><el-icon><Plus /></el-icon> 创建练习</el-button>
+      <el-button class="primary-button" @click="createPractice"><el-icon><Plus /></el-icon> 创建练习</el-button>
     </div>
+
+    <section class="goal-today-grid">
+      <article class="panel goal-focus">
+        <template v-if="primaryGoal">
+          <div class="goal-focus-head">
+            <span>当前目标</span>
+            <el-tag class="tag-ready" size="small">{{ interviewLabel(primaryGoal.daysUntilInterview) }}</el-tag>
+          </div>
+          <strong class="goal-focus-title">{{ primaryGoal.company || '目标岗位' }} · {{ primaryGoal.role }}</strong>
+          <div class="goal-focus-progress">
+            <span><i :style="{ width: `${goalPercent}%` }"></i></span>
+            <small>{{ primaryGoal.progress?.planCompleted || 0 }}/{{ primaryGoal.progress?.planItems || 0 }} 训练项 · {{ primaryGoal.progress?.sessions || 0 }} 场练习</small>
+          </div>
+          <button class="goal-focus-link" @click="router.push(`/goals/${primaryGoal.id}`)">
+            查看目标与计划 <el-icon><ArrowRight /></el-icon>
+          </button>
+        </template>
+        <template v-else>
+          <div class="goal-focus-head"><span>当前目标</span></div>
+          <strong class="goal-focus-title">还没有目标岗位</strong>
+          <p class="goal-focus-empty">添加岗位和面试日期，首页就会告诉你今天练什么。</p>
+          <el-button class="primary-button" @click="router.push('/goals/new')">添加求职目标</el-button>
+        </template>
+      </article>
+
+      <article class="panel today-focus">
+        <div class="today-focus-head">
+          <div><strong>今天练什么</strong><small>{{ todayPlan?.goalTitle || '通用训练' }} · 连续 {{ todayPlan?.streak?.current || 0 }} 天</small></div>
+          <button class="link-button" @click="router.push('/today')">查看全部 <el-icon><ArrowRight /></el-icon></button>
+        </div>
+        <div class="today-focus-list">
+          <div v-for="(item, index) in todayPlan?.items || []" :key="item.id" class="today-focus-row" :class="item.status">
+            <span class="today-index">{{ index + 1 }}</span>
+            <span class="today-main"><small>{{ PLAN_KIND_LABELS[item.kind] || item.kind }}</small><strong>{{ item.title }}</strong></span>
+            <el-button v-if="item.status === 'pending' || item.status === 'in_progress'" class="soft-button"
+                       :loading="startingPlanItem === item.id" @click="startTodayItem(item)">开始</el-button>
+            <span v-else class="today-done">{{ item.status === 'completed' ? '已完成' : '已跳过' }}</span>
+          </div>
+          <p v-if="!todayPlan?.items?.length" class="today-empty">计划正在生成；也可以先点「创建练习」。</p>
+        </div>
+      </article>
+    </section>
 
     <div class="overview-grid">
       <article class="overview-card panel">
@@ -110,7 +191,7 @@ function timeLabel(value) {
       <article class="overview-card panel next-practice-card">
         <div class="overview-card-label"><span>下一步</span><i class="icon-coral"><el-icon><Microphone /></el-icon></i></div>
         <div class="next-practice-copy">用视频模拟一次<br />真实面试现场</div>
-        <button class="text-action" @click="router.push('/practice/setup')">配置岗位与题目 <el-icon><ArrowRight /></el-icon></button>
+        <button class="text-action" @click="createPractice">配置岗位与题目 <el-icon><ArrowRight /></el-icon></button>
       </article>
     </div>
 
@@ -245,6 +326,31 @@ function timeLabel(value) {
 </template>
 
 <style scoped>
+.goal-today-grid { display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr); gap: 15px; margin-bottom: 18px; }
+.goal-focus, .today-focus { padding: 15px 18px; box-shadow: none; }
+.goal-focus { display: grid; align-content: start; gap: 9px; }
+.goal-focus-head, .today-focus-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.goal-focus-head > span { color: #8d9792; font-size: 12px; }
+.goal-focus-title { color: #2f3c35; font-size: 17px; font-weight: 650; line-height: 1.4; }
+.goal-focus-progress { display: grid; gap: 5px; }
+.goal-focus-progress > span { display: block; height: 6px; overflow: hidden; border-radius: 3px; background: #eef1ee; }
+.goal-focus-progress i { display: block; height: 100%; background: var(--green); }
+.goal-focus-progress small { color: #98a29d; font-size: 11px; }
+.goal-focus-link { display: inline-flex; align-items: center; gap: 4px; justify-self: start; padding: 0; border: 0; background: transparent; color: var(--green); font-size: 12px; font-weight: 600; }
+.goal-focus-empty { margin: 0; color: #8d9792; font-size: 12px; line-height: 1.7; }
+.today-focus { display: grid; gap: 8px; }
+.today-focus-head strong { display: block; color: #34403a; font-size: 14px; }
+.today-focus-head small { display: block; margin-top: 3px; color: #98a29d; font-size: 11px; }
+.today-focus-list { display: grid; gap: 6px; }
+.today-focus-row { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: 1px solid #eef1ee; border-radius: 7px; }
+.today-focus-row.completed { background: #f5faf6; }
+.today-focus-row.skipped { opacity: .55; }
+.today-index { display: grid; width: 22px; height: 22px; flex: none; place-items: center; border-radius: 50%; background: #f1f4f1; color: #829088; font-size: 11px; }
+.today-main { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.today-main small { color: #a9722f; font-size: 10px; }
+.today-main strong { overflow: hidden; color: #46524c; font-size: 12px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.today-done { color: #5d8b6c; font-size: 11px; }
+.today-empty { margin: 4px 0; color: #98a29d; font-size: 12px; }
 .overview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-bottom: 28px; }
 .overview-card { min-height: 143px; padding: 17px 19px 14px; box-shadow: none; }
 .overview-card-label { display: flex; align-items: center; justify-content: space-between; color: #7c8782; font-size: 14px; }
@@ -307,4 +413,5 @@ function timeLabel(value) {
 @media(max-width: 1080px) { .archive-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }.archive-grid > :last-child { grid-column: 1 / -1; } }
 @media(max-width: 920px) { .dashboard-lower { grid-template-columns: 1fr; }.guidance-section { display: none; }.archive-grid { grid-template-columns: 1fr; }.archive-grid > :last-child { grid-column: auto; } }
 @media(max-width: 680px) { .overview-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }.overview-card { min-height: 130px; padding: 13px; }.overview-card:last-child { grid-column: 1 / -1; min-height: 133px; }.overview-number { font-size: 25px; }.recent-row { gap: 8px; padding: 0 10px; }.recent-date, .recent-arrow { display: none; }.recent-main span { max-width: 160px; } }
+@media(max-width: 900px) { .goal-today-grid { grid-template-columns: 1fr; } }
 </style>

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record PracticeSessionView(
         UUID id,
+        UUID goalId,
         String role,
         String company,
         String jobDescription,

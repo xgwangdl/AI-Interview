@@ -5,6 +5,11 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue') },
     { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue') },
+    { path: '/today', name: 'today', component: () => import('./views/TodayView.vue') },
+    { path: '/goals', name: 'goals', component: () => import('./views/GoalListView.vue') },
+    { path: '/goals/new', name: 'goal-new', component: () => import('./views/GoalFormView.vue') },
+    { path: '/goals/:id/edit', name: 'goal-edit', component: () => import('./views/GoalFormView.vue') },
+    { path: '/goals/:id', name: 'goal-detail', component: () => import('./views/GoalDetailView.vue') },
     { path: '/practice/setup', name: 'setup', component: () => import('./views/SetupView.vue') },
     { path: '/practice/device-check', name: 'device-check', component: () => import('./views/DeviceCheckView.vue') },
     { path: '/practice/:id/session', name: 'session', component: () => import('./views/SessionView.vue') },

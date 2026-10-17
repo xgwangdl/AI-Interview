@@ -132,6 +132,7 @@ public class MistakeBookService {
                 null,
                 null,
                 null,
+                null,
                 blankTo(row.getInterviewType(), "behavioral"),
                 blankTo(row.getDifficulty(), "standard"),
                 blankTo(row.getInterviewerStyle(), "balanced"),

@@ -424,6 +424,17 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 与面试模块的关键区别：**没有异步队列**。对话必须同步返回，否则"入队 + 15 秒轮询"就变成留言板。
 能力验证脚本是 `VoiceCapabilityProbe`（`-Dvoice.probe=true`），它不是 CI 的一部分。
 
+### 5.11 `goal` —— 求职目标与每日计划（Phase 1）
+
+| 类 | 职责 |
+| --- | --- |
+| `JobGoalService` / `JobGoalController` | 目标的 CRUD、倒计时、归档/删除；删除时练习解绑、计划级联删除 |
+| `DailyPlanService` / `DailyPlanController` | 今日 3 题的规则生成、开始计划项、完成回写、连续记录 |
+| `JobGoalEntity` / `StudyPlanEntity` / `StudyPlanItemEntity` | 目标、7 天计划、每日计划项 |
+
+规则：1 道薄弱维度 + 1 道错题（没有就岗位高频）+ 1 道岗位高频；题目在"开始"时用模板生成，
+不额外调用模型，所以首页到开口不被模型延迟卡住。计划项完成后更新目标进度；当天完成 ≥2 题记 1 天连续。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -487,6 +498,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V9__score_archive_and_follow_up.sql` | `practice_score_archive` + `practice_sessions.follow_up_enabled` | 成绩与录像分开保留（只存分数与维度），并回填历史；追问开关 |
 | `V10__mistake_book.sql` | `practice_score_archive` | 题面 / 题目分类 / 面试类型与风格跟着成绩走，错题本才有题可重练；回填还在保留期内的历史 |
 | `V11__language_practice.sql` | `language_sessions` / `language_turns` | 外语口语：会话（语言/场景/水平/轮数/报告）+ 每一轮（录音、转写、回复、建议、四段耗时） |
+| `V12__language_stream_timing.sql` | `language_turns` | L2 首字/首帧耗时（实时通道当前默认关闭） |
+| `V13__job_goals_and_daily_plans.sql` | `job_goals` / `study_plans` / `study_plan_items` + `practice_sessions.goal_id` | 求职目标、每日计划与练习回挂目标 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -530,7 +543,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 文件 | 职责 |
 | --- | --- |
 | `main.js` / `App.vue` | 应用入口与整体布局 |
-| `router.js` | 路由：`/login`、`/`（工作台）、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`、`/language`、`/language/:id` |
+| `router.js` | 路由：`/login`、`/`（工作台）、`/today`、`/goals`、`/goals/new`、`/goals/:id`、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`、`/language`、`/language/:id` |
 | `authGuard.js` | 路由守卫：未登录跳登录页 |
 | `views/` | 练习主线页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView`、`MistakeBookView`（简历与笔试的页面见下两行） |
 | `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |
