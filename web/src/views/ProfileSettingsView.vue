@@ -1,6 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { THEMES } from '../services/theme';
 import {
@@ -8,13 +7,10 @@ import {
   formatJoinedAt, loadProfile, normalizeFontScale, profileDisplayName, profileInitial,
   rememberDisplayName, saveProfile,
 } from '../services/profile';
-import { loadNotificationPreferences } from '../services/progress';
 
-const router = useRouter();
 const loading = ref(true);
 const savingProfile = ref(false);
 const savingPassword = ref(false);
-const notifications = ref(null);
 const profile = reactive({
   loginName: '',
   displayName: '',
@@ -25,7 +21,7 @@ const profile = reactive({
   theme: 'green',
   joinedAt: null,
 });
-const password = reactive({ current: '', next: '', confirm: '' });
+const password = reactive({ next: '', confirm: '' });
 
 const currentName = computed(() => profileDisplayName(profile));
 const timezoneOptions = computed(() => {
@@ -35,20 +31,7 @@ const timezoneOptions = computed(() => {
   return [...TIMEZONE_OPTIONS, { value: profile.timezone, label: profile.timezone }];
 });
 
-onMounted(async () => {
-  window.addEventListener('light-interview-theme-updated', syncTheme);
-  await load();
-});
-
-onUnmounted(() => {
-  window.removeEventListener('light-interview-theme-updated', syncTheme);
-});
-
-function syncTheme(event) {
-  if (event?.detail?.theme && THEMES[event.detail.theme]) {
-    profile.theme = event.detail.theme;
-  }
-}
+onMounted(load);
 
 async function load() {
   loading.value = true;
@@ -57,19 +40,10 @@ async function load() {
     profile.fontScale = normalizeFontScale(profile.fontScale);
     applyAppearanceSettings(profile);
     rememberDisplayName(currentName.value);
-    void loadReminderSummary();
   } catch (error) {
     ElMessage.error(error?.message || '无法读取个人资料');
   } finally {
     loading.value = false;
-  }
-}
-
-async function loadReminderSummary() {
-  try {
-    notifications.value = await loadNotificationPreferences();
-  } catch {
-    notifications.value = null;
   }
 }
 
@@ -122,10 +96,6 @@ async function submitProfile() {
 
 async function submitPassword() {
   if (savingPassword.value) return;
-  if (!password.current) {
-    ElMessage.warning('请输入当前密码。');
-    return;
-  }
   if (password.next.length < 6) {
     ElMessage.warning('新密码至少需要 6 位。');
     return;
@@ -136,8 +106,7 @@ async function submitPassword() {
   }
   savingPassword.value = true;
   try {
-    await changePassword({ currentPassword: password.current, newPassword: password.next });
-    password.current = '';
+    await changePassword({ newPassword: password.next });
     password.next = '';
     password.confirm = '';
     ElMessage.success('密码已更新，下次登录请使用新密码');
@@ -275,43 +244,26 @@ async function submitPassword() {
           <span class="panel-icon secure"><el-icon><Key /></el-icon></span>
         </div>
         <el-form class="settings-form password-form" label-position="top" @submit.prevent="submitPassword">
-          <el-form-item label="当前密码">
-            <el-input v-model="password.current" type="password" show-password maxlength="100" autocomplete="current-password" />
-          </el-form-item>
           <div class="form-grid">
             <el-form-item label="新密码">
               <el-input v-model="password.next" type="password" show-password maxlength="100" autocomplete="new-password" placeholder="至少 6 位" />
             </el-form-item>
             <el-form-item label="确认新密码">
-              <el-input v-model="password.confirm" type="password" show-password maxlength="100" autocomplete="new-password" />
+              <el-input v-model="password.confirm" type="password" show-password maxlength="100" autocomplete="new-password" placeholder="再次输入新密码" />
             </el-form-item>
           </div>
         </el-form>
-      </section>
-
-      <section class="panel reminder-link-panel">
-        <span class="panel-icon reminder"><el-icon><Bell /></el-icon></span>
-        <div>
-          <strong>提醒设置</strong>
-          <p v-if="notifications">
-            {{ notifications.emailEnabled ? '邮件提醒已开启' : '邮件提醒已关闭' }}
-            <span>·</span>
-            {{ notifications.emailEnabled ? `每日 ${notifications.reminderTime} 提醒` : '可随时重新开启' }}
-          </p>
-          <p v-else>管理每日练习、周报和面试倒计时邮件。</p>
+        <div class="security-actions">
+          <el-button class="soft-button" :loading="savingPassword" :disabled="savingPassword" @click="submitPassword">
+            更新密码
+          </el-button>
         </div>
-        <el-button class="soft-button" @click="router.push('/settings/notifications')">
-          管理提醒<el-icon><ArrowRight /></el-icon>
-        </el-button>
       </section>
     </div>
 
     <div class="settings-actions">
       <span>修改会同步到你的账号，换设备登录后仍然生效。</span>
-      <div>
-        <el-button class="soft-button" :loading="savingPassword" :disabled="savingPassword" @click="submitPassword">更新密码</el-button>
-        <el-button class="primary-button" :loading="savingProfile" :disabled="savingProfile" @click="submitProfile">保存个人设置</el-button>
-      </div>
+      <el-button class="primary-button" :loading="savingProfile" :disabled="savingProfile" @click="submitProfile">保存个人设置</el-button>
     </div>
   </section>
 </template>
@@ -327,7 +279,6 @@ async function submitPassword() {
 .panel-icon { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 7px; background: var(--green-soft); color: var(--green); font-size: 17px; }
 .panel-icon.warm { background: #fbf2df; color: #ad7726; }
 .panel-icon.secure { background: var(--blue-soft); color: var(--blue); }
-.panel-icon.reminder { background: var(--coral-soft); color: #b96a54; }
 .identity-strip { display: flex; align-items: center; gap: 11px; margin-top: 20px; padding: 14px; border: 1px solid #e9ede9; border-radius: 7px; background: #fafcf9; }
 .profile-avatar.large { width: 42px; height: 42px; flex: none; font-size: 18px; }
 .identity-strip > div:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
@@ -364,29 +315,19 @@ async function submitPassword() {
 .motion-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #edf0ed; }
 .motion-row > div { display: grid; gap: 5px; }
 .motion-row span { line-height: 1.5; }
-.password-form :deep(.el-form-item:first-child) { max-width: calc(50% - 7px); }
-.reminder-link-panel { grid-column: 2; display: flex; align-items: center; gap: 11px; padding: 16px 18px; }
-.reminder-link-panel > div { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.reminder-link-panel strong { color: #46534c; font-size: 14px; }
-.reminder-link-panel p { margin: 0; color: #929c97; font-size: 12px; line-height: 1.55; }
-.reminder-link-panel p span { margin: 0 4px; color: #c2c9c5; }
-.reminder-link-panel .el-button { flex: none; }
+.password-form { margin-bottom: 14px; }
+.security-actions { display: flex; justify-content: flex-end; }
 .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; padding: 15px 2px 0; }
 .settings-actions > span { color: #929c96; font-size: 12px; }
-.settings-actions > div { display: flex; gap: 9px; }
 @media (max-width: 980px) {
   .settings-layout { grid-template-columns: 1fr; }
   .profile-panel { grid-row: auto; }
-  .reminder-link-panel { grid-column: auto; }
 }
 @media (max-width: 560px) {
   .settings-panel { padding: 18px 15px; }
   .form-grid { grid-template-columns: 1fr; }
-  .password-form :deep(.el-form-item:first-child) { max-width: none; }
   .settings-actions { align-items: stretch; flex-direction: column; }
-  .settings-actions > div { display: grid; grid-template-columns: 1fr 1fr; }
-  .reminder-link-panel { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: start; }
-  .reminder-link-panel > div { min-width: 0; }
-  .reminder-link-panel .el-button { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; }
+  .settings-actions .primary-button { width: 100%; }
+  .security-actions .el-button { width: 100%; }
 }
 </style>

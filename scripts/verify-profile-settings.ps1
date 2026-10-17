@@ -77,7 +77,6 @@ try {
 
     Invoke-RestMethod -Method Put -Uri "$api/me/password" -Headers $headers `
         -ContentType 'application/json' -Body (@{
-            currentPassword = $Code
             newPassword = $temporaryCode
         } | ConvertTo-Json -Compress) | Out-Null
     $passwordChanged = $true
@@ -90,7 +89,6 @@ try {
             try {
                 Invoke-RestMethod -Method Put -Uri "$api/me/password" -Headers $headers `
                     -ContentType 'application/json' -Body (@{
-                        currentPassword = $temporaryCode
                         newPassword = $Code
                     } | ConvertTo-Json -Compress) | Out-Null
                 Write-Host '  CLEAN 原密码已恢复' -ForegroundColor DarkGray

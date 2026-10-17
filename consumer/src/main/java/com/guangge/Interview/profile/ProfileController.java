@@ -46,7 +46,6 @@ public class ProfileController {
             @Valid @RequestBody PasswordChangeRequest request) {
         candidates.changePassword(
                 owners.requireOwner(authorization),
-                request.currentPassword(),
                 request.newPassword());
         return Map.of("changed", true);
     }

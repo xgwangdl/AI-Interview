@@ -52,12 +52,6 @@ html[data-reduce-motion="true"] *::after {
 .main-nav button:hover { background: #f6f8f6; color: var(--ink); }
 .main-nav button.active { background: var(--green-soft); color: var(--green-dark); font-weight: 600; }
 .sidebar-bottom { margin-top: auto; }
-.theme-picker { display: flex; align-items: center; gap: 8px; padding: 12px 10px 4px; }
-.theme-label { color: #8c9691; font-size: 14px; }
-.theme-dot { width: 18px; height: 18px; padding: 0; border: 2px solid transparent; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); cursor: pointer; transition: transform .15s ease; }
-.theme-dot:hover { transform: scale(1.08); }
-.theme-dot.active { border-color: #fff; box-shadow: 0 0 0 2px var(--green); }
-.theme-dot:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .privacy-note { display: flex; gap: 10px; padding: 14px 10px; border-top: 1px solid var(--line); color: var(--green); font-size: 14px; }
 .privacy-note > .el-icon { margin-top: 2px; }
 .privacy-note small, .profile-row small { display: block; margin-top: 4px; color: #8c9691; font-size: 13px; font-weight: 400; }

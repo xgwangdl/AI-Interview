@@ -3,8 +3,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from './stores/practice';
-import { savePreferences } from './services/api';
-import { THEMES, applyTheme, bootstrapTheme, rememberTheme } from './services/theme';
 import { buildUsage, loadModelUsage } from './services/modelUsage';
 import {
   applyAppearanceSettings, loadProfile, profileDisplayName, readCachedDisplayName, rememberDisplayName,
@@ -15,25 +13,8 @@ const router = useRouter();
 const practice = usePracticeStore();
 const menuOpen = ref(false);
 const profileName = ref(readCachedDisplayName());
-// 主题先按本地记录渲染（避免闪一下默认色），登录后再用服务端的偏好覆盖。
-const theme = ref(bootstrapTheme());
-/** 今日 AI 额度：和主题色一样是"账号状态"，顶栏一直能看见 */
+/** 今日 AI 额度是账号状态，登录后一直显示在顶栏。 */
 const usage = ref(buildUsage(null));
-
-async function chooseTheme(name) {
-  theme.value = name;
-  applyTheme(name);
-  rememberTheme(name);
-  try {
-    await savePreferences({ theme: name });
-  } catch {
-    // 没登录或离线时只记在本地，不打断用户。
-  }
-}
-
-async function loadThemePreference() {
-  await loadAccountProfile();
-}
 
 async function loadAccountProfile() {
   if (!localStorage.getItem('token')) return;
@@ -42,7 +23,6 @@ async function loadAccountProfile() {
     profileName.value = profileDisplayName(profile);
     rememberDisplayName(profileName.value);
     applyAppearanceSettings(profile);
-    if (profile.theme && THEMES[profile.theme]) theme.value = profile.theme;
   } catch {
     // 个人资料接口不可用时保留本地昵称与主题，不阻塞练习流程。
   }
@@ -53,14 +33,11 @@ function syncProfileName(event) {
   if (name) profileName.value = name;
 }
 
-function syncTheme(event) {
-  if (THEMES[event?.detail?.theme]) theme.value = event.detail.theme;
-}
 watch(() => route.name, (name, previous) => {
   profileName.value = readCachedDisplayName();
   if (name !== 'login' && previous === 'login') {
     void refreshPractice();
-    void loadThemePreference();
+    void loadAccountProfile();
   }
 });
 const activeKey = computed(() => route.name === 'history' ? 'history' : 'dashboard');
@@ -98,7 +75,6 @@ async function refreshPractice() {
 
 onMounted(() => {
   window.addEventListener('light-interview-profile-updated', syncProfileName);
-  window.addEventListener('light-interview-theme-updated', syncTheme);
   if (route.name !== 'login') {
     void refreshPractice();
     void refreshUsage();
@@ -108,7 +84,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('light-interview-profile-updated', syncProfileName);
-  window.removeEventListener('light-interview-theme-updated', syncTheme);
 });
 
 function navigate(path) {
@@ -151,21 +126,6 @@ function accountCommand(command) {
         <button :class="{ active: activeKey === 'history' }" @click="navigate('/history')"><el-icon><Clock /></el-icon><span>练习记录</span></button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="theme-picker" role="group" aria-label="页面主题色">
-          <span class="theme-label">主题色</span>
-          <button
-            v-for="(item, key) in THEMES"
-            :key="key"
-            type="button"
-            class="theme-dot"
-            :class="{ active: theme === key }"
-            :style="{ background: item.swatch }"
-            :title="item.label"
-            :aria-label="item.label"
-            :aria-pressed="theme === key"
-            @click="chooseTheme(key)"
-          ></button>
-        </div>
         <div class="privacy-note"><el-icon><Lock /></el-icon><span>录制内容仅保留 7 天<small>可随时删除练习数据</small></span></div>
         <el-dropdown class="profile-row" trigger="click" @command="accountCommand"><span class="profile-trigger"><div class="profile-avatar">{{ profileName.slice(0,1) }}</div><span class="profile-name">{{ profileName }}<small>个人空间</small></span><el-icon class="profile-more"><MoreFilled /></el-icon></span><template #dropdown><el-dropdown-menu><el-dropdown-item command="profile"><el-icon><User /></el-icon>个人设置</el-dropdown-item><el-dropdown-item command="notifications"><el-icon><Bell /></el-icon>提醒设置</el-dropdown-item><el-dropdown-item divided command="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
       </div>

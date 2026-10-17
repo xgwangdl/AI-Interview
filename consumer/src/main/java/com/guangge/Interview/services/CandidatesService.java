@@ -81,14 +81,11 @@ public class CandidatesService {
         }
     }
 
-    /** 修改密码。旧密码校验兼容历史明文账号，写入时一律使用 BCrypt。 */
+    /** 已登录账号修改密码；登录令牌就是本次操作的授权凭证，写入时一律使用 BCrypt。 */
     @Transactional
-    public void changePassword(String owner, String currentPassword, String newPassword) {
+    public void changePassword(String owner, String newPassword) {
         Candidates candidate = interviewerRepository.findFirstByName(owner)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在"));
-        if (!passwordMatches(currentPassword, candidate.getCode())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前密码不正确");
-        }
         validateCode(newPassword);
         candidate.setCode(passwordEncoder.encode(newPassword));
         interviewerRepository.save(candidate);

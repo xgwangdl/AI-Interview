@@ -479,7 +479,7 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 | `ProfileController` | `GET/PUT /api/v1/me/profile`；`PUT /api/v1/me/password` |
 | `ProfileService` | 读取和更新昵称、邮箱、时区、字号、减弱动效、主题色 |
 | `ProfileView` / `ProfileUpdateRequest` | 个人资料响应与带校验的更新请求 |
-| `PasswordChangeRequest` | 当前密码与新密码请求；实际校验和 BCrypt 写入由 `CandidatesService` 完成 |
+| `PasswordChangeRequest` | 新密码请求；已登录令牌负责授权，BCrypt 写入由 `CandidatesService` 完成 |
 
 `candidates.candidate_name` 是历史数据归属键，个人资料页把它作为**只读登录名**展示，
 修改展示名称只写 `display_name`。时区使用 `ZoneId.of` 验证；主题色白名单与前端
@@ -497,7 +497,7 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 - **登录**：`POST /login`，按用户名取账号后校验口令。历史数据的明文邀请码仍可登录，
   校验通过后就地升级成 BCrypt 哈希（老账号无需人工迁移）；
 - **个人资料**：`GET/PUT /api/v1/me/profile`，只允许修改昵称、邮箱、时区与外观偏好，
-  登录名不可改；`PUT /api/v1/me/password` 校验当前密码后写入新的 BCrypt 哈希；
+  登录名不可改；`PUT /api/v1/me/password` 在已登录会话中直接写入新的 BCrypt 哈希；
 - **令牌**：HS256 JWT，密钥来自 `AUTH_TOKEN_SECRET`，默认有效期 15 分钟；
 - **传递**：`Authorization: Bearer <token>`；
 - **归属隔离**：`OwnerResolver` 把 token 解析成 owner，所有查询按 owner 过滤——

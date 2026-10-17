@@ -65,7 +65,7 @@ describe('profile API', () => {
   it('修改密码使用密码接口', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse({ changed: true }));
 
-    await changePassword({ currentPassword: 'old-secret', newPassword: 'new-secret' });
+    await changePassword({ newPassword: 'new-secret' });
 
     expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/me/password');
     expect(globalThis.fetch.mock.calls[0][1].method).toBe('PUT');

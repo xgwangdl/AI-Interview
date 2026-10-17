@@ -96,6 +96,8 @@ try {
   await page.getByRole('menuitem', { name: '个人设置' }).click();
   await page.waitForURL('**/settings/profile');
   await page.locator('.profile-settings-page').waitFor();
+  assert(await page.locator('.theme-picker').count() === 0, '侧栏仍显示快捷主题色');
+  assert(await page.locator('.reminder-link-panel').count() === 0, '个人设置仍显示提醒设置面板');
 
   const profilePanel = page.locator('.profile-panel');
   await profilePanel.locator('.el-form-item').filter({ hasText: '昵称' }).locator('input').fill('界面验证用户');
@@ -144,11 +146,14 @@ try {
   await page.screenshot({ path: `${out}/profile-settings-desktop.png`, fullPage: true });
 
   const security = page.locator('.security-panel');
-  await security.locator('input[type="password"]').nth(0).fill('wrong-password');
-  await security.locator('input[type="password"]').nth(1).fill('new-password');
-  await security.locator('input[type="password"]').nth(2).fill('new-password');
+  const passwordInputs = security.locator('input[type="password"]');
+  assert(await passwordInputs.count() === 2, '账号安全应只显示新密码与确认密码');
+  const passwordWidths = await passwordInputs.evaluateAll((items) => items.map((item) => item.parentElement.getBoundingClientRect().width));
+  assert(Math.max(...passwordWidths) - Math.min(...passwordWidths) < 2, '两个新密码输入框宽度不一致');
+  await passwordInputs.nth(0).fill('new-password');
+  await passwordInputs.nth(1).fill('different-password');
   await page.getByRole('button', { name: '更新密码' }).click();
-  await page.getByText('当前密码不正确').waitFor();
+  await page.getByText('两次输入的新密码不一致').waitFor();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: 'networkidle' });
