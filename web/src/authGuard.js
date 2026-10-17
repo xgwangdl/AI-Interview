@@ -14,7 +14,7 @@ export function installAuthGuard(router) {
           return true;
         })
         .catch(() => {
-          ['token', 'userId', 'userName', 'username'].forEach((key) => localStorage.removeItem(key));
+          ['token', 'userId', 'userName', 'username', 'light-interview-display-name'].forEach((key) => localStorage.removeItem(key));
           verifiedToken = undefined;
           return { name: 'login', query: { redirect: to.fullPath } };
         });
