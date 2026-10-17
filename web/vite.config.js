@@ -15,6 +15,8 @@ export default defineConfig({
     strictPort: false,
     proxy: {
       '/api': apiServer,
+      // L2 实时对话：开发态直接把 WebSocket 转给后端
+      '/ws': { target: apiServer.replace(/^http/, 'ws'), ws: true },
       '/login': { target: apiServer, bypass: spaBypass },
       '/register': { target: apiServer, bypass: spaBypass },
       '/auth': { target: apiServer, bypass: spaBypass },

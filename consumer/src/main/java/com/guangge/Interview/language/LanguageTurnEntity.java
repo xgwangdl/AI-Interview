@@ -60,6 +60,13 @@ public class LanguageTurnEntity {
     @Column(name = "total_ms")
     private Integer totalMs;
 
+    /** L2：模型第一个增量 / 第一帧音频出来的时间（总时长不变，感知的是这两个数）。 */
+    @Column(name = "llm_first_ms")
+    private Integer llmFirstMs;
+
+    @Column(name = "audio_first_ms")
+    private Integer audioFirstMs;
+
     @Column(name = "status", nullable = false, length = 16)
     private String status;
 
@@ -94,6 +101,10 @@ public class LanguageTurnEntity {
     public void setTtsMs(Integer ttsMs) { this.ttsMs = ttsMs; }
     public Integer getTotalMs() { return totalMs; }
     public void setTotalMs(Integer totalMs) { this.totalMs = totalMs; }
+    public Integer getLlmFirstMs() { return llmFirstMs; }
+    public void setLlmFirstMs(Integer llmFirstMs) { this.llmFirstMs = llmFirstMs; }
+    public Integer getAudioFirstMs() { return audioFirstMs; }
+    public void setAudioFirstMs(Integer audioFirstMs) { this.audioFirstMs = audioFirstMs; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }

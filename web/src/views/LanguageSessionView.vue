@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import DigitalHuman from '../components/DigitalHuman.vue';
 import { AudioRecorder } from '../services/audioRecorder';
+import { LanguageStream } from '../services/languageStream';
+import { PcmCapture, PcmPlayer } from '../services/pcmStream';
 import {
   fetchAudio, finishSession, getSession, latencyLabel, pickVoice, reportRows, sessionSubtitle,
   submitAudioTurn, submitTextTurn,
@@ -25,6 +27,14 @@ const draft = ref('');
 const speaking = ref(false);
 const amplitude = ref(-1);
 const voices = ref([]);
+// L2：实时通道默认开；连不上自动退回逐轮（L1）
+// L2 通道已接通，但实时识别输入仍被上游拒绝（NO_VALID_AUDIO_ERROR），先默认关闭，避免半成品影响练习
+const liveMode = ref(localStorage.getItem('language-live-mode') === 'on');
+const partialText = ref('');
+const liveReply = ref('');
+const player = new PcmPlayer(24000);
+let stream = null;
+let capture = null;
 
 const recorder = new AudioRecorder();
 let audio = null;
@@ -49,6 +59,7 @@ const canSpeak = computed(() => Boolean(session.value?.serverVoice) || voices.va
 
 onMounted(async () => {
   await load();
+  if (liveMode.value) void connectStream();
   refreshVoices();
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.addEventListener?.('voiceschanged', refreshVoices);
@@ -57,6 +68,9 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  capture?.stop();
+  player.stop();
+  stream?.close();
   stopSpeaking();
   recorder.cancel();
   stopStream();
@@ -101,6 +115,15 @@ async function toggleRecording() {
   }
   try {
     stopSpeaking();
+    // 打断：上一轮还在播/还在说，直接停
+    player.stop();
+    stream?.cancel();
+    activeStream = activeStream || await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (liveMode.value && await beginLiveTurn()) {
+      elapsed.value = 0;
+      recording.value = true;
+      return;
+    }
     activeStream = await recorder.start(activeStream);
     elapsed.value = 0;
     recording.value = true;
@@ -113,12 +136,128 @@ async function toggleRecording() {
 async function stopAndSend() {
   if (!recording.value) return;
   recording.value = false;
+  if (capture) {
+    capture.stop();
+    capture = null;
+    busy.value = true;
+    stopSpeaking();
+    stream.commit();
+    return;
+  }
   const captured = await recorder.stop();
   if (!captured) {
     ElMessage.warning('这一段没有录到声音，再说一次。');
     return;
   }
   await send(() => submitAudioTurn(session.value.id, captured.blob, captured.durationMs));
+}
+
+// ---------- L2 实时通道 ----------
+
+async function connectStream() {
+  if (stream?.connected) return true;
+  const candidate = new LanguageStream({
+    onMessage: handleStreamMessage,
+    onClose: () => {
+      if (recording.value || busy.value) {
+        capture?.stop();
+        capture = null;
+        recording.value = false;
+        busy.value = false;
+        ElMessage.error('实时通道断开了，请再试一次（或关掉实时模式）。');
+      }
+    },
+  });
+  try {
+    await candidate.connect();
+    stream = candidate;
+    return true;
+  } catch {
+    stream = null;
+    liveMode.value = false;
+    localStorage.setItem('language-live-mode', 'off');
+    ElMessage.warning('实时通道没连上，已退回逐轮模式（仍然可用）。');
+    return false;
+  }
+}
+
+async function beginLiveTurn() {
+  if (!(await connectStream())) return false;
+  stream.start(session.value.id);
+  capture = new PcmCapture((frame) => stream.sendFrame(frame));
+  await capture.start(activeStream);
+  return true;
+}
+
+function changeLiveMode(value) {
+  localStorage.setItem('language-live-mode', value ? 'on' : 'off');
+  if (value) {
+    void connectStream();
+  } else {
+    capture?.stop();
+    capture = null;
+    player.stop();
+    stream?.close();
+    stream = null;
+    partialText.value = '';
+    liveReply.value = '';
+  }
+}
+
+/**
+ * 实时通道的消息：partial → 转写边出；reply → 文字边出；audio → PCM 排队播放；
+ * feedback 比 turn 晚一点到（先接话，再纠错）。
+ */
+function handleStreamMessage(message) {
+  switch (message.type) {
+    case 'waiting':
+    case 'listening':
+      break;
+    case 'partial':
+      partialText.value = message.text || '';
+      break;
+    case 'transcript':
+      partialText.value = message.text || '';
+      break;
+    case 'reply':
+      liveReply.value += message.delta || '';
+      speaking.value = true;
+      break;
+    case 'audio':
+      player.push(message.data);
+      break;
+    case 'turn': {
+      const turns = session.value.turns || [];
+      session.value.turns = [...turns, {
+        turnIndex: message.turnIndex,
+        transcript: partialText.value,
+        replyText: message.replyText,
+        feedback: [],
+        latency: message.latency,
+        status: 'answered',
+      }];
+      session.value.turnCount = message.turnIndex;
+      partialText.value = '';
+      liveReply.value = '';
+      busy.value = false;
+      speaking.value = false;
+      break;
+    }
+    case 'feedback': {
+      const turns = session.value.turns || [];
+      if (turns.length) turns[turns.length - 1].feedback = message.items || [];
+      break;
+    }
+    case 'error':
+      partialText.value = '';
+      liveReply.value = '';
+      busy.value = false;
+      speaking.value = false;
+      ElMessage.error(message.message || '实时对话出错了');
+      break;
+    default:
+      break;
+  }
 }
 
 async function sendText() {
@@ -238,9 +377,13 @@ function backToList() {
           <h1>{{ session.languageName }} · {{ session.turns.length }}/{{ session.maxTurns }} 轮</h1>
           <p>{{ session.target }} · {{ sessionSubtitle(session) }}</p>
         </div>
-        <el-button v-if="!finished" class="soft-button" :loading="busy" @click="finish">
-          <el-icon><Finished /></el-icon> 结束并看复盘
-        </el-button>
+        <div v-if="!finished" class="heading-actions">
+          <!-- L2 实时对话：通道已通，实时识别输入待修（见 docs/STATUS.md），修好后再把开关放出来 -->
+          <el-switch v-if="false" v-model="liveMode" active-text="实时对话" @change="changeLiveMode" />
+          <el-button class="soft-button" :loading="busy" @click="finish">
+            <el-icon><Finished /></el-icon> 结束并看复盘
+          </el-button>
+        </div>
       </div>
 
       <div v-if="!finished" class="session-layout">
@@ -249,7 +392,8 @@ function backToList() {
             <DigitalHuman :speaking="speaking" :amplitude="() => amplitude" />
             <div class="interviewer-info">
               <div class="interviewer-role">AI 陪练 · {{ session.languageName }}</div>
-              <p v-if="openingLine" class="ai-line">{{ openingLine }}</p>
+              <p v-if="liveReply" class="ai-line live">{{ liveReply }}</p>
+              <p v-else-if="openingLine" class="ai-line">{{ openingLine }}</p>
               <p v-else class="ai-line status">{{ statusLine }}</p>
               <button v-if="lastTurn && canSpeak" class="replay" @click="speak(lastTurn.replyText, lastTurn)">
                 <el-icon><VideoPlay /></el-icon> 再听一遍
@@ -288,8 +432,9 @@ function backToList() {
               <span v-if="recording">正在听（{{ elapsed }}s）· 点一下结束</span>
               <span v-else-if="busy">正在想怎么回你…</span>
               <span v-else-if="full">说满 {{ session.maxTurns }} 轮了，点右上角看复盘</span>
-              <span v-else>点一下开始说</span>
+              <span v-else>{{ liveMode ? '点一下开始说（实时）' : '点一下开始说' }}</span>
             </button>
+            <p v-if="partialText" class="partial-line">识别中：{{ partialText }}</p>
             <button class="mini-link text-toggle" @click="textMode = !textMode">
               {{ textMode ? '收起手打' : '不方便说话？手打这一句' }}
             </button>
@@ -349,6 +494,9 @@ function backToList() {
 .interviewer-role { color: var(--green); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
 .ai-line { margin: 8px 0 0; color: #2f3c35; font-size: 16px; font-weight: 600; line-height: 1.6; }
 .ai-line.status { color: #7d8982; font-size: 14px; font-weight: 500; }
+.ai-line.live { color: #2f3c35; }
+.heading-actions { display: flex; align-items: center; gap: 14px; }
+.partial-line { margin: 2px 0 0; padding: 6px 9px; border-radius: 6px; background: #f5faf6; color: #55635b; font-size: 13px; line-height: 1.6; }
 .replay { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 0; border: 0; background: transparent; color: #6c7a73; font-size: 12px; }
 .scene-hint { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid #eef1ee; color: #8d9792; font-size: 12px; line-height: 1.7; }
 .talk-panel { display: grid; gap: 14px; padding: 16px; box-shadow: none; }

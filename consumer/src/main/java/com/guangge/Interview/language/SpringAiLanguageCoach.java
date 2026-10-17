@@ -20,6 +20,8 @@ public class SpringAiLanguageCoach implements LanguageCoach {
 
     private final ChatClient coach;
     private final ChatClient reporter;
+    private final ChatClient talker;
+    private final ChatClient critic;
     private final LanguageCoachValidator validator;
     private final String modelName;
 
@@ -28,12 +30,17 @@ public class SpringAiLanguageCoach implements LanguageCoach {
             LanguageCoachValidator validator,
             @Value("classpath:prompt/language-coach-system-prompt.st") Resource coachPrompt,
             @Value("classpath:prompt/language-report-system-prompt.st") Resource reportPrompt,
+            @Value("classpath:prompt/language-talk-system-prompt.st") Resource talkPrompt,
+            @Value("classpath:prompt/language-feedback-system-prompt.st") Resource feedbackPrompt,
             @Value("${practice.language.chat-model:qwen-plus}") String chatModel,
             @Value("${practice.language.max-reply-tokens:160}") int maxReplyTokens) {
         ChatOptions fast = ChatOptions.builder().model(chatModel).maxTokens(maxReplyTokens).temperature(0.6).build();
         ChatOptions report = ChatOptions.builder().model(chatModel).maxTokens(600).temperature(0.4).build();
         this.coach = builder.clone().defaultOptions(fast).defaultSystem(coachPrompt).build();
         this.reporter = builder.clone().defaultOptions(report).defaultSystem(reportPrompt).build();
+        // L2：纯文本流式回复（JSON 没法边生成边显示）；反馈单独一次短调用，不挡回复。
+        this.talker = builder.clone().defaultOptions(fast).defaultSystem(talkPrompt).build();
+        this.critic = builder.clone().defaultOptions(fast).defaultSystem(feedbackPrompt).build();
         this.validator = validator;
         this.modelName = chatModel;
     }
@@ -42,6 +49,24 @@ public class SpringAiLanguageCoach implements LanguageCoach {
     public LanguageCoachResult reply(LanguageCoachRequest request) {
         String raw = coach.prompt().user(turnMessage(request)).call().content();
         return validator.parseTurn(raw, request.transcript());
+    }
+
+    @Override
+    public String streamReply(LanguageCoachRequest request, java.util.function.Consumer<String> onDelta) {
+        StringBuilder reply = new StringBuilder();
+        talker.prompt().user(turnMessage(request)).stream().content()
+                .doOnNext(delta -> {
+                    reply.append(delta);
+                    onDelta.accept(delta);
+                })
+                .blockLast();
+        return reply.toString().strip();
+    }
+
+    @Override
+    public java.util.List<LanguageFeedback> feedback(LanguageCoachRequest request) {
+        String raw = critic.prompt().user(turnMessage(request)).call().content();
+        return validator.parseFeedback(raw, request.transcript());
     }
 
     @Override

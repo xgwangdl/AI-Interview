@@ -101,6 +101,9 @@ export function latencyLabel(latency) {
   if (!latency) return '';
   const parts = [];
   if (latency.asrMs != null) parts.push(`听写 ${seconds(latency.asrMs)}`);
+  // L2 的关键是"多快看到字、多快听到第一句"，总时长反而次要
+  if (latency.llmFirstMs != null) parts.push(`首字 ${seconds(latency.llmFirstMs)}`);
+  if (latency.audioFirstMs != null) parts.push(`出声 ${seconds(latency.audioFirstMs)}`);
   if (latency.llmMs != null) parts.push(`回复 ${seconds(latency.llmMs)}`);
   if (latency.ttsMs != null) parts.push(`配音 ${seconds(latency.ttsMs)}`);
   return parts.join(' · ');

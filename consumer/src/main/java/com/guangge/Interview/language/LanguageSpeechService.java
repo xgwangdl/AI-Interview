@@ -2,17 +2,23 @@ package com.guangge.Interview.language;
 
 import com.alibaba.dashscope.audio.asr.recognition.Recognition;
 import com.alibaba.dashscope.audio.asr.recognition.RecognitionParam;
+import com.alibaba.dashscope.audio.asr.recognition.RecognitionResult;
 import com.alibaba.dashscope.audio.tts.SpeechSynthesisParam;
 import com.alibaba.dashscope.audio.tts.SpeechSynthesizer;
+import com.alibaba.dashscope.audio.tts.SpeechSynthesisAudioFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.audio.services.AudioConverter;
+import io.reactivex.Flowable;
+import io.reactivex.processors.PublishProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * 外语练习的转写与合成。
@@ -121,6 +127,80 @@ public class LanguageSpeechService {
         JsonNode root = objectMapper.readTree(raw);
         JsonNode sentences = root.get("sentences");
         return sentences == null || sentences.isEmpty() ? null : sentences.get(0).path("text").asText();
+    }
+
+    /**
+     * 开一条实时识别流（L2）：音频按 PCM16 / 16k / 单声道 边推边出文字。
+     *
+     * 与文件模式共用同一个模型（`paraformer-realtime-v2`），区别只是"喂一段"变成"喂一帧"。
+     */
+    public AsrStream openStream(LanguageSpec spec) {
+        if (transcriptionKey == null || transcriptionKey.isBlank()) {
+            throw new LanguageSpeechException("没有配置语音识别 Key");
+        }
+        RecognitionParam param = RecognitionParam.builder()
+                .apiKey(transcriptionKey)
+                .model("paraformer-realtime-v2")
+                .format("pcm")
+                .sampleRate(16000)
+                .parameter("language_hints", new String[]{spec.asrHint()})
+                .build();
+        return new AsrStream(new Recognition(), param);
+    }
+
+    /** 实时识别流：push 二进制帧，complete 后结果流会结束。 */
+    public static final class AsrStream {
+        private final PublishProcessor<ByteBuffer> input = PublishProcessor.create();
+        private final Flowable<RecognitionResult> results;
+
+        private AsrStream(Recognition recognition, RecognitionParam param) {
+            try {
+                this.results = recognition.streamCall(param, input);
+            } catch (Exception exception) {
+                throw new LanguageSpeechException("实时识别通道打不开：" + exception.getMessage(), exception);
+            }
+        }
+
+        public void push(byte[] pcm) {
+            if (input.hasComplete() || input.hasThrowable()) return;
+            // 明确小端：PCM16 是 little-endian，ByteBuffer.wrap 默认是大端
+            input.onNext(ByteBuffer.wrap(pcm).order(java.nio.ByteOrder.LITTLE_ENDIAN));
+        }
+
+        public void complete() {
+            if (!input.hasComplete() && !input.hasThrowable()) input.onComplete();
+        }
+
+        public Flowable<RecognitionResult> results() {
+            return results;
+        }
+    }
+
+    /**
+     * 流式合成一句，按 PCM 帧回调（L2）。
+     *
+     * 一句一批而不是整段：第一句合成完就开始播，后面的句子边生成边接上。
+     * 格式固定 24k/16bit/单声道——前端用同一个采样率排队播放。
+     */
+    public void streamPcm(String text, LanguageSpec spec, Consumer<byte[]> onChunk) {
+        if (!spec.serverVoice() || spec.ttsModel() == null || text == null || text.isBlank()) return;
+        if (speechKey == null || speechKey.isBlank()) return;
+        SpeechSynthesisParam.SpeechSynthesisParamBuilder<?, ?> builder = SpeechSynthesisParam.builder()
+                .apiKey(speechKey)
+                .model(spec.ttsModel())
+                .text(truncate(text, MAX_SPEECH_CHARS))
+                .format(SpeechSynthesisAudioFormat.PCM)
+                .sampleRate(24000);
+        if (spec.ttsVoice() != null && !spec.ttsVoice().isBlank()) {
+            builder.parameter("voice", spec.ttsVoice());
+        }
+        new SpeechSynthesizer().streamCall(builder.build()).blockingSubscribe(result -> {
+            ByteBuffer frame = result.getAudioFrame();
+            if (frame == null || !frame.hasRemaining()) return;
+            byte[] bytes = new byte[frame.remaining()];
+            frame.get(bytes);
+            onChunk.accept(bytes);
+        }, error -> { /* 单句合成失败不影响后面的句子，文字仍然在 */ });
     }
 
     /** 只认"我们自己录的"那种最朴素的 44 字节头 WAV：PCM / 单声道 / 16k / 16bit。 */

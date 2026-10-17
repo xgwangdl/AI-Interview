@@ -1455,6 +1455,23 @@ OpenTypeFont/CFF 的处理分支），但一 `showText` + `save`（子集化）�
 **这次的坑**：PowerShell 的 `-Form @{ audio = Get-Item x.wav }` 会把音频标成 `application/octet-stream`，
 后端原来只收 `audio/*` 会 415；现在放行 octet-stream（真实格式由 ffmpeg 校验）。
 
+### 2026-10-17 L2 实时通道（进行中，默认关闭）
+
+按用户要求开始做 L2：`spring-websocket` 通道 `/ws/language`（握手用查询串里的 token 验签）、
+协议（start / 二进制 PCM 帧 / commit / cancel → partial · transcript · reply · audio · feedback · turn）、
+流式 LLM（`ChatClient.stream()`）、按句流式 TTS（`SpeechSynthesizer.streamCall` + PCM 24k）、
+前端 PCM 采集与排队播放、打断（cancel）、以及 L1 的自动回退，代码都已接好。
+
+**当前卡点（如实记录）**：DashScope 的实时识别在 `start` 后立刻返回
+`NO_VALID_AUDIO_ERROR`（还没收到任何音频就判失败），`scripts/verify-language-l2.ps1` 因此停在推第一帧。
+已排除：WAV 头偏移（ffmpeg 带 LIST 块，脚本已按块头找 data）、大端/小端（显式 LITTLE_ENDIAN）、
+帧大小（改成 100ms 一帧）。下一步要试的是 SDK 的另一种用法
+`Recognition.call(param, callback)` + `sendAudioFrame()`（duplex 模式）而不是 `streamCall(Flowable)`，
+或者确认 `paraformer-realtime-v2` 对裸 PCM 的封装要求。
+
+**因此 L2 默认关闭**（`liveMode` 关、开关暂不展示）：用户现在用的仍是 4-5 秒一轮的 L1，
+功能没有被半成品拖累。等上面这一点打通，把开关放出来即可，协议与前端不用重写。
+
 ### 2026-10-17 续：日语下线 + 英语提速（7.5s → 4.0s）
 
 用户实测"日语完全不可用"（音色把日语按中文念），并要求英语再快一点。做了四件事，都是不依赖 L2 的：

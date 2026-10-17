@@ -59,6 +59,18 @@ public class LanguageCoachValidator {
                 List.copyOf(improvements));
     }
 
+    /** L2 的反馈只返回数组，校验规则与 L1 一致（逐字核对 original）。 */
+    public List<LanguageFeedback> parseFeedback(String raw, String transcript) {
+        JsonNode root = json(raw);
+        List<LanguageFeedback> feedback = new ArrayList<>();
+        for (JsonNode item : root.withArray("feedback")) {
+            if (feedback.size() >= MAX_FEEDBACK) break;
+            LanguageFeedback parsed = toFeedback(item, transcript);
+            if (parsed != null) feedback.add(parsed);
+        }
+        return List.copyOf(feedback);
+    }
+
     /** original 必须真的出现在转写里；空字段/编造的片段直接丢掉，而不是报错 —— 少一条建议比错一条好。 */
     private static LanguageFeedback toFeedback(JsonNode item, String transcript) {
         String original = text(item, "original");

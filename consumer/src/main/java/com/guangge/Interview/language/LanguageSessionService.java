@@ -412,4 +412,72 @@ public class LanguageSessionService {
     }
 
     public record MediaFile(Resource resource, String contentType) { }
+
+    // ---------- L2 流式对话用的入口 ----------
+
+    /** 一场实时对话需要的静态上下文与历史。 */
+    public record StreamContext(LanguageSpec spec, LanguageScenario scenario, String level, String target,
+                                List<LanguageTurnEntity> turns) { }
+
+    @Transactional(readOnly = true)
+    public StreamContext streamContext(String ownerId, UUID id) {
+        LanguageSessionEntity session = requireActive(ownerId, id);
+        return new StreamContext(spec(session), scenario(session), session.getLevel(), session.getTarget(),
+                turns.findAllBySessionIdOrderByTurnIndexAsc(id));
+    }
+
+    public UUID requireSession(String ownerId, UUID id) {
+        return requireActive(ownerId, id).getId();
+    }
+
+    /**
+     * 存一轮流式对话（音频是浏览器边录边推的 PCM，这里落成 WAV）。
+     *
+     * 反馈可能晚一点才到（L2 先播回复），所以先存轮次，反馈由 {@link #attachFeedback} 补上。
+     */
+    @Transactional
+    public SavedTurn saveStreamedTurn(String ownerId, UUID id, String transcript, String reply,
+                                      List<LanguageFeedback> feedback, byte[] wavPcm,
+                                      Integer asrMs, Integer llmFirstMs, Integer llmMs,
+                                      Integer audioFirstMs, Integer totalMs) throws IOException {
+        LanguageSessionEntity session = requireActive(ownerId, id);
+        LanguageSpec spec = spec(session);
+        int index = session.getTurnCount() + 1;
+        UUID turnId = UUID.randomUUID();
+        LanguageTurnEntity entity = new LanguageTurnEntity();
+        entity.setId(turnId);
+        entity.setSessionId(id);
+        entity.setTurnIndex(index);
+        if (wavPcm != null && wavPcm.length > 44) {
+            String key = "lang-" + turnId + "-user";
+            mediaStorage.store(key, new java.io.ByteArrayInputStream(wavPcm), wavPcm.length);
+            entity.setAudioKey(key);
+            entity.setAudioContentType("audio/wav");
+            entity.setAudioMs((int) Math.min(Integer.MAX_VALUE, (wavPcm.length - 44) / 32));
+        }
+        entity.setTranscript(transcript);
+        entity.setReplyText(reply);
+        entity.setFeedbackJson(write(feedback));
+        entity.setAsrMs(asrMs);
+        entity.setLlmFirstMs(llmFirstMs);
+        entity.setLlmMs(llmMs);
+        entity.setAudioFirstMs(audioFirstMs);
+        entity.setTotalMs(totalMs);
+        entity.setStatus("answered");
+        entity.setCreatedAt(Instant.now());
+        turns.save(entity);
+        session.setTurnCount(index);
+        sessions.save(session);
+        return new SavedTurn(turnId, turnView(entity, spec));
+    }
+
+    @Transactional
+    public void attachFeedback(UUID turnId, List<LanguageFeedback> feedback) {
+        turns.findById(turnId).ifPresent(entity -> {
+            entity.setFeedbackJson(write(feedback));
+            turns.save(entity);
+        });
+    }
+
+    public record SavedTurn(UUID turnId, LanguageTurnView view) { }
 }
