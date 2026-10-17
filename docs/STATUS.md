@@ -8,9 +8,11 @@
 
 复现命令见文末。
 
-> **新需求（待确认）**：简历功能（存入 + 按 JD 优化 + 导出 + 与练习打通）的需求文档已写好：
-> [RESUME-REQUIREMENTS.md](RESUME-REQUIREMENTS.md)。里面有现状盘点（项目里已有一套**遗留**简历改写，
-> 但数据表没纳入 Flyway 所以调不通）、10 条验收标准、分期建议，以及 6 个需要你拍板的问题。
+> **新需求（待确认，未实现）**：外语口语练习（英语 / 日语）。需求文档见
+> [LANGUAGE-PRACTICE-REQUIREMENTS.md](LANGUAGE-PRACTICE-REQUIREMENTS.md)。
+> 结论先说：**"流畅"要分档** —— 轮次对话（L1，2-4 秒/轮）现在就能做；
+> 准实时（L2，1-1.5 秒 + 可打断）可行但要新建流式通道；
+> 全双工（L3）不建议承诺。文档里有延迟预算、P1/P2 范围、验收标准与需要你拍板的 7 个问题。
 
 > **分支约定**：改动一律先提交到 `feature/practice-interview`，自测通过并**经确认后**再合并到 `master`。
 > 开工前先 `git merge --ff-only master` 把分支同步到主干。详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
