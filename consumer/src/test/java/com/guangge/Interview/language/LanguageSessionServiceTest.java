@@ -163,4 +163,23 @@ class LanguageSessionServiceTest {
                 .isEqualTo(HttpStatus.CONFLICT);
         verify(coach, never()).report(any());
     }
+
+    @Test
+    @DisplayName("语言下线后，旧会话被跳过：列表照常打开，直接访问给 404（用户反馈的“语言配置丢失”）")
+    void skipsSessionsWhoseLanguageIsGone() {
+        LanguageSessionEntity legacy = new LanguageSessionEntity();
+        legacy.setId(UUID.randomUUID());
+        legacy.setOwnerId("smoke");
+        legacy.setLanguage("ja");
+        legacy.setScenario("daily");
+        legacy.setStatus(LanguageSessionService.ABANDONED);
+        when(sessions.findAllByOwnerIdOrderByCreatedAtDesc("smoke")).thenReturn(List.of(legacy));
+        when(sessions.findByIdAndOwnerId(legacy.getId(), "smoke")).thenReturn(Optional.of(legacy));
+
+        assertThat(service.list("smoke")).isEmpty();
+        assertThatThrownBy(() -> service.get("smoke", legacy.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
 }

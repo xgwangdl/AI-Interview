@@ -34,13 +34,19 @@ async function load() {
   loading.value = true;
   try {
     options.value = await loadOptions();
-    sessions.value = await listSessions();
     maxTurns.value = options.value?.defaultMaxTurns || 8;
     chooseLanguage(language.value);
   } catch (error) {
     ElMessage.error(error?.message || '无法读取外语练习配置');
   } finally {
     loading.value = false;
+  }
+  // 历史读不到不该挡住"开始新练习"：语言下线后旧会话会被后端跳过，
+  // 但网络抖动等情况也不应该把整个配置页变成错误页。
+  try {
+    sessions.value = await listSessions();
+  } catch {
+    sessions.value = [];
   }
 }
 

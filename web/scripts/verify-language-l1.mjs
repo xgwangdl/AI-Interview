@@ -51,6 +51,8 @@ try {
   await page.waitForURL((url) => url.pathname === '/language', { timeout: 15000 });
   await page.waitForSelector('.setup-panel', { timeout: 15000 });
   await page.waitForTimeout(500);
+  // 回归：库里存在"语言已下线"的旧会话时，列表必须能正常打开（不能弹"语言配置丢失"）
+  check('页面没有报错提示', (await page.locator('.el-message--error').count()) === 0);
   check('日语已下线：只提供英语', (await page.locator('.language-tabs').count()) === 0
     && (await page.locator('.single-language').innerText()).includes('English'));
   check('英语有三个场景', await page.locator('.scenario-card').count() === 3,

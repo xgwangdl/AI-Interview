@@ -106,15 +106,32 @@ public class LanguageSessionService {
 
     @Transactional(readOnly = true)
     public List<LanguageSessionView> list(String ownerId) {
-        return sessions.findAllByOwnerIdOrderByCreatedAtDesc(ownerId).stream()
-                .map(entity -> view(entity, turns.findAllBySessionIdOrderByTurnIndexAsc(entity.getId())))
-                .toList();
+        List<LanguageSessionView> views = new ArrayList<>();
+        for (LanguageSessionEntity entity : sessions.findAllByOwnerIdOrderByCreatedAtDesc(ownerId)) {
+            // 语言下线后旧会话还在库里（例如日语）：跳过它们，而不是让整个列表 500 ——
+            // 一条历史记录不该把"开始新练习"的页面弄挂（用户反馈的"语言配置丢失"就是这个）。
+            if (!configured(entity)) {
+                log.info("跳过语言配置已下线的会话：{}（{}）", entity.getId(), entity.getLanguage());
+                continue;
+            }
+            views.add(view(entity, turns.findAllBySessionIdOrderByTurnIndexAsc(entity.getId())));
+        }
+        return views;
     }
 
     @Transactional(readOnly = true)
     public LanguageSessionView get(String ownerId, UUID id) {
         LanguageSessionEntity session = requireOwned(ownerId, id);
+        if (!configured(session)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "这次练习的语言已下线，换一场新的吧");
+        }
         return view(session, turns.findAllBySessionIdOrderByTurnIndexAsc(id));
+    }
+
+    /** 语言与场景都还在注册表里，这个会话才能被打开。 */
+    private boolean configured(LanguageSessionEntity session) {
+        return catalog.language(session.getLanguage()).isPresent()
+                && catalog.scenario(session.getLanguage(), session.getScenario()).isPresent();
     }
 
     /**
