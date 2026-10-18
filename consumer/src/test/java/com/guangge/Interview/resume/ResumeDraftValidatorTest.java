@@ -136,4 +136,32 @@ class ResumeDraftValidatorTest {
         assertThat(result.placeholders()).hasSize(3);
         assertThat(result.questions()).hasSize(1);
     }
+
+    @Test
+    @DisplayName("模型不能生成用户素材里没有的数字")
+    void rejectsNumbersMissingFromTheMaterials() {
+        ResumeDraftResult result = new ResumeDraftResult(
+                "张三\n项目经历\n- 优化订单接口，性能提升 25%",
+                List.of(),
+                List.of());
+
+        assertThatThrownBy(() -> validator.validate(result, "张三\n项目经历\n- 优化订单接口"))
+                .isInstanceOf(ResumeFormatException.class)
+                .hasMessageContaining("25")
+                .hasMessageContaining("请补充");
+    }
+
+    @Test
+    @DisplayName("素材已有数字和占位符里的说明数字都允许")
+    void allowsGroundedNumbersAndPlaceholderText() {
+        ResumeDraftResult result = new ResumeDraftResult(
+                "张三\n项目经历\n- 接口从 900ms 优化到 100ms\n- 【请补充：2026 年数据】",
+                List.of(),
+                List.of("【请补充：2026 年数据】"));
+
+        ResumeDraftResult validated = validator.validate(result,
+                "张三\n项目经历\n- 接口从 900ms 优化到 100ms");
+
+        assertThat(validated.placeholders()).containsExactly("【请补充：2026 年数据】");
+    }
 }

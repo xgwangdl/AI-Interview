@@ -73,6 +73,39 @@ class ResumeOptimizationValidatorTest {
     }
 
     @Test
+    void rejectsNumbersThatWereNotInTheOriginalResume() {
+        ResumeOptimizationResult result = new ResumeOptimizationResult(
+                "补充量化结果",
+                List.of(new ResumeOptimizationResult.Section(
+                        "project", "我优化了订单接口。", "我优化了订单接口，性能提升 25%。",
+                        "补充结果", "add_detail")),
+                List.of(),
+                Map.of());
+
+        ResumeFormatException exception = assertThrows(ResumeFormatException.class,
+                () -> validator.validate(result, "我优化了订单接口。"));
+
+        assertTrue(exception.getMessage().contains("25"));
+        assertTrue(exception.getMessage().contains("不要由模型编写"));
+    }
+
+    @Test
+    void allowsExistingNumbersAndNumbersInsidePlaceholders() {
+        ResumeOptimizationResult result = new ResumeOptimizationResult(
+                "保留原文数据",
+                List.of(new ResumeOptimizationResult.Section(
+                        "project", "接口从 900ms 优化到 100ms。",
+                        "接口从 900ms 优化到 100ms，【请补充：2026 年数据】",
+                        "保留结果并留占位符", "rephrase")),
+                List.of("【请补充：2026 年数据】"),
+                Map.of());
+
+        ResumeOptimizationResult validated = validator.validate(result, "接口从 900ms 优化到 100ms。");
+
+        assertEquals(1, validated.sections().size());
+    }
+
+    @Test
     void rejectsSectionWithoutOptimizedText() {
         String json = validJson().replace(
                 "\"optimized\": \"负责订单系统重构，服务拆分后接口耗时下降 40%【请补充：订单量级】\"",

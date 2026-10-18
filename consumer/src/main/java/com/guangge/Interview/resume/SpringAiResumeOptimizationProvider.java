@@ -42,7 +42,7 @@ public class SpringAiResumeOptimizationProvider implements ResumeOptimizationPro
                         resumeText))
                 .call()
                 .content();
-        return validator.parse(raw);
+        return validator.parse(raw, resumeText);
     }
 
     @Override

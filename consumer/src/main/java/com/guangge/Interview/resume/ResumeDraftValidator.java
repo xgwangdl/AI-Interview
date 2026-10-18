@@ -3,6 +3,7 @@ package com.guangge.Interview.resume;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeDraftResult;
 import com.guangge.Interview.util.JsonText;
+import com.guangge.Interview.util.NumberClaims;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -35,6 +36,10 @@ public class ResumeDraftValidator {
     }
 
     public ResumeDraftResult parse(String raw) {
+        return parse(raw, null);
+    }
+
+    public ResumeDraftResult parse(String raw, String groundedSource) {
         if (raw == null || raw.isBlank()) {
             throw new ResumeFormatException("模型返回为空");
         }
@@ -44,10 +49,14 @@ public class ResumeDraftValidator {
         } catch (Exception exception) {
             throw new ResumeFormatException("模型返回的不是约定的 JSON：" + exception.getMessage(), exception);
         }
-        return validate(result);
+        return validate(result, groundedSource);
     }
 
     public ResumeDraftResult validate(ResumeDraftResult result) {
+        return validate(result, null);
+    }
+
+    public ResumeDraftResult validate(ResumeDraftResult result, String groundedSource) {
         if (result == null) throw new ResumeFormatException("生成结果缺失");
         String text = result.resumeText() == null ? "" : result.resumeText().strip();
         if (text.isEmpty()) throw new ResumeFormatException("resumeText 不能为空");
@@ -68,6 +77,19 @@ public class ResumeDraftValidator {
                         + "缺内容必须写成 【请补充：…】");
             }
         }
+
+        if (groundedSource != null) {
+            List<String> unsupported = NumberClaims.unsupported(
+                            ResumeOptimizationValidator.withoutPlaceholders(text),
+                            ResumeOptimizationValidator.withoutPlaceholders(groundedSource))
+                    .stream().toList();
+            if (!unsupported.isEmpty()) {
+                throw new ResumeFormatException("生成的简历出现了素材里没有的数字："
+                        + String.join("、", unsupported)
+                        + "。真实数据请写成 【请补充：…】 留给用户填写");
+            }
+        }
+
         List<String> declared = clean(result.placeholders());
         if (!declared.isEmpty() && inText.isEmpty()) {
             throw new ResumeFormatException("placeholders 声明了占位符，但正文里一个都没出现（疑似编造了内容）");

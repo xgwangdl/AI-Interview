@@ -38,15 +38,17 @@ public class SpringAiResumeDraftProvider implements ResumeDraftProvider {
 
     @Override
     public ResumeDraftResult draft(ResumeDraftRequests.Draft materials) {
+        String source = describe(materials);
         String raw = chatClient.prompt()
                 .user("""
                         用户提供的素材如下（没写的就是没有，不要编造）：
 
                         %s
-                        """.formatted(describe(materials)))
+                        """.formatted(source))
                 .call()
                 .content();
-        return validator.parse(raw);
+        // 清单行首的 1) 2) 只是给模型看的序号，不属于用户事实，校验白名单要排除。
+        return validator.parse(raw, source.replaceAll("(?m)^\\s*\\d+\\)\\s*", ""));
     }
 
     @Override
@@ -70,7 +72,7 @@ public class SpringAiResumeDraftProvider implements ResumeDraftProvider {
                         """.formatted(currentText, questions, supplement))
                 .call()
                 .content();
-        return validator.parse(raw);
+        return validator.parse(raw, currentText + "\n" + supplement);
     }
 
     @Override

@@ -93,6 +93,29 @@ class EvaluationResultValidatorTest {
         assertThrows(EvaluationFormatException.class, () -> validator.parse("这个回答整体还不错，可以再加强 STAR 结构。"));
     }
 
+    @Test
+    void rejectsSampleAnswerNumbersThatWereNotInTheTranscript() {
+        String json = validJson().replace(
+                "\"sampleAnswer\": \"先讲背景，再讲任务与行动。\"",
+                "\"sampleAnswer\": \"先讲背景，再说我把接口耗时降低了 25%。\"");
+
+        EvaluationFormatException exception = assertThrows(EvaluationFormatException.class,
+                () -> validator.parse(json, "我负责订单系统，先讲背景再讲行动。"));
+
+        assertEquals("sampleAnswer contains numbers not present in the transcript: 25", exception.getMessage());
+    }
+
+    @Test
+    void allowsGroundedSampleNumbersAndNumbersInsidePlaceholders() {
+        String json = validJson().replace(
+                "\"sampleAnswer\": \"先讲背景，再讲任务与行动。\"",
+                "\"sampleAnswer\": \"接口从 900ms 降到 100ms，【请补充：2026 年数据】。\"");
+
+        EvaluationResult result = validator.parse(json, "接口从 900ms 降到 100ms。");
+
+        assertEquals(82.5, result.overallScore(), 0.001);
+    }
+
     static String validJson() {
         return """
                 {

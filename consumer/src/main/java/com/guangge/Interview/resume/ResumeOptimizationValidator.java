@@ -3,6 +3,7 @@ package com.guangge.Interview.resume;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
 import com.guangge.Interview.util.JsonText;
+import com.guangge.Interview.util.NumberClaims;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -30,6 +31,10 @@ public class ResumeOptimizationValidator {
     }
 
     public ResumeOptimizationResult parse(String raw) {
+        return parse(raw, null);
+    }
+
+    public ResumeOptimizationResult parse(String raw, String groundedSource) {
         if (raw == null || raw.isBlank()) {
             throw new ResumeFormatException("模型返回为空");
         }
@@ -39,10 +44,14 @@ public class ResumeOptimizationValidator {
         } catch (Exception exception) {
             throw new ResumeFormatException("模型返回的不是约定的 JSON：" + exception.getMessage(), exception);
         }
-        return validate(result);
+        return validate(result, groundedSource);
     }
 
     public ResumeOptimizationResult validate(ResumeOptimizationResult result) {
+        return validate(result, null);
+    }
+
+    public ResumeOptimizationResult validate(ResumeOptimizationResult result, String groundedSource) {
         if (result == null) throw new ResumeFormatException("优化结果缺失");
         if (result.sections() == null || result.sections().isEmpty()) {
             throw new ResumeFormatException("sections 不能为空");
@@ -54,6 +63,7 @@ public class ResumeOptimizationValidator {
         // 只在**正文**里找占位符。之前把"声明的占位符"也塞进了这个集合，
         // 于是"声明了却没写"这种自相矛盾永远检测不出来（声明的字符串自己就能匹配正则）。
         List<String> inText = new ArrayList<>();
+        StringBuilder generated = new StringBuilder();
         for (int index = 0; index < result.sections().size(); index++) {
             ResumeOptimizationResult.Section section = result.sections().get(index);
             String where = "sections[" + index + "]";
@@ -66,6 +76,17 @@ public class ResumeOptimizationValidator {
                 throw new ResumeFormatException(where + ".changeType 非法：" + section.changeType());
             }
             collectPlaceholders(section.optimized(), inText);
+            generated.append(withoutPlaceholders(section.optimized())).append('\n');
+        }
+
+        if (groundedSource != null) {
+            List<String> unsupported = NumberClaims.unsupported(generated.toString(), groundedSource)
+                    .stream().toList();
+            if (!unsupported.isEmpty()) {
+                throw new ResumeFormatException("优化后的简历出现了原文没有的数字："
+                        + String.join("、", unsupported)
+                        + "。真实数据请让用户补充，不要由模型编写");
+            }
         }
 
         List<String> declared = result.placeholders() == null ? List.of() : result.placeholders();
@@ -92,5 +113,9 @@ public class ResumeOptimizationValidator {
         List<String> found = new ArrayList<>();
         collectPlaceholders(text, found);
         return found;
+    }
+
+    public static String withoutPlaceholders(String text) {
+        return text == null ? "" : PLACEHOLDER.matcher(text).replaceAll("");
     }
 }

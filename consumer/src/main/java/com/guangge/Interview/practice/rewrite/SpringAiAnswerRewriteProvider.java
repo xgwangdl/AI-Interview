@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
+import com.guangge.Interview.util.NumberClaims;
+
 import java.util.Set;
 
 /** 走 Spring AI 的回答改写；与其它模型客户端一样，提示词单独 clone。 */
@@ -50,7 +52,7 @@ public class SpringAiAnswerRewriteProvider implements AnswerRewriteProvider {
     }
 
     static String numericConstraint(String transcript) {
-        Set<String> allowed = AnswerRewriteValidator.numbers(transcript);
+        Set<String> allowed = NumberClaims.arabic(transcript);
         if (allowed.isEmpty()) {
             return "原回答没有任何数字。改写中不得出现 0-9 的任何阿拉伯数字，不要为了显得具体而补充百分比、年份、次数或金额。";
         }

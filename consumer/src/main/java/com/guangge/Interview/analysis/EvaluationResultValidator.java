@@ -3,6 +3,7 @@ package com.guangge.Interview.analysis;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.util.JsonText;
+import com.guangge.Interview.util.NumberClaims;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,7 +18,11 @@ public class EvaluationResultValidator {
 
     /** Parses raw model text into the fixed evaluation schema, rejecting anything else. */
     public EvaluationResult parse(String raw) {
-        return validate(deserialize(raw, EvaluationResult.class));
+        return parse(raw, null);
+    }
+
+    public EvaluationResult parse(String raw, String groundedTranscript) {
+        return validate(deserialize(raw, EvaluationResult.class), groundedTranscript);
     }
 
     public EvaluationReport parseReport(String raw) {
@@ -36,6 +41,10 @@ public class EvaluationResultValidator {
     }
 
     public EvaluationResult validate(EvaluationResult result) {
+        return validate(result, null);
+    }
+
+    public EvaluationResult validate(EvaluationResult result, String groundedTranscript) {
         if (result == null) throw new EvaluationFormatException("Evaluation is missing");
         if (result.scores() == null) throw new EvaluationFormatException("scores are required");
         bounded(result.overallScore(), "overallScore");
@@ -56,6 +65,15 @@ public class EvaluationResultValidator {
         }
         if (result.sampleAnswer() == null || result.sampleAnswer().isBlank()) {
             throw new EvaluationFormatException("sampleAnswer is required");
+        }
+        if (groundedTranscript != null) {
+            java.util.Set<String> unsupported = NumberClaims.unsupported(
+                    NumberClaims.withoutBracketedPlaceholders(result.sampleAnswer()),
+                    groundedTranscript);
+            if (!unsupported.isEmpty()) {
+                throw new EvaluationFormatException("sampleAnswer contains numbers not present in the transcript: "
+                        + String.join(", ", unsupported));
+            }
         }
         if (result.evidence() != null) {
             for (EvaluationResult.Evidence evidence : result.evidence()) {

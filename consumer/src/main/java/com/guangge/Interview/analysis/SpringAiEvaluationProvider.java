@@ -33,7 +33,7 @@ public class SpringAiEvaluationProvider implements EvaluationProvider {
                 .user(userMessage(request))
                 .call()
                 .content();
-        return new EvaluationOutcome(validator.parse(raw), raw);
+        return new EvaluationOutcome(validator.parse(raw, request.transcript()), raw);
     }
 
     @Override

@@ -2,10 +2,9 @@ package com.guangge.Interview.practice.rewrite;
 
 import org.springframework.stereotype.Component;
 
-import java.util.HashSet;
+import com.guangge.Interview.util.NumberClaims;
+
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 改写校验：保留原意最重要的硬约束是"不编数字"。
@@ -16,17 +15,15 @@ import java.util.regex.Pattern;
 @Component
 public class AnswerRewriteValidator {
 
-    private static final Pattern NUMBER = Pattern.compile("\\d+(?:\\.\\d+)?");
     private static final int MAX_CHARS = 4000;
 
     public String validate(String rewrite, String original) {
         String text = basic(rewrite);
-        Set<String> originalNumbers = numbers(original);
-        for (String number : numbers(text)) {
-            if (!originalNumbers.contains(number)) {
-                throw new AnswerRewriteException("AI 改写引入了原回答没有的数字 " + number
-                        + "，已拦截以避免编造经历。请重试，或手动编辑补充真实数字。");
-            }
+        Set<String> unsupported = NumberClaims.unsupported(text, original);
+        if (!unsupported.isEmpty()) {
+            throw new AnswerRewriteException("AI 改写引入了原回答没有的数字 "
+                    + String.join("、", unsupported)
+                    + "，已拦截以避免编造经历。请重试，或手动编辑补充真实数字。");
         }
         // 不能把英文回答改写成中文（反之亦然）：用户要背的是面试时说的那种语言。
         boolean originalChinese = hasChinese(original);
@@ -55,11 +52,7 @@ public class AnswerRewriteValidator {
     }
 
     static Set<String> numbers(String value) {
-        Set<String> result = new HashSet<>();
-        if (value == null) return result;
-        Matcher matcher = NUMBER.matcher(value);
-        while (matcher.find()) result.add(matcher.group());
-        return result;
+        return NumberClaims.arabic(value);
     }
 
     private static boolean hasChinese(String value) {
