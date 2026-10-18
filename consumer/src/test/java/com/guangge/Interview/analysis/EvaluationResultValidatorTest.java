@@ -102,7 +102,7 @@ class EvaluationResultValidatorTest {
         EvaluationFormatException exception = assertThrows(EvaluationFormatException.class,
                 () -> validator.parse(json, "我负责订单系统，先讲背景再讲行动。"));
 
-        assertEquals("sampleAnswer contains numbers not present in the transcript: 25", exception.getMessage());
+        assertEquals("sampleAnswer contains numbers not present in the transcript: 25%", exception.getMessage());
     }
 
     @Test

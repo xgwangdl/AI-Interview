@@ -54,9 +54,10 @@ public class SpringAiAnswerRewriteProvider implements AnswerRewriteProvider {
     static String numericConstraint(String transcript) {
         Set<String> allowed = NumberClaims.arabic(transcript);
         if (allowed.isEmpty()) {
-            return "原回答没有任何数字。改写中不得出现 0-9 的任何阿拉伯数字，不要为了显得具体而补充百分比、年份、次数或金额。";
+            return "原回答没有任何数字。改写中不得出现任何阿拉伯数字或中文数字/量化表述；"
+                    + "不要为了显得具体而补充百分比、年份、次数或金额。";
         }
         return "只允许原回答已经出现的这些数字：" + String.join("、", allowed.stream().sorted().toList())
-                + "。不得新增其他数字。";
+                + "。不得用阿拉伯数字、中文数字或换算后的等价形式新增其他量化事实。";
     }
 }

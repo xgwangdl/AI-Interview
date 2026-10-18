@@ -9,7 +9,7 @@ class SpringAiAnswerRewriteProviderTest {
     @Test
     void forbidsAllDigitsWhenTheTranscriptHasNoNumbers() {
         assertThat(SpringAiAnswerRewriteProvider.numericConstraint("我只是解释了一下 STAR 结构。"))
-                .contains("不得出现 0-9")
+                .contains("不得出现任何阿拉伯数字或中文数字")
                 .contains("百分比")
                 .doesNotContain("只允许");
     }
@@ -19,7 +19,7 @@ class SpringAiAnswerRewriteProviderTest {
         String constraint = SpringAiAnswerRewriteProvider.numericConstraint(
                 "我把接口从 900ms 优化到 100ms，减少了 2 次调用。");
 
-        assertThat(constraint).contains("900", "100", "2");
-        assertThat(constraint).contains("不得新增其他数字");
+        assertThat(constraint).contains("900ms", "100ms", "2次");
+        assertThat(constraint).contains("不得用阿拉伯数字、中文数字");
     }
 }

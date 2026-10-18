@@ -61,7 +61,7 @@ class AnswerRewriteServiceTest {
     @DisplayName("AI 改写落库并写历史；只改表达不改数字")
     void generatesAndStoresRewrite() {
         when(provider.rewrite("Java 后端", "订单系统", "讲一个项目", answer.getTranscriptText()))
-                .thenReturn("我把接口从 900ms 优化到 100ms，先定位慢查询，再减少了一次调用。");
+                .thenReturn("我把接口从 900ms 优化到 100ms，先定位慢查询，再减少重复调用。");
 
         var view = service.generate("smoke", answer.getId());
 
