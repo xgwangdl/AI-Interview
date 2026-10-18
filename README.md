@@ -1,12 +1,20 @@
 # Light-Interview
 
-### 把“我知道该怎么答”，练成“我真的答得出来”
+## 从岗位 JD 到真实开口回答的 AI 面试训练系统
 
-一个开源的 **AI 面试训练系统**：从岗位与简历出发，完成视频面试、代码笔试、自动评分、错题重练和成长复盘。
+把“我知道该怎么答”，练成“我真的答得出来”。
 
-> 不是又一个只会聊天的 AI 面试 Demo。它会录下你的回答、指出具体问题，也**真的会在 Docker 沙箱里运行你写的代码**。
+Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 和简历，完成一次可录制、可回放、可评分、可重练的模拟面试。
 
-[快速开始](#快速开始) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [English](docs/README.md)
+它不只给你一段聊天式评价，而是把一次练习变成完整闭环：
+
+- 录下真实回答，生成逐题转写和结构化反馈；
+- 回到视频时间点查看回答证据；
+- 对低分回答进行改写、重录和前后对比；
+- 把薄弱题目放进错题本和每日训练计划；
+- 用 Docker 隔离沙箱真实运行 Java、Python、C++、JavaScript、Go 代码题。
+
+适合准备校招、社招、转岗和技术晋升面试的开发者。
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
 [![Backend tests](https://img.shields.io/badge/backend_tests-299-brightgreen.svg)](#工程质量)
@@ -16,17 +24,7 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-## 为什么值得一个 Star
-
-如果你正在准备校招、社招、转行或技术晋升，这个项目想解决的不是“再给你一堆题”，而是把训练真正闭环：
-
-- **能开口练**：职位、公司、JD、简历决定题目，浏览器直接录制回答。
-- **能拿到反馈**：语音转写后按固定结构评分，结论能跳回视频对应时间点。
-- **能继续变好**：错题自动进入错题本，弱项进入今日训练，回答可以改写、重录、对比。
-- **笔试不自欺**：Java / Python / C++ / JavaScript / Go 代码在隔离沙箱中真实编译运行，按用例结果计分。
-- **不是半成品**：测试、CI、数据库迁移、额度护栏、断点上传、失败重试和死信队列都已经接上。
-
-> 如果这个项目帮你少踩一个坑、少浪费一次面试机会，点一个 Star。这会让更多正在准备面试的人更容易发现它。
+[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [English](docs/README.md)
 
 <p align="center">
   <img src="docs/images/08-session-avatar-speaking.png" alt="Light-Interview 模拟面试界面" width="92%" />
@@ -35,6 +33,18 @@
 <p align="center">
   <sub>真人形象数字人面试官 · 语音播报 · 音量驱动嘴型 · 逐题录制 · 可回放复盘</sub>
 </p>
+
+## 先看演示
+
+不用先读完整文档，先看一次真实流程：
+
+| 演示 | 内容 |
+| --- | --- |
+| [完整流程](docs/step4.mp4) | 从登录、配置到完成一次练习 |
+| [逐题录制](docs/step2.mp4) | 数字人提问、录制回答和流程推进 |
+| [复盘报告](docs/step3.mp4) | 评分、时间轴证据和改进建议 |
+
+如果这个项目让你觉得“我真的可以拿它练一次面试”，欢迎点一个 Star。Star 会帮助更多正在准备面试的人发现它，也会帮助项目继续完善真实求职场景。
 
 ## 一套完整的训练闭环
 
