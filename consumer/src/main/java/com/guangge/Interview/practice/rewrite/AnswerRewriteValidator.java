@@ -24,7 +24,8 @@ public class AnswerRewriteValidator {
         Set<String> originalNumbers = numbers(original);
         for (String number : numbers(text)) {
             if (!originalNumbers.contains(number)) {
-                throw new AnswerRewriteException("改写里出现了原回答没有的数字：" + number + "，请重试");
+                throw new AnswerRewriteException("AI 改写引入了原回答没有的数字 " + number
+                        + "，已拦截以避免编造经历。请重试，或手动编辑补充真实数字。");
             }
         }
         // 不能把英文回答改写成中文（反之亦然）：用户要背的是面试时说的那种语言。
@@ -53,7 +54,7 @@ public class AnswerRewriteValidator {
         return text;
     }
 
-    private static Set<String> numbers(String value) {
+    static Set<String> numbers(String value) {
         Set<String> result = new HashSet<>();
         if (value == null) return result;
         Matcher matcher = NUMBER.matcher(value);

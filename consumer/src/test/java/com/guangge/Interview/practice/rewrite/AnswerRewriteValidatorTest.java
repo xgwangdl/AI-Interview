@@ -18,7 +18,8 @@ class AnswerRewriteValidatorTest {
                 .contains("900ms");
         assertThatThrownBy(() -> validator.validate("我把性能提升了 40%。", "我优化了接口性能。"))
                 .isInstanceOf(AnswerRewriteException.class)
-                .hasMessageContaining("40");
+                .hasMessageContaining("40")
+                .hasMessageContaining("避免编造经历");
     }
 
     @Test

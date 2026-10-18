@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 /** 走 Spring AI 的回答改写；与其它模型客户端一样，提示词单独 clone。 */
 @Component
 public class SpringAiAnswerRewriteProvider implements AnswerRewriteProvider {
@@ -30,9 +32,11 @@ public class SpringAiAnswerRewriteProvider implements AnswerRewriteProvider {
                 岗位描述：%s
                 面试题：%s
                 输出语言：%s（必须与原回答完全一致，禁止翻译）
+                数字约束：%s
                 原回答（语音转写，可能有错别字）：
                 %s
-                """.formatted(blank(role), blank(jobDescription), blank(question), language, blank(transcript)))
+                """.formatted(blank(role), blank(jobDescription), blank(question), language,
+                numericConstraint(transcript), blank(transcript)))
                 .call().content();
     }
 
@@ -43,5 +47,14 @@ public class SpringAiAnswerRewriteProvider implements AnswerRewriteProvider {
 
     private static String blank(String value) {
         return value == null || value.isBlank() ? "（未提供）" : value.strip();
+    }
+
+    static String numericConstraint(String transcript) {
+        Set<String> allowed = AnswerRewriteValidator.numbers(transcript);
+        if (allowed.isEmpty()) {
+            return "原回答没有任何数字。改写中不得出现 0-9 的任何阿拉伯数字，不要为了显得具体而补充百分比、年份、次数或金额。";
+        }
+        return "只允许原回答已经出现的这些数字：" + String.join("、", allowed.stream().sorted().toList())
+                + "。不得新增其他数字。";
     }
 }

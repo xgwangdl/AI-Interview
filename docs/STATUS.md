@@ -1703,3 +1703,11 @@ PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 40
 - `reports/evidence/api/smoke-after-fixes.json`
 - `reports/evidence/api/smoke-real-media-after-fixes.json`
 - `reports/evidence/auth/browser-auth-smoke.png`
+
+### 2026-10-18 回答改写数字约束增强
+
+- 用户实测模型在低信息量回答上反复插入 `30`、`25` 等原回答没有的数字。
+- 校验器拦截是正确的，但提示词没有显式列出数字白名单，错误文案也不够清楚。
+- 现在提示词会列出原回答已有数字；数字集合为空时，明确禁止出现任何阿拉伯数字。
+- 拦截文案改为“已拦截以避免编造经历”，并提示用户重试或在编辑模式补充真实数字。
+- 后端测试增至 **289** 个，新增数字约束测试；改写相关 8 个测试通过。
