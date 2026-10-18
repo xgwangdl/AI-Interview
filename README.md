@@ -9,8 +9,8 @@
 [快速开始](#快速开始) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [English](docs/README.md)
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
-[![Backend tests](https://img.shields.io/badge/backend_tests-274-brightgreen.svg)](#工程质量)
-[![Frontend tests](https://img.shields.io/badge/frontend_tests-142-brightgreen.svg)](#工程质量)
+[![Backend tests](https://img.shields.io/badge/backend_tests-287-brightgreen.svg)](#工程质量)
+[![Frontend tests](https://img.shields.io/badge/frontend_tests-145-brightgreen.svg)](#工程质量)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring AI](https://img.shields.io/badge/Spring_AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
@@ -178,8 +178,9 @@ PRACTICE_EVALUATION_PROVIDER=stub
 
 ## 工程质量
 
-- 后端 **274** 个测试通过，11 个依赖外部环境的测试按配置跳过。
-- 前端 **142** 个测试通过，生产构建通过。
+- 后端 **287** 个测试通过，11 个依赖外部环境的测试按配置跳过。
+- 前端 **145** 个测试通过，生产构建通过。
+- 浏览器认证冒烟使用系统 Chrome，可重复验证登录、注册、空值提示和路由保护。
 - GitHub Actions 执行后端测试、前端测试和前端构建。
 - 已完成真实 PostgreSQL、Redis、S3 兼容存储和真实模型供应商的链路验证。
 - 当前已知边界：数字人口型是按音量驱动，不是音素级同步；L2 流式外语通道默认关闭。
@@ -236,6 +237,7 @@ mvn -B clean package
 
 # 前端测试与构建
 npm --prefix web test
+npm --prefix web run test:e2e
 npm --prefix web run build
 
 # HTTP 冒烟测试

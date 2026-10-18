@@ -1,0 +1,118 @@
+{
+  "generatedAt": "2026-10-18T05:58:19.7575707Z",
+  "baseUrl": "http://localhost:8088",
+  "sessionId": "f35c1f96-0c78-4321-b2ca-f9f2f0383987",
+  "reportStatus": "awaiting_analysis",
+  "analysisStatus": "pending",
+  "analysisAttempts": 0,
+  "analysisError": null,
+  "questionCount": 2,
+  "evaluatedCount": 0,
+  "mediaFile": "step2.mp4",
+  "mediaBytes": 15404922,
+  "report": {
+    "sessionId": "f35c1f96-0c78-4321-b2ca-f9f2f0383987",
+    "role": "Java 后端",
+    "status": "awaiting_analysis",
+    "questionCount": 2,
+    "evaluatedCount": 0,
+    "generatedAt": "2026-10-18T05:58:08.477290400Z",
+    "summary": {
+      "averageOverallScore": null,
+      "averageDimensionScores": {},
+      "speechRateCharactersPerMinute": 0.0,
+      "totalPauseCount": 0,
+      "totalPauseSeconds": 0.0,
+      "totalFillerWordCount": 0,
+      "followUpCount": 0,
+      "improvementSuggestions": []
+    },
+    "analysis": {
+      "status": "pending",
+      "attempts": 0,
+      "error": null
+    },
+    "questions": [
+      {
+        "answerId": "b4fb198a-2dd4-42ce-a9a0-107c9318d1a2",
+        "questionIndex": 0,
+        "questionId": "q-0",
+        "attempt": 1,
+        "isCurrent": true,
+        "questionText": "请介绍一个你主导的项目",
+        "durationSeconds": 30,
+        "transcriptStatus": "awaiting_provider",
+        "transcriptText": null,
+        "transcriptOriginal": null,
+        "transcriptEditedAt": null,
+        "evaluationStatus": "awaiting_provider",
+        "mediaUrl": "/api/v1/answers/b4fb198a-2dd4-42ce-a9a0-107c9318d1a2/media",
+        "mediaSignedUrl": "/api/v1/media/b4fb198a-2dd4-42ce-a9a0-107c9318d1a2?expires=1792303388&signature=U0vJfWzS7n1e0iliWOY0cAKxcEQufutPKBU-OhjjioU",
+        "rewriteText": null,
+        "rewriteSource": null,
+        "rewriteAt": null,
+        "followUp": false,
+        "parentQuestionId": null,
+        "parentQuestionIndex": null,
+        "followUpRound": 0,
+        "evaluation": null,
+        "attempts": [
+          {
+            "answerId": "b4fb198a-2dd4-42ce-a9a0-107c9318d1a2",
+            "attempt": 1,
+            "current": true,
+            "transcriptText": null,
+            "evaluationStatus": "awaiting_provider",
+            "mediaUrl": "/api/v1/answers/b4fb198a-2dd4-42ce-a9a0-107c9318d1a2/media",
+            "mediaSignedUrl": "/api/v1/media/b4fb198a-2dd4-42ce-a9a0-107c9318d1a2?expires=1792303388&signature=U0vJfWzS7n1e0iliWOY0cAKxcEQufutPKBU-OhjjioU",
+            "evaluation": null,
+            "rewriteText": null,
+            "rewriteSource": null,
+            "rewriteAt": null,
+            "createdAt": "2026-10-18T05:57:07.10494Z"
+          }
+        ]
+      },
+      {
+        "answerId": "a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6",
+        "questionIndex": 1,
+        "questionId": "q-1",
+        "attempt": 1,
+        "isCurrent": true,
+        "questionText": "讲一个你解决过的线上问题",
+        "durationSeconds": 30,
+        "transcriptStatus": "awaiting_provider",
+        "transcriptText": null,
+        "transcriptOriginal": null,
+        "transcriptEditedAt": null,
+        "evaluationStatus": "awaiting_provider",
+        "mediaUrl": "/api/v1/answers/a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6/media",
+        "mediaSignedUrl": "/api/v1/media/a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6?expires=1792303388&signature=E-dnWrB9V33ndJJc9w8B37Oj44szL8UY2_9RkYpv11M",
+        "rewriteText": null,
+        "rewriteSource": null,
+        "rewriteAt": null,
+        "followUp": false,
+        "parentQuestionId": null,
+        "parentQuestionIndex": null,
+        "followUpRound": 0,
+        "evaluation": null,
+        "attempts": [
+          {
+            "answerId": "a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6",
+            "attempt": 1,
+            "current": true,
+            "transcriptText": null,
+            "evaluationStatus": "awaiting_provider",
+            "mediaUrl": "/api/v1/answers/a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6/media",
+            "mediaSignedUrl": "/api/v1/media/a6f1da2e-4d64-4523-a1c8-29b54c8bbaa6?expires=1792303388&signature=E-dnWrB9V33ndJJc9w8B37Oj44szL8UY2_9RkYpv11M",
+            "evaluation": null,
+            "rewriteText": null,
+            "rewriteSource": null,
+            "rewriteAt": null,
+            "createdAt": "2026-10-18T05:57:07.122017Z"
+          }
+        ]
+      }
+    ]
+  }
+}

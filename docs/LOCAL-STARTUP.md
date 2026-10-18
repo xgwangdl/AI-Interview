@@ -163,8 +163,12 @@ mvn -B test
 
 ```powershell
 npm --prefix web test
+npm --prefix web run test:e2e
 npm --prefix web run build
 ```
+
+`test:e2e` 会优先使用系统 Chrome/Edge，不需要下载 Playwright 自带浏览器；执行前请确保前端
+`http://localhost:5173` 已启动。测试证据写到 `reports/evidence/auth/`。
 
 ## 6. 停止服务
 

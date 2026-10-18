@@ -9,6 +9,7 @@ import com.guangge.Interview.practice.dto.PracticeSessionRequest;
 import com.guangge.Interview.practice.dto.PracticeSessionView;
 import com.guangge.Interview.practice.entity.PracticeAnswerEntity;
 import com.guangge.Interview.practice.entity.PracticeSessionEntity;
+import com.guangge.Interview.practice.media.MediaSignatureValidator;
 import com.guangge.Interview.practice.repository.PracticeAnswerRepository;
 import com.guangge.Interview.practice.repository.PracticeSessionRepository;
 import com.guangge.Interview.practice.storage.MediaStorage;
@@ -172,8 +173,9 @@ public class PracticeSessionService {
                 && !"application/octet-stream".equalsIgnoreCase(contentType))) {
             throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "A video file is required");
         }
+        InputStream verified = MediaSignatureValidator.requireSupportedVideo(content, size);
         String key = answer.getId().toString();
-        mediaStorage.store(key, content, size);
+        mediaStorage.store(key, verified, size);
         answer.setMediaKey(key);
         answer.setMediaContentType(contentType);
         answer.setMediaSizeBytes(size);

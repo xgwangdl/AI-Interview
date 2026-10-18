@@ -1,0 +1,7 @@
+baseUrl=http://localhost:5173
+browser=C:\Program Files\Google\Chrome\Application\chrome.exe
+login/register render=PASS
+empty login validation=PASS
+protected route redirect=PASS
+console/page errors=0
+failed responses=0

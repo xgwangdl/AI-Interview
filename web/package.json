@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "test": "vitest run",
+    "test:e2e": "node scripts/browser-auth-smoke.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

@@ -33,16 +33,19 @@ public class InterViewController {
     private final InterviewAssistant interviewAssistant;
     private final TextToSpeechService speechService;
     private final SpeechToTextService speechToTextService;
+    private final AudioConverter audioConverter;
     private final ResourceLoader resourceLoader;
     private final ProgramAssistant programAssistant;
 
     public InterViewController(JavaAssistant interViewAgent, InterviewAssistant interviewAssistant,
                                TextToSpeechService speechService, SpeechToTextService speechToTextService,
-                               ResourceLoader resourceLoader, ProgramAssistant programAssistant) {
+                               AudioConverter audioConverter, ResourceLoader resourceLoader,
+                               ProgramAssistant programAssistant) {
         this.interViewAgent = interViewAgent;
         this.interviewAssistant = interviewAssistant;
         this.speechService = speechService;
         this.speechToTextService = speechToTextService;
+        this.audioConverter = audioConverter;
         this.resourceLoader = resourceLoader;
         this.programAssistant = programAssistant;
     }
@@ -77,7 +80,7 @@ public class InterViewController {
         } else {
             File tempFile = File.createTempFile("audio-", ".opus");
             audio.transferTo(tempFile);
-            File convertFile = AudioConverter.convertToWav(tempFile);
+            File convertFile = audioConverter.convertToWav(tempFile);
             // 语音转文字
             text = speechToTextService.transcribeAudio(convertFile);
             tempFile.delete();

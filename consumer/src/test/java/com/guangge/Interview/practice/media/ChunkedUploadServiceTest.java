@@ -65,22 +65,22 @@ class ChunkedUploadServiceTest {
 
     @Test
     void mergesChunksIntoTheStoredMediaAndEnqueuesAnalysis() throws Exception {
-        byte[] part1 = bytes("hello-");
-        byte[] part2 = bytes("world");
+        byte[] part1 = videoPart(true);
+        byte[] part2 = videoPart(false);
         uploads.storeChunk("alice", answerId, 0, 2, part1);
         uploads.storeChunk("alice", answerId, 1, 2, part2);
         assertTrue(uploads.status("alice", answerId, 2).readyToMerge());
 
         AtomicReference<byte[]> stored = new AtomicReference<>();
-        when(sessions.storeAnswerMedia(eq("alice"), eq(answerId), eq("video/webm"), eq(11L), any()))
+        when(sessions.storeAnswerMedia(eq("alice"), eq(answerId), eq("video/webm"), eq(512L), any()))
                 .thenAnswer(invocation -> {
                     InputStream content = invocation.getArgument(4);
                     stored.set(content.readAllBytes());
-                    return answerView(11L);
+                    return answerView(512L);
                 });
 
         PracticeAnswerView view = uploads.merge("alice", answerId,
-                new MediaMergeRequest(2, 11, "video/webm", sha256(concat(part1, part2))));
+                new MediaMergeRequest(2, 512, "video/webm", sha256(concat(part1, part2))));
 
         assertEquals(answerId, view.id());
         assertArrayEquals(concat(part1, part2), stored.get(), "合并结果必须与上传的分片一致");
@@ -91,20 +91,38 @@ class ChunkedUploadServiceTest {
 
     @Test
     void rejectsMergeWhenTheChecksumDoesNotMatch() throws Exception {
-        byte[] part1 = bytes("hello-");
-        byte[] part2 = bytes("world");
+        byte[] part1 = videoPart(true);
+        byte[] part2 = videoPart(false);
         uploads.storeChunk("alice", answerId, 0, 2, part1);
         uploads.storeChunk("alice", answerId, 1, 2, part2);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> uploads.merge("alice", answerId,
-                        new MediaMergeRequest(2, 11, "video/webm", "deadbeef")));
+                        new MediaMergeRequest(2, 512, "video/webm", "deadbeef")));
 
         assertEquals(400, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("sha256"), exception.getReason());
         verify(sessions, never()).storeAnswerMedia(any(), any(), any(), anyLong(), any());
         // 校验失败时保留分片，客户端可以补传/重试，而不是从头再来。
         assertTrue(storage.find(chunkKey(0)).isPresent());
+    }
+
+    @Test
+    void rejectsForgedTotalBytesAndKeepsChunksForRetry() throws Exception {
+        byte[] part1 = videoPart(true);
+        byte[] part2 = videoPart(false);
+        uploads.storeChunk("alice", answerId, 0, 2, part1);
+        uploads.storeChunk("alice", answerId, 1, 2, part2);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> uploads.merge("alice", answerId,
+                        new MediaMergeRequest(2, 999, "video/webm", sha256(concat(part1, part2)))));
+
+        assertEquals(400, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("实际 512"), exception.getReason());
+        verify(sessions, never()).storeAnswerMedia(any(), any(), any(), anyLong(), any());
+        assertTrue(storage.find(chunkKey(0)).isPresent());
+        assertTrue(storage.find(chunkKey(1)).isPresent());
     }
 
     @Test
@@ -148,6 +166,18 @@ class ChunkedUploadServiceTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] videoPart(boolean withHeader) {
+        byte[] content = new byte[256];
+        java.util.Arrays.fill(content, (byte) 0x42);
+        if (withHeader) {
+            content[0] = 0x1a;
+            content[1] = 0x45;
+            content[2] = (byte) 0xdf;
+            content[3] = (byte) 0xa3;
+        }
+        return content;
     }
 
     private static byte[] concat(byte[] first, byte[] second) {

@@ -44,7 +44,9 @@ public class CodingController {
 
     /** 前端据此决定是否显示「运行」按钮以及可选语言。 */
     @GetMapping("/capabilities")
-    public Map<String, Object> capabilities() {
+    public Map<String, Object> capabilities(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        owners.requireOwner(authorization);
         return Map.of(
                 "codeRunnerEnabled", runner.enabled(),
                 "maxConcurrency", runner.maxConcurrency(),

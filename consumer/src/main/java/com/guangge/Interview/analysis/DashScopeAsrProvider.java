@@ -18,9 +18,11 @@ import java.nio.file.StandardCopyOption;
 public class DashScopeAsrProvider implements AsrProvider {
 
     private final SpeechToTextService speechToText;
+    private final AudioConverter audioConverter;
 
-    public DashScopeAsrProvider(SpeechToTextService speechToText) {
+    public DashScopeAsrProvider(SpeechToTextService speechToText, AudioConverter audioConverter) {
         this.speechToText = speechToText;
+        this.audioConverter = audioConverter;
     }
 
     @Override
@@ -58,9 +60,9 @@ public class DashScopeAsrProvider implements AsrProvider {
         }
     }
 
-    private static File toWav(File media) throws IOException {
+    private File toWav(File media) throws IOException {
         try {
-            return AudioConverter.convertToWav(media);
+            return audioConverter.convertToWav(media);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while extracting the answer audio", exception);

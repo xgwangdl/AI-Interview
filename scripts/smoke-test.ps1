@@ -123,7 +123,13 @@ foreach ($index in 0..1) {
 }
 Assert-Equal 2 $answerIds.Count '保存回答数'
 
-$videoBytes = [System.Text.Encoding]::UTF8.GetBytes('smoke-video-bytes')
+# 默认素材只用于验证上传/下载/删除链路的容器签名，不能用于真实 ASR 解码。
+$videoBytes = New-Object byte[] 512
+[Array]::Fill($videoBytes, [byte]0x42)
+$videoBytes[0] = 0x1a
+$videoBytes[1] = 0x45
+$videoBytes[2] = 0xdf
+$videoBytes[3] = 0xa3
 $videoName = 'answer.webm'
 $videoContentType = 'video/webm'
 if ($MediaPath) {

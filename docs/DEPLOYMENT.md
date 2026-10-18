@@ -116,7 +116,7 @@ MEDIA_S3_PATH_STYLE=true
 | `PRACTICE_ASR_PROVIDER` | `dashscope` | 转写供应商：`dashscope` / `stub` |
 | `PRACTICE_EVALUATION_PROVIDER` | `spring-ai` | 评分供应商：`spring-ai` / `stub` |
 | `PRACTICE_AVATAR_TTS_ENABLED` | `true` | 关闭后退化为「头像 + 文字」 |
-| `FFMPEG_PATH` | Windows 上一个固定路径 | ASR 前抽取音轨用的 ffmpeg |
+| `FFMPEG_PATH` | `ffmpeg`（从 PATH 查找） | ASR 前抽取音轨；自定义安装位置时填绝对路径 |
 
 ### 可观测性与死信队列
 

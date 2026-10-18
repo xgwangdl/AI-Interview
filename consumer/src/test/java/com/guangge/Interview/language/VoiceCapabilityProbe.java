@@ -34,6 +34,7 @@ import java.util.List;
 class VoiceCapabilityProbe {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final AudioConverter audioConverter = new AudioConverter("ffmpeg", 60);
     private static final String EN_TEXT = "I led the billing migration and cut the checkout latency from nine hundred to one hundred milliseconds.";
     private static final String JA_TEXT = "はじめまして。昨日、取引先と見積書の締め切りについて話しました。";
 
@@ -77,7 +78,7 @@ class VoiceCapabilityProbe {
         String apiKey = apiKey();
         for (String path : System.getProperty("voice.probe.audio").split(",")) {
             File source = new File(path.strip());
-            File wav = AudioConverter.convertToWav(source);
+            File wav = audioConverter.convertToWav(source);
             try {
                 for (String hint : List.of("ja", "zh")) {
                     long startedAt = System.currentTimeMillis();
@@ -107,7 +108,7 @@ class VoiceCapabilityProbe {
             File wav = out.resolve(file).toFile();
             Files.write(wav.toPath(), audio);
 
-            File resampled = AudioConverter.convertToWav(wav);
+            File resampled = audioConverter.convertToWav(wav);
             long asrStarted = System.currentTimeMillis();
             String transcript = recognize(apiKey, resampled, language);
             long asrMs = System.currentTimeMillis() - asrStarted;

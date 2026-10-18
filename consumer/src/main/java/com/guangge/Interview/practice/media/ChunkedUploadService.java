@@ -96,24 +96,30 @@ public class ChunkedUploadService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少分片 " + missing + "，请补传后再合并");
         }
 
+        MediaDigest digest = digest(answerId, total);
+        if (request.totalBytes() != digest.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "totalBytes 与合并后的实际大小不一致（声明 " + request.totalBytes()
+                            + "，实际 " + digest.size() + "）");
+        }
         if (request.checksumSha256() != null && !request.checksumSha256().isBlank()) {
-            String actual = sha256(answerId, total);
-            if (!actual.equalsIgnoreCase(request.checksumSha256().trim())) {
+            if (!digest.sha256().equalsIgnoreCase(request.checksumSha256().trim())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "分片完整性校验失败：sha256 不匹配（期望 " + request.checksumSha256()
-                                + "，实际 " + actual + "）");
+                                + "，实际 " + digest.sha256() + "）");
             }
         }
 
         PracticeAnswerView answer;
         try (InputStream merged = openChunks(answerId, total)) {
-            answer = sessions.storeAnswerMedia(ownerId, answerId, contentType, request.totalBytes(), merged);
+            InputStream verified = MediaSignatureValidator.requireSupportedVideo(merged, digest.size());
+            answer = sessions.storeAnswerMedia(ownerId, answerId, contentType, digest.size(), verified);
         }
 
         deleteChunks(answerId, total);
         // 合并完成即触发分析；enqueueAnswer 幂等，客户端随后再调 /complete 也不会重复入队。
         analysisJobs.enqueueAnswer(answerId);
-        log.info("分片合并完成 answer={} chunks={} bytes={}", answerId, total, request.totalBytes());
+        log.info("分片合并完成 answer={} chunks={} bytes={}", answerId, total, digest.size());
         return answer;
     }
 
@@ -139,7 +145,7 @@ public class ChunkedUploadService {
         return missing;
     }
 
-    private String sha256(UUID answerId, int total) throws IOException {
+    private MediaDigest digest(UUID answerId, int total) throws IOException {
         MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-256");
@@ -147,13 +153,15 @@ public class ChunkedUploadService {
             throw new IllegalStateException("SHA-256 不可用", exception);
         }
         byte[] buffer = new byte[64 * 1024];
+        long size = 0;
         try (InputStream merged = openChunks(answerId, total)) {
             int read;
             while ((read = merged.read(buffer)) != -1) {
+                size += read;
                 digest.update(buffer, 0, read);
             }
         }
-        return HexFormat.of().formatHex(digest.digest());
+        return new MediaDigest(size, HexFormat.of().formatHex(digest.digest()));
     }
 
     /** 按序号打开所有分片并拼成一个连续流；调用方负责关闭。 */
@@ -205,5 +213,8 @@ public class ChunkedUploadService {
 
     private static String chunkKey(UUID answerId, int index) {
         return CHUNK_ROOT + "/" + answerId + "/chunk-" + index;
+    }
+
+    private record MediaDigest(long size, String sha256) {
     }
 }

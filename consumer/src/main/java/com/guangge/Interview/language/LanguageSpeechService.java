@@ -33,14 +33,17 @@ public class LanguageSpeechService {
     private static final int MAX_SPEECH_CHARS = 300;
 
     private final ObjectMapper objectMapper;
+    private final AudioConverter audioConverter;
     private final String transcriptionKey;
     private final String speechKey;
 
     public LanguageSpeechService(
             ObjectMapper objectMapper,
+            AudioConverter audioConverter,
             @Value("${spring.ai.dashscope.audio.transcription.api-key:}") String transcriptionKey,
             @Value("${spring.ai.dashscope.audio.speech.api-key:}") String speechKey) {
         this.objectMapper = objectMapper;
+        this.audioConverter = audioConverter;
         this.transcriptionKey = transcriptionKey;
         this.speechKey = speechKey;
     }
@@ -64,7 +67,7 @@ public class LanguageSpeechService {
             if (isSixteenKMonoWav(source)) {
                 wav = source;
             } else {
-                wav = AudioConverter.convertToWav(source);
+                wav = audioConverter.convertToWav(source);
                 converted = true;
             }
             RecognitionParam param = RecognitionParam.builder()

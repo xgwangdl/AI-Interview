@@ -247,6 +247,27 @@ class PracticeSessionServiceTest {
     }
 
     @Test
+    void rejectsMalformedVideoBeforePersistingIt() throws Exception {
+        UUID sessionId = UUID.randomUUID();
+        PracticeAnswerEntity answer = answer(sessionId, mediaKey());
+        UUID answerId = answer.getId();
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(sessions.findByIdAndOwnerId(sessionId, "alice")).thenReturn(Optional.of(ownedSession(sessionId)));
+        MediaStorage storage = mock(MediaStorage.class);
+        service = new PracticeSessionService(sessions, answers, storage, new ObjectMapper(),
+                mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class), 7);
+        byte[] malformed = new byte[512];
+        java.util.Arrays.fill(malformed, (byte) 'A');
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.storeAnswerMedia("alice", answerId, "video/webm", malformed.length,
+                        new java.io.ByteArrayInputStream(malformed)));
+
+        assertEquals(HttpStatus.UNSUPPORTED_MEDIA_TYPE, error.getStatusCode());
+        verify(storage, never()).store(any(), any(), anyLong());
+    }
+
+    @Test
     void completeAnswerRequiresUploadedMedia() {
         UUID sessionId = UUID.randomUUID();
         PracticeAnswerEntity answer = answer(sessionId, null);

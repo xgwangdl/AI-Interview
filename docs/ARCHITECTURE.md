@@ -208,6 +208,7 @@ pending ──claim──▶ processing ──成功──▶ completed
 | | `LegacyApiAuthInterceptor` / `LegacyApiAuthConfiguration` | 给遗留接口补鉴权 |
 | `media` | `MediaSignedUrlService` | HMAC-SHA256 签发带过期时间的播放地址并校验 |
 | | `ChunkedUploadService` / `ChunkUploadController` / `MediaMergeRequest` / `MediaUploadStatusView` | 分片上传、断点续传、合并与整段 sha256 校验（#12） |
+| | `MediaSignatureValidator` | 单段/分片共用：上传阶段校验容器签名与最小长度，阻止明显占位或截断内容入库 |
 | `storage` | `MediaStorage`（接口）· `LocalMediaStorage` · `S3MediaStorage` · `S3ObjectResource` · `S3MediaStorageConfiguration` | 录像存取，`MEDIA_PROVIDER=local/s3` 切换 |
 
 ### 5.4 `security`
@@ -228,7 +229,7 @@ pending ──claim──▶ processing ──成功──▶ completed
 | 包 | 说明 |
 | --- | --- |
 | `assistant` | `InterviewAssistant` / `JavaAssistant` / `ProgramAssistant` / `ResumeRewriterAssistant`，基于 Spring AI `ChatClient` 的对话助手 |
-| `audio` | `AudioService` / `SpeechToTextService` / `TextToSpeechService` / `AudioConverter`（ffmpeg） |
+| `audio` | `AudioService` / `SpeechToTextService` / `TextToSpeechService` / `AudioConverter`（Spring 组件，默认从 PATH 查找 ffmpeg） |
 | `controller` | 旧接口：`/interview`、`/frontend`、`/resume`、`/fileupload`、`/candidate`、`/api/stream-audio` |
 | `data` / `repository` | 旧实体（`Candidates`、`Resume`、`Knowledge`、`ResumeVector`）与仓储 |
 | `services` | `ResumeService`、`KnowledgeService`、`EmbeddingService`、`RedisService` 等 |
@@ -489,6 +490,11 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 偏好仍以 `candidates` 表为主：主题色继续兼容原来的 `/api/v1/me/preferences`，
 个人设置接口返回同一份主题值，避免侧栏快捷色点与设置页状态分叉。
 
+### 5.16 `system` —— 服务自描述
+
+`ServiceInfoController` 在 `/` 返回服务名、版本、健康检查地址、API 前缀和 ffmpeg 可用性。
+该接口只暴露运行状态，不包含密钥、数据库地址或用户数据，便于部署探活和快速排障。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -502,6 +508,8 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 - **传递**：`Authorization: Bearer <token>`；
 - **归属隔离**：`OwnerResolver` 把 token 解析成 owner，所有查询按 owner 过滤——
   所以未认证返回 401、跨用户访问返回 404（不泄露资源是否存在）；
+- **统一 API 契约**：所有 `/api/v1` 业务接口（包括笔试 capabilities）要求 Bearer Token；
+  认证失败统一返回 `{code,message,data}` 的 401 JSON；
 - **限流**：`LoginAttemptGuard`，默认 10 次失败锁 15 分钟；
 - **媒体访问**：播放走短时签名 URL（HMAC + expires），不直接暴露存储路径。
 
@@ -532,7 +540,9 @@ DELETE /api/v1/answers/{id}/media/upload?totalChunks=N     → 放弃并清理�
 
 - 上传标识复用 `answerId`，不需要额外的上传会话表；
 - 临时分片存在 `uploads/{answerId}/chunk-N`，合并成功后删除；
-- 合并前先按序算一遍整段 SHA-256，**校验失败不覆盖已有媒体**，分片保留供补传；
+- 合并前先按序统计真实字节数和整段 SHA-256；客户端 `totalBytes` 只用于核对，不能覆盖真实值；
+- 单段与分片都会在正式入库前检查 WebM/MP4/Ogg/AVI/FLV 容器签名和最小长度；
+- **校验失败不覆盖已有媒体**，分片保留供补传，非法内容不会进入分析队列；
 - 前端 `chunkedUpload.js` 超过 4MB 自动分片，遇到后端 404/405 回退单段上传。
 
 ---
@@ -626,9 +636,10 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 
 | 层 | 工具 | 规模 |
 | --- | --- | --- |
-| 后端单元/集成 | JUnit 5 + Spring Boot Test | 126 个用例（另有 6 个需要容器、5 个需要 Docker 沙箱的用例默认跳过） |
-| 前端 | Vitest | 52 个用例（API 客户端、路由守卫、媒体捕获、分片上传、数字人状态与嘴型、store、内置题库） |
-| 端到端 | `scripts/smoke-test.ps1` | 24 项断言，覆盖登录 → 出题 → 上传 → 分析 → 报告 → 签名播放 → Range → 删除 |
+| 后端单元/集成 | JUnit 5 + Spring Boot Test | 287 个用例通过，11 个外部环境用例默认跳过 |
+| 前端 | Vitest | 145 个用例（API、路由、媒体、分片、数字人、store、题库与上传错误语义） |
+| 端到端 | `scripts/smoke-test.ps1` | 20 项断言，覆盖登录 → 出题 → 上传 → 报告 → 签名播放 → Range → 删除 |
+| 认证 UI | `web/scripts/browser-auth-smoke.mjs` | 登录/注册、空值校验、受保护路由；`npm run test:e2e` |
 | 真实链路端到端 | `scripts/e2e-real-providers.ps1` | 真实凭据 + 真实音轨，产出 `artifacts/e2e/report-*.json` |
 | 界面截图 | `web/scripts/capture-screenshots.mjs` | 真实浏览器登录后逐页截图，输出到 `docs/images/`（README 配图来源）；UI 改版后重跑即可，避免配图与代码脱节。用系统 Chrome（`CHROME_PATH` 可覆盖），因为 Playwright 自带的 Chromium 在内网常常下不动 |
 | 数字人 | `scripts/split-avatar-sheet.py`、`web/scripts/capture-session-avatar.mjs` | 前者从组合图切帧并生成预览；后者用假摄像头走完整流程截图，并采样说话过程中的嘴型，验证"嘴型确实在切换"（实测 40 次采样出现 6 种帧） |

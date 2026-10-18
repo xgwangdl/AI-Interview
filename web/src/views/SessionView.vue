@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { getActiveStream, stopActiveStream, supportedRecorderType } from '../services/mediaCapture';
 import { getMedia, saveMedia } from '../services/mediaStore';
+import { isPermanentUploadRejection, uploadRejectionMessage } from '../services/mediaErrors';
 import { buildQuestions, styleLabels } from '../data/questions';
 import {
   getNarrationAudio, getQuestionNarration, requestFollowUp, tryCompleteAnswer, tryCompleteSession, trySaveAnswer,
@@ -385,7 +386,13 @@ async function persistAnswer() {
     await syncAnswer(answer, blob);
   } catch (error) {
     answer.syncError = error.message || '视频同步失败';
-    ElMessage.error('视频已暂存在本机。结束练习时会自动重试同步。');
+    if (isPermanentUploadRejection(error)) {
+      practice.setAnswer(answer);
+      recorderState.value = 'error';
+      ElMessage.error(uploadRejectionMessage(error));
+      return;
+    }
+    ElMessage.error('网络暂时不可用，视频已暂存在本机。结束练习时会自动重试同步。');
   }
   practice.setAnswer(answer);
   recorderState.value = 'saved';

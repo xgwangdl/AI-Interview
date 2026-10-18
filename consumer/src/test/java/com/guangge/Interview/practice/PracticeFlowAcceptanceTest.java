@@ -125,7 +125,7 @@ class PracticeFlowAcceptanceTest {
         for (int index = 0; index < 5; index++) {
             PracticeAnswerView answer = sessionService.saveAnswer("alice", created.id(),
                     new PracticeAnswerRequest(index, "q-" + index, 60, index * 60));
-            byte[] video = ("answer-" + index).getBytes(StandardCharsets.UTF_8);
+            byte[] video = videoPayload("answer-" + index);
             sessionService.storeAnswerMedia("alice", answer.id(), "video/webm", video.length,
                     new ByteArrayInputStream(video));
             answerIds.add(answer.id());
@@ -273,9 +273,28 @@ class PracticeFlowAcceptanceTest {
     private static AsrProvider transcribingAsr() {
         return (media, contentType) -> {
             try (var content = media.getInputStream()) {
-                return TranscriptResult.ofText("转写：" + new String(content.readAllBytes(), StandardCharsets.UTF_8));
+                String raw = new String(content.readAllBytes(), StandardCharsets.UTF_8);
+                int marker = raw.indexOf("PAYLOAD:");
+                if (marker < 0) throw new IOException("test media payload missing");
+                String text = raw.substring(marker + "PAYLOAD:".length());
+                int end = text.indexOf('\0');
+                if (end >= 0) text = text.substring(0, end);
+                return TranscriptResult.ofText("转写：" + text.strip());
             }
         };
+    }
+
+    private static byte[] videoPayload(String payload) {
+        byte[] content = new byte[512];
+        java.util.Arrays.fill(content, (byte) 0x42);
+        content[0] = 0x1a;
+        content[1] = 0x45;
+        content[2] = (byte) 0xdf;
+        content[3] = (byte) 0xa3;
+        byte[] marker = ("PAYLOAD:" + payload).getBytes(StandardCharsets.UTF_8);
+        System.arraycopy(marker, 0, content, 16, marker.length);
+        content[16 + marker.length] = 0;
+        return content;
     }
 
     private static EvaluationProvider evaluatingProvider() {

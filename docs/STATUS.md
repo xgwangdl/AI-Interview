@@ -1669,3 +1669,37 @@ PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 40
 
 截图：`data/screenshots/profile-settings-desktop.png`、`profile-settings-mobile.png`
 （本地验收产物，`data/` 不提交）。
+
+### 2026-10-18 测试报告驱动的核心链路修复（已完成）
+
+依据 `reports/` 下五份测试、Review、产品和市场报告完成本轮修复：
+
+- **分片上传元数据**：合并时统计真实字节数和 SHA-256；客户端 `totalBytes` 不一致返回 400，
+  不再把伪造大小写入数据库。
+- **非法媒体提前拒绝**：单段与分片共用容器签名和最小长度检查，WebM/MP4/Ogg/AVI/FLV
+  之外的文本、截断和明显占位内容不会进入分析队列。
+- **FFmpeg 可移植性**：`AudioConverter` 改为 Spring 组件，默认从 PATH 查找 `ffmpeg`，
+  `FFMPEG_PATH` 可覆盖；Docker 运行镜像已安装 ffmpeg 并实测为 8.1.2。
+- **ASR 错误语义**：供应商调用、JSON 解析、空句子和空文本都抛明确异常，
+  不再吞异常返回空字符串污染评分。
+- **服务探活与鉴权契约**：`GET /` 返回结构化服务信息；笔试 capabilities 统一要求登录。
+- **测试可复现性**：新增 `npm run test:e2e`，优先使用系统 Chrome；CI 安装 Chromium 后执行。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端单测 | **287 个**，0 失败，11 个按外部环境跳过 |
+| 前端单测 | **145 个**全部通过 |
+| 前端构建 | 通过（仅保留既有 chunk size 警告） |
+| 认证 E2E | 登录/注册渲染、空值校验、受保护路由重定向通过 |
+| 媒体安全接口 | `verify-media-validation.ps1`：17 字节占位文件 HTTP 400，测试场次自动清理 |
+| 分片接口 | `verify-chunked-upload.ps1`：伪造 511 字节被 400 拒绝，真实 512 字节合并成功并清理 |
+| HTTP 冒烟 | 默认签名占位媒体 20 项通过；15,404,922 字节真实 MP4 的登录、上传、下载、Range、删除链路通过 |
+| Docker | 后端镜像构建成功，容器内 `ffmpeg -version` 返回 8.1.2 |
+
+证据：
+
+- `reports/evidence/api/smoke-after-fixes.json`
+- `reports/evidence/api/smoke-real-media-after-fixes.json`
+- `reports/evidence/auth/browser-auth-smoke.png`

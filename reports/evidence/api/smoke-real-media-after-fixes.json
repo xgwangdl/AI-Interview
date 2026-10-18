@@ -1,0 +1,118 @@
+{
+  "generatedAt": "2026-10-18T06:28:55.8592634Z",
+  "baseUrl": "http://localhost:8088",
+  "sessionId": "64a26033-3797-4e28-a813-d6891f54b2c5",
+  "reportStatus": "awaiting_analysis",
+  "analysisStatus": "pending",
+  "analysisAttempts": 0,
+  "analysisError": null,
+  "questionCount": 2,
+  "evaluatedCount": 0,
+  "mediaFile": "step2.mp4",
+  "mediaBytes": 15404922,
+  "report": {
+    "sessionId": "64a26033-3797-4e28-a813-d6891f54b2c5",
+    "role": "Java 后端",
+    "status": "awaiting_analysis",
+    "questionCount": 2,
+    "evaluatedCount": 0,
+    "generatedAt": "2026-10-18T06:28:44.972164800Z",
+    "summary": {
+      "averageOverallScore": null,
+      "averageDimensionScores": {},
+      "speechRateCharactersPerMinute": 0.0,
+      "totalPauseCount": 0,
+      "totalPauseSeconds": 0.0,
+      "totalFillerWordCount": 0,
+      "followUpCount": 0,
+      "improvementSuggestions": []
+    },
+    "analysis": {
+      "status": "pending",
+      "attempts": 0,
+      "error": null
+    },
+    "questions": [
+      {
+        "answerId": "5886208f-9bdd-4db5-a7a0-2306c2adc9b4",
+        "questionIndex": 0,
+        "questionId": "q-0",
+        "attempt": 1,
+        "isCurrent": true,
+        "questionText": "请介绍一个你主导的项目",
+        "durationSeconds": 30,
+        "transcriptStatus": "awaiting_provider",
+        "transcriptText": null,
+        "transcriptOriginal": null,
+        "transcriptEditedAt": null,
+        "evaluationStatus": "awaiting_provider",
+        "mediaUrl": "/api/v1/answers/5886208f-9bdd-4db5-a7a0-2306c2adc9b4/media",
+        "mediaSignedUrl": "/api/v1/media/5886208f-9bdd-4db5-a7a0-2306c2adc9b4?expires=1792305224&signature=w-6wTGB06SvlUFTmmWIOWMj7czCFUnZLdHPHCut7fk4",
+        "rewriteText": null,
+        "rewriteSource": null,
+        "rewriteAt": null,
+        "followUp": false,
+        "parentQuestionId": null,
+        "parentQuestionIndex": null,
+        "followUpRound": 0,
+        "evaluation": null,
+        "attempts": [
+          {
+            "answerId": "5886208f-9bdd-4db5-a7a0-2306c2adc9b4",
+            "attempt": 1,
+            "current": true,
+            "transcriptText": null,
+            "evaluationStatus": "awaiting_provider",
+            "mediaUrl": "/api/v1/answers/5886208f-9bdd-4db5-a7a0-2306c2adc9b4/media",
+            "mediaSignedUrl": "/api/v1/media/5886208f-9bdd-4db5-a7a0-2306c2adc9b4?expires=1792305224&signature=w-6wTGB06SvlUFTmmWIOWMj7czCFUnZLdHPHCut7fk4",
+            "evaluation": null,
+            "rewriteText": null,
+            "rewriteSource": null,
+            "rewriteAt": null,
+            "createdAt": "2026-10-18T06:28:44.491987Z"
+          }
+        ]
+      },
+      {
+        "answerId": "33ec0062-a0c0-4645-8efd-7f501b466f0f",
+        "questionIndex": 1,
+        "questionId": "q-1",
+        "attempt": 1,
+        "isCurrent": true,
+        "questionText": "讲一个你解决过的线上问题",
+        "durationSeconds": 30,
+        "transcriptStatus": "awaiting_provider",
+        "transcriptText": null,
+        "transcriptOriginal": null,
+        "transcriptEditedAt": null,
+        "evaluationStatus": "awaiting_provider",
+        "mediaUrl": "/api/v1/answers/33ec0062-a0c0-4645-8efd-7f501b466f0f/media",
+        "mediaSignedUrl": "/api/v1/media/33ec0062-a0c0-4645-8efd-7f501b466f0f?expires=1792305224&signature=wG0LwpvUCyz-_wdqYms6r7KyYd0kzuG04ooOcFRa1-A",
+        "rewriteText": null,
+        "rewriteSource": null,
+        "rewriteAt": null,
+        "followUp": false,
+        "parentQuestionId": null,
+        "parentQuestionIndex": null,
+        "followUpRound": 0,
+        "evaluation": null,
+        "attempts": [
+          {
+            "answerId": "33ec0062-a0c0-4645-8efd-7f501b466f0f",
+            "attempt": 1,
+            "current": true,
+            "transcriptText": null,
+            "evaluationStatus": "awaiting_provider",
+            "mediaUrl": "/api/v1/answers/33ec0062-a0c0-4645-8efd-7f501b466f0f/media",
+            "mediaSignedUrl": "/api/v1/media/33ec0062-a0c0-4645-8efd-7f501b466f0f?expires=1792305224&signature=wG0LwpvUCyz-_wdqYms6r7KyYd0kzuG04ooOcFRa1-A",
+            "evaluation": null,
+            "rewriteText": null,
+            "rewriteSource": null,
+            "rewriteAt": null,
+            "createdAt": "2026-10-18T06:28:44.519068Z"
+          }
+        ]
+      }
+    ]
+  }
+}

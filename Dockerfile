@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -q -pl consumer -am package -D
 FROM eclipse-temurin:21-jre-alpine
 # 简历导出 PDF 要内嵌中文字体。这里装**文泉驿**（TrueType）而不是 Noto CJK：
 # 后者是 CFF 轮廓，PDFBox 能加载却内嵌不了（见 ResumePdfFonts 的说明）。
-RUN apk add --no-cache font-wqy-zenhei tzdata \
+RUN apk add --no-cache ffmpeg font-wqy-zenhei tzdata \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 

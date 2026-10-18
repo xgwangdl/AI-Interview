@@ -53,5 +53,22 @@ jobs:
         working-directory: web
         run: |
           npm ci
+          npx playwright install --with-deps chromium
           npm test
+          npx vite --host 127.0.0.1 --port 4173 > /tmp/light-interview-vite.log 2>&1 &
+          VITE_PID=$!
+          trap 'kill $VITE_PID || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/login > /dev/null; then break; fi
+            sleep 1
+          done
+          BASE_URL=http://127.0.0.1:4173 npm run test:e2e
           npm run build
+
+      - name: Upload auth E2E evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-e2e-evidence
+          path: reports/evidence/auth
+          if-no-files-found: ignore
