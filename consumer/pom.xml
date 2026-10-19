@@ -172,7 +172,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.6.0</version> <!-- 使用最新版本 -->
+            <version>42.6.0</version> <!-- 保持与当前 Spring Boot 3.4 基线兼容；升级前跑数据库集成测试 -->
         </dependency>
 
         <dependency>
@@ -225,7 +225,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <jvmArguments>-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5247</jvmArguments>
                     <wait>500</wait>
                     <maxAttempts>240</maxAttempts>
                 </configuration>

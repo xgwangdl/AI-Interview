@@ -20,6 +20,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,6 +32,7 @@ import java.util.UUID;
 
 @Service
 public class PracticeSessionService {
+    private static final Logger log = LoggerFactory.getLogger(PracticeSessionService.class);
     private static final TypeReference<List<PracticeQuestion>> QUESTIONS_TYPE = new TypeReference<>() { };
 
     private final PracticeSessionRepository sessions;
@@ -304,13 +307,18 @@ public class PracticeSessionService {
     @Scheduled(cron = "0 17 3 * * *")
     @Transactional
     public void deleteExpiredSessions() {
+        int failed = 0;
         for (PracticeSessionEntity session : sessions.findAllByRetentionUntilBefore(Instant.now())) {
             try {
                 // 到期清理：只删录像与练习本身，成绩档案留着 —— 这正是训练档案能长期看趋势的原因
                 deleteSession(session, false);
             } catch (IOException exception) {
-                throw new IllegalStateException("Unable to remove expired practice media", exception);
+                failed++;
+                log.warn("清理过期练习失败 session={}：{}", session.getId(), exception.getMessage());
             }
+        }
+        if (failed > 0) {
+            log.warn("本轮过期练习清理完成，{} 条失败并将在下次任务重试", failed);
         }
     }
 

@@ -17,14 +17,14 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 适合准备校招、社招、转岗和技术晋升面试的开发者。
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
-[![Backend tests](https://img.shields.io/badge/backend_tests-299-brightgreen.svg)](#工程质量)
+[![Backend tests](https://img.shields.io/badge/backend_tests-312-brightgreen.svg)](#工程质量)
 [![Frontend tests](https://img.shields.io/badge/frontend_tests-145-brightgreen.svg)](#工程质量)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring AI](https://img.shields.io/badge/Spring_AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [English](docs/README.md)
+[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
 
 <p align="center">
   <img src="docs/images/08-session-avatar-speaking.png" alt="Light-Interview 模拟面试界面" width="92%" />
@@ -188,10 +188,10 @@ PRACTICE_EVALUATION_PROVIDER=stub
 
 ## 工程质量
 
-- 后端 **299** 个测试通过，11 个依赖外部环境的测试按配置跳过。
+- 后端 **312** 个测试通过，13 个依赖外部环境的测试按配置跳过；集成环境下仅 7 个跳过。
 - 前端 **145** 个测试通过，生产构建通过。
 - 浏览器认证冒烟使用系统 Chrome，可重复验证登录、注册、空值提示和路由保护。
-- GitHub Actions 执行后端测试、前端测试和前端构建。
+- GitHub Actions 执行后端测试、前端测试、数据库/S3 集成测试和五语言 Docker 沙箱测试。
 - 已完成真实 PostgreSQL、Redis、S3 兼容存储和真实模型供应商的链路验证。
 - 当前已知边界：数字人口型是按音量驱动，不是音素级同步；L2 流式外语通道默认关闭。
 

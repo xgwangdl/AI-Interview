@@ -636,7 +636,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 
 | 层 | 工具 | 规模 |
 | --- | --- | --- |
-| 后端单元/集成 | JUnit 5 + Spring Boot Test | 299 个用例通过，11 个外部环境用例默认跳过 |
+| 后端单元/集成 | JUnit 5 + Spring Boot Test | 312 个用例通过，13 个外部环境用例默认跳过 |
 | 前端 | Vitest | 145 个用例（API、路由、媒体、分片、数字人、store、题库与上传错误语义） |
 | 端到端 | `scripts/smoke-test.ps1` | 20 项断言，覆盖登录 → 出题 → 上传 → 报告 → 签名播放 → Range → 删除 |
 | 认证 UI | `web/scripts/browser-auth-smoke.mjs` | 登录/注册、空值校验、受保护路由；`npm run test:e2e` |

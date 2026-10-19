@@ -539,15 +539,8 @@ Vite 的静态目录是 `web/public/`，前端按 `/assets/avatar/xxx.png` 访�
 
 ### 当前环境状态
 
-- **容器在运行**：`postgres`（healthy）、`redis`（healthy）、`s3mock` 由 `docker compose up -d` 启动，
-  跑完集成测试后仍未停（下次可直接复用，或 `docker compose down` 收掉）。
-- **后端在运行**：8088，真实供应商（配置全部来自 `.env`），验证会话仍可访问。
-  停止方式：`Get-Process java | Stop-Process`。
-- **前端**：本轮未改动、未启动。
-- **构建状态**（2026-10-10）：`mvn -B clean package` → 90 个测试、6 个跳过、BUILD SUCCESS；
-  容器起来后 `-Ddb.integration=true -Ds3.integration=true` → 90 个测试、0 跳过、BUILD SUCCESS。
-- 代码与文档完好，`git status` 有 **102 项未提交改动**（15 项删除、39 项修改、48 项新增），
-  集中在 `consumer/`（70）与 `web/`（18）。下一次开工建议先决定提交策略，再动代码。
+- 运行状态以 `docker compose ps`、健康检查和当前 `git status` 为准，不在文档里固化某台机器的瞬时状态。
+- 本地启动与停止方式见 [LOCAL-STARTUP.md](LOCAL-STARTUP.md)。
 
 ### 下次开工第一件事
 
@@ -557,45 +550,6 @@ Vite 的静态目录是 `web/public/`，前端按 `/assets/avatar/xxx.png` 访�
    见下方「需要你处理的事项」；
 4. 如果只是想先看效果：`docker compose up -d` → 直接 `java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar`
    （`.env` 会自动加载），演示账号 `smoke / 123456`。
-
-### 附：CC Switch 报错与升级（与本项目无关，只做记录）
-
-报错原文：
-
-> CC Switch local proxy failed while handling Codex endpoint `/responses`.
-> Provider: DeepSeek; model: `deepseek-v4-flash`; upstream_status: HTTP 400;
-> cause: The `reasoning_content` in the thinking mode must be passed back to the API.
-
-**含义**：`deepseek-v4-flash` 的思考模式会返回 `reasoning_content`，多轮对话时必须把它
-原样回传；CC Switch 的本地代理在 Codex `/responses` ↔ DeepSeek 之间做协议转换时把它丢了，
-DeepSeek 侧因此返回 400。这**不是** Light-Interview 的问题，是代理层的转换缺陷。
-
-**本机现状**（2026-10-10 读取）：
-
-- 程序：`%LOCALAPPDATA%\Programs\CC Switch\cc-switch.exe`，42.5 MB，文件时间 2026-10-08，
-  没有写入版本信息（`FileVersion` 为空），所以只能按文件时间判断新旧。
-- 配置：`C:\Users\xgwan\.cc-switch\`（`settings.json`、`live-state.json`、`cc-switch.db`、
-  `logs\`、`backups\`）。`live-state.json` 显示 `apps.codex.mode = "proxy"`、`attached = true`。
-
-**下次可选的处置，按代价从低到高**：
-
-1. 在 CC Switch 里把 Codex 切成 `direct`（不经过本地代理），绕开转换层；
-2. 换用不带思考模式的 DeepSeek 模型标识，让响应里不出现 `reasoning_content`；
-3. 升级 CC Switch：需要联网，且要先确认上游有新版本修了这个透传问题；
-4. 把 Codex 的 provider 直接指向 DeepSeek 官方端点，不再经过 CC Switch。
-
-升级属于本机工具运维，且要联网下载安装包 —— 等你确认后再做。
-
-### 上次离开时（2026-10-09）的环境
-
-- **容器**：`postgres` / `redis` / `s3mock` 都在运行（`docker compose ps`）
-- **后端**：8088，本地存储 + `stub` 转写/评分 —— 可直接体验完整闭环
-- **前端**：5173（Vite dev server）
-- **演示账号**：`smoke / 123456`
-- **数据**：无残留（`sessions=0 / jobs=0`，本地媒体 0 文件）
-- **版本控制**：本轮所有改动**仍未提交**（`git status` 约 78 项，含新增的
-  `analysis` / `avatar` / `practice.plan` / `practice.resume` / `practice.security` /
-  `practice.media` / `practice.storage` 包与三份文档）。下次开工可先决定是否提交或分组提交。
 
 ```bash
 # 停止全部（数据卷保留，下次 up 即可恢复）
@@ -1669,6 +1623,32 @@ PowerShell 直接调接口能过，但浏览器从 5173 调转写修正会被 40
 
 截图：`data/screenshots/profile-settings-desktop.png`、`profile-settings-mobile.png`
 （本地验收产物，`data/` 不提交）。
+
+### 2026-10-19 安全与工程治理修复
+
+依据外部代码评审复核结果，完成确认成立的安全与稳定性修复：
+
+- 新增 `LICENSE` / `SECURITY.md`，补齐 Maven 与 npm 许可证元数据；
+- JWT verifier 改为按 secret 缓存的 `ConcurrentHashMap`，消除按 token 无限增长；
+- Docker 沙箱改为 `65534:65534` 非 root，增加 `--cap-drop ALL`、
+  `no-new-privileges`、nofile 限制；临时目录权限与清理失败日志可观测；
+- Go 改为先 `go build` 再运行二进制，并为其编译缓存单独放宽文件上限；
+- 注册/登录增加按 IP 的滑动窗口限流，保留原有按用户名登录锁定；
+- 生产环境默认 JWT secret fail-fast；后端/前端容器增加健康检查，Compose 默认只绑定本机；
+- CI 增加数据库/S3 集成 job 和五语言 Docker 沙箱 job；
+- 删除已跟踪的 `.idea/`，清理 STATUS 中与项目无关的 CC Switch 和本机路径；
+- 过期会话清理不再因单条 IO 失败中断整批；损坏的参考答案不再静默伪装成未配置。
+
+**验证**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 后端常规单测 | **312 个**，0 失败，13 个外部环境用例跳过 |
+| 数据库/S3 集成 | **312 个**，0 失败，7 个跳过 |
+| Docker 沙箱 | Java / Python / JavaScript / C++ / Go 实际执行通过 |
+| 容器镜像 | 后端镜像构建成功，运行用户 `uid=10001(app)` |
+| 容器健康检查 | backend 容器 healthy |
+| Compose | `docker compose config --quiet` 通过 |
 
 ### 2026-10-18 测试报告驱动的核心链路修复（已完成）
 
