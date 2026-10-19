@@ -5,7 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   archiveCohort, completionPercent, createAssignment, dueLabel, getCohort, listAssignments, listHelp,
   listPeerReviewTasks, listReceivedPeerReviews, optInPeerReview, roleLabel, sendHelpFeedback,
-  setScoreSharing, submitPeerReview,
+  setScoreSharing, submitPeerReview, updateAssignment,
 } from '../services/cohorts';
 import { useI18n } from 'vue-i18n';
 
@@ -17,6 +17,7 @@ const assignments = ref([]);
 const loading = ref(true);
 const creating = ref(false);
 const showCreate = ref(false);
+const editingAssignmentId = ref('');
 const form = reactive({ title: '', description: '', days: 5, itemsPerDay: 3, dueAt: '' });
 const helpRequests = ref([]);
 const peerTasks = ref([]);
@@ -30,6 +31,9 @@ const userName = localStorage.getItem('userName') || localStorage.getItem('usern
 const isCoach = computed(() => cohort.value?.role === 'coach');
 const me = computed(() => cohort.value?.members?.find((member) => member.role === 'learner') || null);
 const shareScores = computed(() => cohort.value?.members?.find((member) => member.role === 'learner')?.shareScores || false);
+const editingAssignment = computed(() => (
+  assignments.value.find((item) => item.id === editingAssignmentId.value) || null
+));
 
 onMounted(load);
 
@@ -75,23 +79,67 @@ async function submitAssignment() {
   if (!form.title.trim()) return ElMessage.warning(t('cohorts.titleRequired'));
   creating.value = true;
   try {
-    await createAssignment(cohort.value.id, {
+    const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
       days: form.days,
       itemsPerDay: form.itemsPerDay,
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
-    });
+    };
+    const wasEditing = Boolean(editingAssignmentId.value);
+    if (wasEditing) {
+      await updateAssignment(cohort.value.id, editingAssignmentId.value, payload);
+    } else {
+      await createAssignment(cohort.value.id, payload);
+    }
     showCreate.value = false;
-    form.title = '';
-    form.description = '';
+    resetAssignmentForm();
     await load();
-    ElMessage.success(t('cohorts.assigned'));
+    ElMessage.success(t(wasEditing ? 'cohorts.updated' : 'cohorts.assigned'));
   } catch (error) {
-    ElMessage.error(error?.message || t('cohorts.assignFailed'));
+    ElMessage.error(error?.status === 409
+      ? t('cohorts.progressLocked')
+      : (error?.message || t('cohorts.assignFailed')));
   } finally {
     creating.value = false;
   }
+}
+
+function resetAssignmentForm() {
+  editingAssignmentId.value = '';
+  form.title = '';
+  form.description = '';
+  form.days = 5;
+  form.itemsPerDay = 3;
+  form.dueAt = '';
+}
+
+function openCreate() {
+  resetAssignmentForm();
+  showCreate.value = true;
+}
+
+function openEdit(assignment) {
+  editingAssignmentId.value = assignment.id;
+  form.title = assignment.title || '';
+  form.description = assignment.description || '';
+  form.days = assignment.days || 1;
+  form.itemsPerDay = assignment.itemsPerDay || 1;
+  form.dueAt = toLocalDateTime(assignment.dueAt);
+  showCreate.value = true;
+}
+
+function closeAssignmentForm() {
+  showCreate.value = false;
+  resetAssignmentForm();
+}
+
+function toLocalDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 async function togglePeerReview(value) {
@@ -171,7 +219,7 @@ async function archive() {
           <p>{{ t('cohorts.summary', { members: cohort.memberCount, role: roleLabel(cohort.role, t) }) }}</p>
         </div>
         <div class="heading-actions">
-          <el-button v-if="isCoach" class="soft-button" @click="showCreate = !showCreate">
+          <el-button v-if="isCoach" class="soft-button" @click="showCreate ? closeAssignmentForm() : openCreate()">
             <el-icon><Plus /></el-icon>{{ t('cohorts.assign') }}
           </el-button>
           <el-button class="soft-button invite-button" @click="copyInvite"><el-icon><CopyDocument /></el-icon>{{ cohort.inviteCode }}</el-button>
@@ -195,15 +243,25 @@ async function archive() {
       </div>
 
       <section v-if="isCoach && showCreate" class="panel assignment-form">
-        <div class="section-title"><span>{{ t('cohorts.newAssignment') }}</span><small>{{ t('cohorts.newAssignmentHint') }}</small></div>
-        <div class="form-grid">
-          <el-form-item :label="t('cohorts.assignmentTitle')"><el-input v-model="form.title" maxlength="200" :placeholder="t('cohorts.assignmentPlaceholder')" /></el-form-item>
-          <el-form-item :label="t('cohorts.dueAt')"><el-date-picker v-model="form.dueAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" :placeholder="t('cohorts.optional')" /></el-form-item>
-          <el-form-item :label="t('cohorts.days')"><el-input-number v-model="form.days" :min="1" :max="14" /></el-form-item>
-          <el-form-item :label="t('cohorts.itemsPerDay')"><el-input-number v-model="form.itemsPerDay" :min="1" :max="5" /></el-form-item>
+        <div class="section-title">
+          <span>{{ editingAssignment ? t('cohorts.editAssignment') : t('cohorts.newAssignment') }}</span>
+          <small>{{ editingAssignment ? t('cohorts.editAssignmentHint') : t('cohorts.newAssignmentHint') }}</small>
         </div>
-        <el-form-item :label="t('cohorts.description')"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="2000" /></el-form-item>
-        <div class="form-actions"><el-button class="soft-button" @click="showCreate = false">{{ t('cohorts.cancel') }}</el-button><el-button class="primary-button" :loading="creating" @click="submitAssignment">{{ t('cohorts.assign') }}</el-button></div>
+        <el-form class="assignment-fields" label-position="top" @submit.prevent="submitAssignment">
+          <div class="form-grid">
+            <el-form-item :label="t('cohorts.assignmentTitle')"><el-input v-model="form.title" maxlength="200" :placeholder="t('cohorts.assignmentPlaceholder')" /></el-form-item>
+            <el-form-item :label="t('cohorts.dueAt')"><el-date-picker v-model="form.dueAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" :placeholder="t('cohorts.optional')" /></el-form-item>
+            <el-form-item :label="t('cohorts.days')"><el-input-number v-model="form.days" :min="1" :max="14" :step="1" step-strictly /></el-form-item>
+            <el-form-item :label="t('cohorts.itemsPerDay')"><el-input-number v-model="form.itemsPerDay" :min="1" :max="5" :step="1" step-strictly /></el-form-item>
+          </div>
+          <el-form-item class="description-field" :label="t('cohorts.description')"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="2000" /></el-form-item>
+          <div class="form-actions">
+            <el-button class="soft-button" @click="closeAssignmentForm">{{ t('cohorts.cancel') }}</el-button>
+            <el-button class="primary-button" :loading="creating" @click="submitAssignment">
+              {{ editingAssignment ? t('cohorts.updateAssignment') : t('cohorts.assign') }}
+            </el-button>
+          </div>
+        </el-form>
       </section>
 
       <div class="section-title"><span>{{ t('cohorts.assignments') }}</span><small>{{ t('cohorts.countAssignments', { count: assignments.length }) }}</small></div>
@@ -211,8 +269,13 @@ async function archive() {
         <article v-for="assignment in assignments" :key="assignment.id" class="panel assignment-card">
           <div class="assignment-head">
             <div><strong>{{ assignment.title }}</strong><small>{{ t('cohorts.due', { date: dueLabel(assignment.dueAt, t, locale) }) }}</small></div>
-            <el-tag v-if="!isCoach" size="small">{{ t('cohorts.myCompleted', { completed: assignment.myCompleted, total: assignment.myTotal }) }}</el-tag>
-            <el-tag v-else size="small">{{ t('cohorts.memberCompleted', { completed: assignment.completedMembers, total: assignment.memberCount }) }}</el-tag>
+            <div class="assignment-head-actions">
+              <el-tag v-if="!isCoach" size="small">{{ t('cohorts.myCompleted', { completed: assignment.myCompleted, total: assignment.myTotal }) }}</el-tag>
+              <el-tag v-else size="small">{{ t('cohorts.memberCompleted', { completed: assignment.completedMembers, total: assignment.memberCount }) }}</el-tag>
+              <el-button v-if="isCoach" class="soft-button edit-assignment-button" @click="openEdit(assignment)">
+                {{ t('common.edit') }}
+              </el-button>
+            </div>
           </div>
           <p v-if="assignment.description">{{ assignment.description }}</p>
           <div class="assignment-progress">
@@ -307,11 +370,20 @@ async function archive() {
 .sharing-card strong { display: block; color: #46524c; font-size: 14px; }
 .sharing-card small { display: block; margin-top: 4px; color: #98a29d; font-size: 12px; }
 .assignment-form { display: grid; gap: 11px; padding: 17px 18px; margin-bottom: 18px; box-shadow: none; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr 100px 100px; gap: 10px; }
+.assignment-fields { display: grid; gap: 12px; }
+.form-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr) minmax(118px, .58fr) minmax(138px, .68fr); align-items: start; gap: 10px; }
+.assignment-fields :deep(.el-form-item) { min-width: 0; margin-bottom: 0; }
+.assignment-fields :deep(.el-form-item__label) { height: auto; margin-bottom: 7px; color: #59665f; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.assignment-fields :deep(.el-date-editor.el-input),
+.assignment-fields :deep(.el-input-number) { width: 100%; }
+.assignment-fields :deep(.el-input-number .el-input__inner) { text-align: center; }
+.description-field { margin-top: 2px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .assignment-list { display: grid; gap: 12px; }
 .assignment-card { display: grid; gap: 9px; padding: 15px 17px; box-shadow: none; }
 .assignment-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.assignment-head-actions { display: flex; align-items: center; gap: 8px; }
+.edit-assignment-button.el-button { height: 27px; padding: 0 10px; font-size: 12px; }
 .assignment-head strong { display: block; color: #34403a; font-size: 15px; }
 .assignment-head small { display: block; margin-top: 4px; color: #98a29d; font-size: 11px; }
 .assignment-card > p { margin: 0; color: #7d8982; font-size: 12px; line-height: 1.7; }
@@ -354,6 +426,8 @@ async function archive() {
 .received-review { padding: 9px 10px; border-bottom: 1px dashed #eef1ee; }
 .received-review:last-child { border-bottom: 0; }
 .received-review p { margin: 5px 0 0; color: #5d6a64; font-size: 12px; line-height: 1.7; }
-@media (max-width: 760px) { .form-grid { grid-template-columns: 1fr 1fr; }.member-row { grid-template-columns: 80px 40px 1fr 40px; }.member-row small { grid-column: 1 / -1; text-align: left; } }
+@media (max-width: 900px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .member-row { grid-template-columns: 80px 40px 1fr 40px; }.member-row small { grid-column: 1 / -1; text-align: left; } }
+@media (max-width: 520px) { .form-grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) { .help-feedback { align-items: stretch; flex-direction: column; }.help-feedback .el-button { align-self: flex-end; } }
 </style>

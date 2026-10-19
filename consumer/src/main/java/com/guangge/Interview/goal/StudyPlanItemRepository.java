@@ -29,6 +29,10 @@ public interface StudyPlanItemRepository extends JpaRepository<StudyPlanItemEnti
 
     List<StudyPlanItemEntity> findAllByAssignmentIdAndOwnerIdOrderByPlanDateAscPositionAsc(UUID assignmentId, String ownerId);
 
+    List<StudyPlanItemEntity> findAllByAssignmentId(UUID assignmentId);
+
+    long countByPlanId(UUID planId);
+
     boolean existsByAssignmentIdAndOwnerId(UUID assignmentId, String ownerId);
 
     long countByAssignmentIdAndOwnerId(UUID assignmentId, String ownerId);

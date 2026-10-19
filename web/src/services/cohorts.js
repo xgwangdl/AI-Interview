@@ -75,6 +75,13 @@ export function createAssignment(id, payload) {
   });
 }
 
+export function updateAssignment(cohortId, assignmentId, payload) {
+  return apiRequest(`/cohorts/${encodeURIComponent(cohortId)}/assignments/${encodeURIComponent(assignmentId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function completionPercent(item) {
   if (!item?.myTotal) return 0;
   return Math.min(100, Math.round((item.myCompleted / item.myTotal) * 100));
