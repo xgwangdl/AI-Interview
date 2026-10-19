@@ -1,13 +1,16 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useI18n } from 'vue-i18n';
 import { THEMES } from '../services/theme';
 import {
   FONT_SCALE_OPTIONS, TIMEZONE_OPTIONS, applyAppearanceSettings, changePassword,
   formatJoinedAt, loadProfile, normalizeFontScale, profileDisplayName, profileInitial,
   rememberDisplayName, saveProfile,
 } from '../services/profile';
+import { LOCALE_OPTIONS, normalizeLocale, setLocale } from '../i18n';
 
+const { t, locale } = useI18n();
 const loading = ref(true);
 const savingProfile = ref(false);
 const savingPassword = ref(false);
@@ -19,16 +22,23 @@ const profile = reactive({
   fontScale: 'standard',
   reduceMotion: false,
   theme: 'green',
+  language: 'zh-CN',
   joinedAt: null,
 });
 const password = reactive({ next: '', confirm: '' });
 
 const currentName = computed(() => profileDisplayName(profile));
+const joinedAtLabel = computed(() => formatJoinedAt(profile.joinedAt, locale.value));
 const timezoneOptions = computed(() => {
-  if (!profile.timezone || TIMEZONE_OPTIONS.some((item) => item.value === profile.timezone)) {
-    return TIMEZONE_OPTIONS;
+  const values = TIMEZONE_OPTIONS.map((item) => item.value);
+  const options = TIMEZONE_OPTIONS.map((item) => ({
+    value: item.value,
+    label: t(`timezones.${item.value}`),
+  }));
+  if (profile.timezone && !values.includes(profile.timezone)) {
+    options.push({ value: profile.timezone, label: profile.timezone });
   }
-  return [...TIMEZONE_OPTIONS, { value: profile.timezone, label: profile.timezone }];
+  return options;
 });
 
 onMounted(load);
@@ -38,10 +48,12 @@ async function load() {
   try {
     Object.assign(profile, await loadProfile());
     profile.fontScale = normalizeFontScale(profile.fontScale);
+    profile.language = normalizeLocale(profile.language);
     applyAppearanceSettings(profile);
+    setLocale(profile.language);
     rememberDisplayName(currentName.value);
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取个人资料');
+    ElMessage.error(error?.message || t('profile.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -61,16 +73,21 @@ function chooseFontScale(value) {
   previewAppearance();
 }
 
+function chooseLanguage(value) {
+  profile.language = normalizeLocale(value);
+  setLocale(profile.language);
+}
+
 async function submitProfile() {
   if (savingProfile.value) return;
   const displayName = profile.displayName.trim();
   const email = (profile.email || '').trim();
   if (displayName.length < 2 || displayName.length > 20) {
-    ElMessage.warning('昵称长度需在 2 到 20 个字符之间。');
+    ElMessage.warning(t('profile.nicknameInvalid'));
     return;
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    ElMessage.warning('请输入有效的邮箱地址。');
+    ElMessage.warning(t('profile.emailInvalid'));
     return;
   }
   savingProfile.value = true;
@@ -82,13 +99,15 @@ async function submitProfile() {
       fontScale: profile.fontScale,
       reduceMotion: profile.reduceMotion,
       theme: profile.theme,
+      language: profile.language,
     });
     Object.assign(profile, updated);
     applyAppearanceSettings(profile);
+    setLocale(profile.language);
     rememberDisplayName(profileDisplayName(profile));
-    ElMessage.success('个人资料与外观设置已保存');
+    ElMessage.success(t('profile.saved'));
   } catch (error) {
-    ElMessage.error(error?.message || '保存个人资料失败');
+    ElMessage.error(error?.message || t('profile.saveFailed'));
   } finally {
     savingProfile.value = false;
   }
@@ -97,11 +116,11 @@ async function submitProfile() {
 async function submitPassword() {
   if (savingPassword.value) return;
   if (password.next.length < 6) {
-    ElMessage.warning('新密码至少需要 6 位。');
+    ElMessage.warning(t('profile.passwordShort'));
     return;
   }
   if (password.next !== password.confirm) {
-    ElMessage.warning('两次输入的新密码不一致。');
+    ElMessage.warning(t('profile.passwordMismatch'));
     return;
   }
   savingPassword.value = true;
@@ -109,9 +128,9 @@ async function submitPassword() {
     await changePassword({ newPassword: password.next });
     password.next = '';
     password.confirm = '';
-    ElMessage.success('密码已更新，下次登录请使用新密码');
+    ElMessage.success(t('profile.passwordUpdated'));
   } catch (error) {
-    ElMessage.error(error?.message || '修改密码失败');
+    ElMessage.error(error?.message || t('profile.passwordFailed'));
   } finally {
     savingPassword.value = false;
   }
@@ -122,9 +141,9 @@ async function submitPassword() {
   <section v-loading="loading" class="profile-settings-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">PERSONAL SETTINGS</div>
-        <h1>个人设置</h1>
-        <p>管理你的公开昵称、界面显示方式和账号安全。登录名与历史练习数据保持稳定关联。</p>
+        <div class="eyebrow">{{ t('profile.eyebrow') }}</div>
+        <h1>{{ t('profile.title') }}</h1>
+        <p>{{ t('profile.subtitle') }}</p>
       </div>
     </div>
 
@@ -132,8 +151,8 @@ async function submitPassword() {
       <section class="panel settings-panel profile-panel">
         <div class="panel-heading">
           <div>
-            <h2>个人资料</h2>
-            <p>昵称用于页面展示，不会改变登录名。</p>
+            <h2>{{ t('profile.profileInfo') }}</h2>
+            <p>{{ t('profile.profileInfoHint') }}</p>
           </div>
           <span class="panel-icon"><el-icon><User /></el-icon></span>
         </div>
@@ -142,28 +161,28 @@ async function submitPassword() {
           <div class="profile-avatar large">{{ profileInitial(currentName) }}</div>
           <div>
             <strong>{{ currentName }}</strong>
-            <span>加入于 {{ formatJoinedAt(profile.joinedAt) }}</span>
+            <span>{{ t('profile.joinedAt', { date: joinedAtLabel }) }}</span>
           </div>
-          <el-tag class="account-tag" effect="plain">个人账号</el-tag>
+          <el-tag class="account-tag" effect="plain">{{ t('profile.account') }}</el-tag>
         </div>
 
         <el-form class="settings-form" label-position="top" @submit.prevent="submitProfile">
           <div class="form-grid">
-            <el-form-item label="昵称">
-              <el-input v-model="profile.displayName" maxlength="20" show-word-limit placeholder="2-20 个字符" />
+            <el-form-item :label="t('profile.nickname')">
+              <el-input v-model="profile.displayName" maxlength="20" show-word-limit :placeholder="t('profile.nicknamePlaceholder')" />
             </el-form-item>
-            <el-form-item label="登录名">
+            <el-form-item :label="t('profile.loginName')">
               <el-input :model-value="profile.loginName" disabled>
                 <template #prefix><el-icon><Lock /></el-icon></template>
               </el-input>
-              <span class="field-hint">登录名是历史练习与简历的归属标识，暂不支持修改。</span>
+              <span class="field-hint">{{ t('profile.loginNameHint') }}</span>
             </el-form-item>
-            <el-form-item label="邮箱">
-              <el-input v-model="profile.email" maxlength="255" placeholder="用于接收练习提醒">
+            <el-form-item :label="t('profile.email')">
+              <el-input v-model="profile.email" maxlength="255" :placeholder="t('profile.emailPlaceholder')">
                 <template #prefix><el-icon><Message /></el-icon></template>
               </el-input>
             </el-form-item>
-            <el-form-item label="所在时区">
+            <el-form-item :label="t('profile.timezone')">
               <el-select v-model="profile.timezone" filterable>
                 <el-option
                   v-for="item in timezoneOptions"
@@ -180,14 +199,32 @@ async function submitPassword() {
       <section class="panel settings-panel appearance-panel">
         <div class="panel-heading">
           <div>
-            <h2>外观主题</h2>
-            <p>选择更适合你的颜色、字号和动态效果。</p>
+            <h2>{{ t('profile.appearance') }}</h2>
+            <p>{{ t('profile.appearanceHint') }}</p>
           </div>
           <span class="panel-icon warm"><el-icon><Sunny /></el-icon></span>
         </div>
 
         <div class="setting-block">
-          <div class="block-label"><strong>主题色</strong><span>选择后会立即预览</span></div>
+          <div class="block-label"><strong>{{ t('profile.language') }}</strong><span>{{ t('profile.languageHint') }}</span></div>
+          <div class="language-options">
+            <button
+              v-for="item in LOCALE_OPTIONS"
+              :key="item.value"
+              type="button"
+              :class="{ active: profile.language === item.value }"
+              :aria-pressed="profile.language === item.value"
+              @click="chooseLanguage(item.value)"
+            >
+              <b>{{ item.short }}</b>
+              <span>{{ t(`languages.${item.value}`) }}</span>
+              <el-icon v-if="profile.language === item.value"><Check /></el-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-block">
+          <div class="block-label"><strong>{{ t('profile.theme') }}</strong><span>{{ t('profile.themeHint') }}</span></div>
           <div class="theme-cards">
             <button
               v-for="(item, key) in THEMES"
@@ -202,14 +239,14 @@ async function submitPassword() {
                 <i :style="{ background: item.swatch }"></i>
                 <i></i><i></i>
               </span>
-              <span>{{ item.label }}</span>
+              <span>{{ t(`themes.${key}`) }}</span>
               <el-icon v-if="profile.theme === key" class="theme-check"><Check /></el-icon>
             </button>
           </div>
         </div>
 
         <div class="setting-block">
-          <div class="block-label"><strong>界面字号</strong><span>同时调整文字与控件比例</span></div>
+          <div class="block-label"><strong>{{ t('profile.fontScale') }}</strong><span>{{ t('profile.fontScaleHint') }}</span></div>
           <div class="font-options">
             <button
               v-for="item in FONT_SCALE_OPTIONS"
@@ -220,7 +257,7 @@ async function submitPassword() {
               @click="chooseFontScale(item.value)"
             >
               <b :style="{ fontSize: item.value === 'standard' ? '17px' : item.value === 'large' ? '19px' : '21px' }">{{ item.sample }}</b>
-              <span>{{ item.label }}</span>
+              <span>{{ t(`profile.${item.value}`) }}</span>
               <small>{{ item.scale }}</small>
             </button>
           </div>
@@ -228,8 +265,8 @@ async function submitPassword() {
 
         <div class="motion-row">
           <div>
-            <strong>减弱动态效果</strong>
-            <span>关闭数字人漂浮、进度过渡等非必要动画</span>
+            <strong>{{ t('profile.reduceMotion') }}</strong>
+            <span>{{ t('profile.reduceMotionHint') }}</span>
           </div>
           <el-switch v-model="profile.reduceMotion" @change="previewAppearance" />
         </div>
@@ -238,32 +275,32 @@ async function submitPassword() {
       <section class="panel settings-panel security-panel">
         <div class="panel-heading">
           <div>
-            <h2>账号安全</h2>
-            <p>修改密码后，当前登录保持有效，下次登录使用新密码。</p>
+            <h2>{{ t('profile.security') }}</h2>
+            <p>{{ t('profile.securityHint') }}</p>
           </div>
           <span class="panel-icon secure"><el-icon><Key /></el-icon></span>
         </div>
         <el-form class="settings-form password-form" label-position="top" @submit.prevent="submitPassword">
           <div class="form-grid">
-            <el-form-item label="新密码">
-              <el-input v-model="password.next" type="password" show-password maxlength="100" autocomplete="new-password" placeholder="至少 6 位" />
+            <el-form-item :label="t('profile.newPassword')">
+              <el-input v-model="password.next" type="password" show-password maxlength="100" autocomplete="new-password" :placeholder="t('profile.newPasswordPlaceholder')" />
             </el-form-item>
-            <el-form-item label="确认新密码">
-              <el-input v-model="password.confirm" type="password" show-password maxlength="100" autocomplete="new-password" placeholder="再次输入新密码" />
+            <el-form-item :label="t('profile.confirmPassword')">
+              <el-input v-model="password.confirm" type="password" show-password maxlength="100" autocomplete="new-password" :placeholder="t('profile.confirmPasswordPlaceholder')" />
             </el-form-item>
           </div>
         </el-form>
         <div class="security-actions">
           <el-button class="soft-button" :loading="savingPassword" :disabled="savingPassword" @click="submitPassword">
-            更新密码
+            {{ t('profile.updatePassword') }}
           </el-button>
         </div>
       </section>
     </div>
 
     <div class="settings-actions">
-      <span>修改会同步到你的账号，换设备登录后仍然生效。</span>
-      <el-button class="primary-button" :loading="savingProfile" :disabled="savingProfile" @click="submitProfile">保存个人设置</el-button>
+      <span>{{ t('profile.syncHint') }}</span>
+      <el-button class="primary-button" :loading="savingProfile" :disabled="savingProfile" @click="submitProfile">{{ t('profile.saveSettings') }}</el-button>
     </div>
   </section>
 </template>
@@ -296,6 +333,13 @@ async function submitPassword() {
 .block-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .block-label strong, .motion-row strong { color: #4a5750; font-size: 13px; }
 .block-label span, .motion-row span { color: #98a19c; font-size: 12px; }
+.language-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.language-options button { position: relative; display: grid; min-height: 56px; align-content: center; justify-items: center; gap: 3px; padding: 7px; border: 1px solid #e5eae6; border-radius: 6px; background: white; color: #68756e; font-family: inherit; }
+.language-options button:hover { border-color: #cbd8d0; }
+.language-options button.active { border-color: var(--green); background: var(--green-soft); color: var(--green-dark); }
+.language-options b { font-size: 13px; }
+.language-options span { font-size: 12px; font-weight: 600; }
+.language-options .el-icon { position: absolute; top: 5px; right: 5px; color: var(--green); }
 .theme-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .theme-card { position: relative; display: grid; gap: 7px; padding: 7px; border: 1px solid #e5eae6; border-radius: 7px; background: white; color: #66736c; font-family: inherit; font-size: 12px; text-align: left; }
 .theme-card:hover { border-color: #cbd8d0; }

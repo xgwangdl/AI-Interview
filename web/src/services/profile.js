@@ -79,11 +79,11 @@ export function profileInitial(name) {
   return String(name || '练').trim().slice(0, 1) || '练';
 }
 
-export function formatJoinedAt(value) {
+export function formatJoinedAt(value, locale = 'zh-CN') {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

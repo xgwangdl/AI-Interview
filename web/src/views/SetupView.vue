@@ -5,11 +5,13 @@ import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { extractResume, planQuestions, trySyncSession } from '../services/api';
 import { buildQuestions } from '../data/questions';
-import { DIMENSION_LABELS } from '../services/practiceArchive';
+import { DIMENSION_LABEL_KEYS, DIMENSION_LABELS } from '../services/practiceArchive';
 import { getGoal } from '../services/goals';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
 const route = useRoute();
+const { t } = useI18n();
 const practice = usePracticeStore();
 const formRef = ref();
 const resumeName = ref('');
@@ -25,14 +27,21 @@ watch(() => form.mode, (mode) => {
     form.followUpEnabled = true;
   }
 });
-const rules = { role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }, { min: 2, max: 60, message: '岗位名称控制在 2 到 60 个字', trigger: 'blur' }] };
+const rules = computed(() => ({
+  role: [
+    { required: true, message: t('setup.roleRequired'), trigger: 'blur' },
+    { min: 2, max: 60, message: t('setup.roleLength'), trigger: 'blur' },
+  ],
+}));
 
 /**
  * 从训练档案点「针对短板再练一场」过来时带着岗位与弱项维度。
  * 只影响出题倾向，用户可以随时清掉。
  */
 const focusDimensions = ref([]);
-const focusLabels = computed(() => focusDimensions.value.map((key) => DIMENSION_LABELS[key] || key));
+const focusLabels = computed(() => focusDimensions.value.map((key) => (
+  DIMENSION_LABEL_KEYS[key] ? t(DIMENSION_LABEL_KEYS[key]) : key
+)));
 /** 创建练习期间锁住按钮：出题 + 建会话可能要几秒，重复点会建出多场练习。 */
 const submitting = ref(false);
 
@@ -60,20 +69,20 @@ async function onResumeChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   if (file.size > 8 * 1024 * 1024) {
-    ElMessage.error('简历不能超过 8 MB');
+    ElMessage.error(t('setup.resumeTooLarge'));
     event.target.value = '';
     return;
   }
   resumeName.value = file.name;
   resumeText.value = '';
-  resumeStatus.value = '正在解析简历…';
+  resumeStatus.value = t('setup.resumeParsing');
   try {
     const parsed = await extractResume(file);
     resumeText.value = parsed.text;
-    resumeStatus.value = `已解析 ${parsed.characters} 字，将用于生成面试题`;
+    resumeStatus.value = t('setup.resumeParsed', { count: parsed.characters });
   } catch {
     // 简历解析是增强项：失败时仍可只用岗位信息出题。
-    resumeStatus.value = '未能读取这份简历，出题将只参考岗位信息';
+    resumeStatus.value = t('setup.resumeUnreadable');
   }
 }
 
@@ -91,7 +100,7 @@ async function continueToDevices() {
     practice.saveDraft();
     router.push(`/practice/device-check?id=${draft.id}`);
   } catch (error) {
-    ElMessage.error(error.message || '无法创建练习，请检查后端连接。');
+    ElMessage.error(error.message || t('setup.createFailed'));
   } finally {
     submitting.value = false;
   }
@@ -120,7 +129,9 @@ async function resolveQuestions() {
     // 静默回退，不打断创建流程；但额度用完这件事必须说出来 ——
     // 否则用户只会觉得"这次的题怎么变水了"，也不知道额度是共享资源。
     if (error?.status === 429) {
-      ElMessage.warning(`${error.message || '今天的 AI 额度已用完'}，本次先用系统内置题库出题。`);
+      ElMessage.warning(t('setup.quotaWarning', {
+        message: error.message || t('setup.quotaExhausted'),
+      }));
     }
   }
   return buildQuestions(form.role, form.questionCount, form.interviewType);
@@ -130,67 +141,67 @@ async function resolveQuestions() {
 
 <template>
   <section class="setup-page">
-    <div class="page-heading"><div><div class="eyebrow">STEP 01 / 02</div><h1>配置你的练习</h1><p>补充目标岗位和面试偏好，系统将据此组织练习问题。</p></div><el-tag class="tag-muted">练习数据保存 7 天</el-tag></div>
+    <div class="page-heading"><div><div class="eyebrow">{{ t('setup.step') }}</div><h1>{{ t('setup.title') }}</h1><p>{{ t('setup.subtitle') }}</p></div><el-tag class="tag-muted">{{ t('setup.retention') }}</el-tag></div>
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="setup-grid">
       <div class="setup-main">
         <section v-if="focusLabels.length" class="panel focus-banner">
           <el-icon><Aim /></el-icon>
           <div>
-            <strong>本次重点考察：{{ focusLabels.join('、') }}</strong>
-            <small>来自你的训练档案（最近几次练习里较弱的部分）。出题会多出能暴露这些问题的题。</small>
+            <strong>{{ t('setup.focusTitle', { dimensions: focusLabels.join(' / ') }) }}</strong>
+            <small>{{ t('setup.focusHint') }}</small>
           </div>
-          <button class="focus-clear" @click="focusDimensions = []">清除</button>
+          <button class="focus-clear" @click="focusDimensions = []">{{ t('setup.clear') }}</button>
         </section>
         <section class="form-section panel">
-          <div class="form-section-title"><span class="number-badge">01</span><div><strong>岗位信息</strong><small>让问题更贴近你的目标职位</small></div></div>
+          <div class="form-section-title"><span class="number-badge">01</span><div><strong>{{ t('setup.jobInfo') }}</strong><small>{{ t('setup.jobInfoHint') }}</small></div></div>
           <div class="field-grid">
-            <el-form-item label="目标岗位" prop="role"><el-input v-model="form.role" placeholder="例如：Java 后端工程师" maxlength="60" show-word-limit /></el-form-item>
-            <el-form-item label="目标公司（选填）"><el-input v-model="form.company" placeholder="例如：某互联网公司" maxlength="60" /></el-form-item>
+            <el-form-item :label="t('setup.role')" prop="role"><el-input v-model="form.role" :placeholder="t('setup.rolePlaceholder')" maxlength="60" show-word-limit /></el-form-item>
+            <el-form-item :label="t('setup.company')"><el-input v-model="form.company" :placeholder="t('setup.companyPlaceholder')" maxlength="60" /></el-form-item>
           </div>
-          <el-form-item label="岗位描述 JD（选填）"><el-input v-model="form.jobDescription" type="textarea" :rows="4" maxlength="3000" show-word-limit placeholder="粘贴岗位职责、技能要求或你特别想准备的内容" /></el-form-item>
+          <el-form-item :label="t('setup.jobDescription')"><el-input v-model="form.jobDescription" type="textarea" :rows="4" maxlength="3000" show-word-limit :placeholder="t('setup.jobDescriptionPlaceholder')" /></el-form-item>
           <div class="resume-upload-row">
-            <div class="resume-copy"><div class="resume-icon"><el-icon><Document /></el-icon></div><div><strong>{{ resumeName || '添加简历' }}</strong><small>{{ resumeStatus || 'PDF、DOCX，最多 8 MB；内容仅用于生成面试题' }}</small></div></div>
-            <label class="upload-label"><input type="file" accept=".pdf,.doc,.docx" @change="onResumeChange" /><el-icon><Upload /></el-icon>选择文件</label>
+            <div class="resume-copy"><div class="resume-icon"><el-icon><Document /></el-icon></div><div><strong>{{ resumeName || t('setup.resume') }}</strong><small>{{ resumeStatus || t('setup.resumeHint') }}</small></div></div>
+            <label class="upload-label"><input type="file" accept=".pdf,.doc,.docx" @change="onResumeChange" /><el-icon><Upload /></el-icon>{{ t('setup.chooseFile') }}</label>
           </div>
         </section>
 
         <section class="form-section panel">
-          <div class="form-section-title"><span class="number-badge">02</span><div><strong>练习偏好</strong><small>选择本轮面试的节奏与风格</small></div></div>
-          <el-form-item label="面试方式">
+          <div class="form-section-title"><span class="number-badge">02</span><div><strong>{{ t('setup.preferences') }}</strong><small>{{ t('setup.preferencesHint') }}</small></div></div>
+          <el-form-item :label="t('setup.mode')">
             <el-radio-group v-model="form.mode" class="choice-grid mode-grid">
-              <el-radio-button value="per_question"><span class="choice-title">逐题练习</span><span class="choice-subtitle">每题录完可回看重录，适合第一次练</span></el-radio-button>
-              <el-radio-button value="continuous"><span class="choice-title">连续面试</span><span class="choice-subtitle">一次开始连续作答，中间只允许暂停一次，更接近真实面试</span></el-radio-button>
+              <el-radio-button value="per_question"><span class="choice-title">{{ t('setup.perQuestion') }}</span><span class="choice-subtitle">{{ t('setup.perQuestionHint') }}</span></el-radio-button>
+              <el-radio-button value="continuous"><span class="choice-title">{{ t('setup.continuous') }}</span><span class="choice-subtitle">{{ t('setup.continuousHint') }}</span></el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="面试类型"><el-radio-group v-model="form.interviewType" class="choice-grid">
-            <el-radio-button value="behavioral"><span class="choice-title">综合行为</span><span class="choice-subtitle">讲经历与协作，例：和同事意见不合怎么处理</span></el-radio-button>
-            <el-radio-button value="technical"><span class="choice-title">技术能力</span><span class="choice-subtitle">考原理与设计，例：接口为什么会重复下单</span></el-radio-button>
-            <el-radio-button value="manager"><span class="choice-title">管理岗位</span><span class="choice-subtitle">看决策与带队，例：项目进度落后怎么办</span></el-radio-button>
+          <el-form-item :label="t('setup.interviewType')"><el-radio-group v-model="form.interviewType" class="choice-grid">
+            <el-radio-button value="behavioral"><span class="choice-title">{{ t('setup.behavioral') }}</span><span class="choice-subtitle">{{ t('setup.behavioralHint') }}</span></el-radio-button>
+            <el-radio-button value="technical"><span class="choice-title">{{ t('setup.technical') }}</span><span class="choice-subtitle">{{ t('setup.technicalHint') }}</span></el-radio-button>
+            <el-radio-button value="manager"><span class="choice-title">{{ t('setup.manager') }}</span><span class="choice-subtitle">{{ t('setup.managerHint') }}</span></el-radio-button>
           </el-radio-group></el-form-item>
-          <el-form-item label="面试官风格"><el-radio-group v-model="form.interviewerStyle" class="choice-grid">
-            <el-radio-button value="balanced"><span class="choice-title">专业平和</span><span class="choice-subtitle">按标准节奏提问，客观记录你的回答</span></el-radio-button>
-            <el-radio-button value="direct"><span class="choice-title">直接追问</span><span class="choice-subtitle">抓住回答里的模糊点继续深挖细节</span></el-radio-button>
-            <el-radio-button value="supportive"><span class="choice-title">循序引导</span><span class="choice-subtitle">先给提示再逐步深入，适合首次练习</span></el-radio-button>
+          <el-form-item :label="t('setup.interviewerStyle')"><el-radio-group v-model="form.interviewerStyle" class="choice-grid">
+            <el-radio-button value="balanced"><span class="choice-title">{{ t('setup.balanced') }}</span><span class="choice-subtitle">{{ t('setup.balancedHint') }}</span></el-radio-button>
+            <el-radio-button value="direct"><span class="choice-title">{{ t('setup.direct') }}</span><span class="choice-subtitle">{{ t('setup.directHint') }}</span></el-radio-button>
+            <el-radio-button value="supportive"><span class="choice-title">{{ t('setup.supportive') }}</span><span class="choice-subtitle">{{ t('setup.supportiveHint') }}</span></el-radio-button>
           </el-radio-group></el-form-item>
           <div class="field-grid lower-fields">
-            <el-form-item label="练习难度"><el-select v-model="form.difficulty"><el-option label="基础 · 建立节奏" value="foundation" /><el-option label="标准 · 接近常规面试" value="standard" /><el-option label="进阶 · 深挖细节" value="advanced" /></el-select></el-form-item>
-            <el-form-item label="面试官追问">
+            <el-form-item :label="t('setup.difficulty')"><el-select v-model="form.difficulty"><el-option :label="t('setup.foundation')" value="foundation" /><el-option :label="t('setup.standard')" value="standard" /><el-option :label="t('setup.advanced')" value="advanced" /></el-select></el-form-item>
+            <el-form-item :label="t('setup.followUp')">
               <el-switch v-model="form.followUpEnabled" />
               <span class="switch-hint">
                 {{ form.followUpEnabled
-                  ? '答完每题由面试官决定要不要追问一句（每题多等几秒）'
-                  : '只按准备好的题单提问' }}
+                  ? t('setup.followUpOn')
+                  : t('setup.followUpOff') }}
               </span>
             </el-form-item>
-            <el-form-item label="问题数量"><el-select v-model="form.questionCount"><el-option :value="3" label="3 道 · 约 10 分钟" /><el-option :value="5" label="5 道 · 约 20 分钟" /><el-option :value="8" label="8 道 · 约 30 分钟" /></el-select></el-form-item>
+            <el-form-item :label="t('setup.questionCount')"><el-select v-model="form.questionCount"><el-option :value="3" :label="t('setup.questions3')" /><el-option :value="5" :label="t('setup.questions5')" /><el-option :value="8" :label="t('setup.questions8')" /></el-select></el-form-item>
           </div>
         </section>
       </div>
       <aside class="setup-aside">
-        <div class="summary-card panel"><div class="section-title">本次练习</div><div class="summary-role">{{ form.role || '待填写岗位' }}</div><div class="summary-company">{{ form.company || '目标公司未填写' }}</div><div class="summary-divider"></div><div class="summary-row"><span>面试方式</span><strong>{{ form.mode === 'continuous' ? '连续面试' : '逐题练习' }}</strong></div><div class="summary-row"><span>面试类型</span><strong>{{ { behavioral: '综合行为', technical: '技术能力', manager: '管理岗位' }[form.interviewType] }}</strong></div><div class="summary-row"><span>预计题目</span><strong>{{ form.questionCount }} 道</strong></div><div class="summary-row"><span>预计时长</span><strong>约 {{ form.durationMinutes }} 分钟</strong></div><div class="summary-row"><span>录像保存</span><strong>服务端 · 7 天</strong></div></div>
-        <div class="privacy-card"><el-icon><Lock /></el-icon><div><strong>你的练习由你掌控</strong><p>设备录制需要你主动授权。每题独立保存，可重录、回看或立即删除。</p></div></div>
+        <div class="summary-card panel"><div class="section-title">{{ t('setup.summary') }}</div><div class="summary-role">{{ form.role || t('setup.pendingRole') }}</div><div class="summary-company">{{ form.company || t('setup.noCompany') }}</div><div class="summary-divider"></div><div class="summary-row"><span>{{ t('setup.modeLabel') }}</span><strong>{{ form.mode === 'continuous' ? t('setup.continuous') : t('setup.perQuestion') }}</strong></div><div class="summary-row"><span>{{ t('setup.typeLabel') }}</span><strong>{{ t(`setup.${form.interviewType}`) }}</strong></div><div class="summary-row"><span>{{ t('setup.countLabel') }}</span><strong>{{ t('setup.countValue', { count: form.questionCount }) }}</strong></div><div class="summary-row"><span>{{ t('setup.durationLabel') }}</span><strong>{{ t('setup.durationValue', { minutes: form.durationMinutes }) }}</strong></div><div class="summary-row"><span>{{ t('setup.storageLabel') }}</span><strong>{{ t('setup.storageValue') }}</strong></div></div>
+        <div class="privacy-card"><el-icon><Lock /></el-icon><div><strong>{{ t('setup.privacyTitle') }}</strong><p>{{ t('setup.privacyText') }}</p></div></div>
         <el-button class="primary-button continue-button" :loading="submitting" :disabled="submitting"
-                   @click="continueToDevices">继续检测设备 <el-icon><ArrowRight /></el-icon></el-button>
+                   @click="continueToDevices">{{ t('setup.continueDevices') }} <el-icon><ArrowRight /></el-icon></el-button>
       </aside>
     </el-form>
   </section>

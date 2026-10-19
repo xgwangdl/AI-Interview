@@ -1,3 +1,5 @@
+import { clearLocalSession } from './authSession';
+
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
@@ -8,7 +10,7 @@ const apiBase = import.meta.env.VITE_API_BASE_URL || '';
  * 登录后还能跳回原来那一页。
  */
 export function handleUnauthorized() {
-  ['token', 'userId', 'userName', 'username', 'light-interview-display-name'].forEach((key) => localStorage.removeItem(key));
+  clearLocalSession();
   if (typeof window === 'undefined' || !window.location) return;
   if (window.location.pathname.startsWith('/login')) return;   // 已经在登录页，别反复跳
   const redirect = encodeURIComponent(window.location.pathname + window.location.search);

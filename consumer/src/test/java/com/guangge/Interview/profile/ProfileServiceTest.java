@@ -41,6 +41,7 @@ class ProfileServiceTest {
         assertEquals("Asia/Shanghai", profile.timezone());
         assertEquals("standard", profile.fontScale());
         assertEquals("green", profile.theme());
+        assertEquals("zh-CN", profile.language());
         assertFalse(profile.reduceMotion());
     }
 
@@ -49,7 +50,7 @@ class ProfileServiceTest {
         Candidates candidate = candidate("alice");
         when(repository.findFirstByName("alice")).thenReturn(Optional.of(candidate));
         ProfileUpdateRequest request = new ProfileUpdateRequest(
-                "青禾", "  qinghe@example.com ", "Asia/Tokyo", "large", true, "blue");
+                "青禾", "  qinghe@example.com ", "Asia/Tokyo", "large", true, "blue", "ja-JP");
 
         ProfileView profile = service.update("alice", request);
 
@@ -60,6 +61,7 @@ class ProfileServiceTest {
         assertEquals("large", candidate.getFontScale());
         assertEquals(true, candidate.isReduceMotion());
         assertEquals("blue", candidate.getTheme());
+        assertEquals("ja-JP", candidate.getLanguage());
         assertEquals("青禾", profile.displayName());
     }
 
@@ -70,7 +72,7 @@ class ProfileServiceTest {
         when(repository.findFirstByName("alice")).thenReturn(Optional.of(candidate));
 
         service.update("alice",
-                new ProfileUpdateRequest("青禾", "   ", "Asia/Shanghai", "standard", false, "green"));
+                new ProfileUpdateRequest("青禾", "   ", "Asia/Shanghai", "standard", false, "green", null));
 
         assertNull(candidate.getEmail());
     }
@@ -80,16 +82,19 @@ class ProfileServiceTest {
         when(repository.findFirstByName("alice")).thenReturn(Optional.of(candidate("alice")));
 
         assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.update("alice",
-                new ProfileUpdateRequest("A", null, "Asia/Shanghai", "standard", false, "green")))
+                new ProfileUpdateRequest("A", null, "Asia/Shanghai", "standard", false, "green", null)))
                 .getStatusCode().value());
         assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.update("alice",
-                new ProfileUpdateRequest("青禾", null, "Mars/Olympus", "standard", false, "green")))
+                new ProfileUpdateRequest("青禾", null, "Mars/Olympus", "standard", false, "green", null)))
                 .getStatusCode().value());
         assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.update("alice",
-                new ProfileUpdateRequest("青禾", null, "Asia/Shanghai", "huge", false, "green")))
+                new ProfileUpdateRequest("青禾", null, "Asia/Shanghai", "huge", false, "green", null)))
                 .getStatusCode().value());
         assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.update("alice",
-                new ProfileUpdateRequest("青禾", null, "Asia/Shanghai", "standard", false, "purple")))
+                new ProfileUpdateRequest("青禾", null, "Asia/Shanghai", "standard", false, "purple", null)))
+                .getStatusCode().value());
+        assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.update("alice",
+                new ProfileUpdateRequest("青禾", null, "Asia/Shanghai", "standard", false, "green", "fr-FR")))
                 .getStatusCode().value());
     }
 

@@ -14,6 +14,7 @@ import { IDLE_VIDEO, TALK_ROTATION, frameSrc, preloadFrames } from '../services/
 import {
   frameForLevel, levelWithHysteresis, nextFallbackFrame, smoothAmplitude,
 } from '../services/mouthAnimation';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   /** 需要播放的配音地址；为空则只做状态展示 */
@@ -31,6 +32,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['speaking-end']);
+const { t } = useI18n();
 
 const { state, restFrame } = useAvatarState();
 const frame = ref('mouth-closed');
@@ -207,12 +209,12 @@ defineExpose({ frame, ready, loadFailed });
         v-else-if="ready"
         class="dh-frame"
         :src="source"
-        :alt="`AI 面试官（${state}）`"
+        :alt="t('digitalHuman.alt', { state })"
         draggable="false"
       />
       <span class="dh-dots"><i :class="{ on: state === AVATAR_STATE.PREPARING }"></i><i :class="{ on: state === AVATAR_STATE.SPEAKING }"></i><i :class="{ on: state === AVATAR_STATE.LISTENING || state === AVATAR_STATE.RECORDING }"></i></span>
     </div>
-    <p v-if="loadFailed" class="dh-warn">部分素材没能加载，数字人可能显示不全。</p>
+    <p v-if="loadFailed" class="dh-warn">{{ t('digitalHuman.loadWarning') }}</p>
   </div>
 </template>
 

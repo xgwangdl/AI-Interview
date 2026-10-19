@@ -8,6 +8,7 @@ import {
 } from '../services/api';
 import { uploadAnswerMediaWithFallback } from '../services/chunkedUpload';
 import { supportedRecorderType } from '../services/mediaCapture';
+import { useI18n } from 'vue-i18n';
 
 /**
  * 照着改写重录一题（Phase 3）。
@@ -16,6 +17,7 @@ import { supportedRecorderType } from '../services/mediaCapture';
  */
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const practice = usePracticeStore();
 const video = ref();
 const stream = ref(null);
@@ -43,7 +45,7 @@ onMounted(async () => {
     }
   }
   if (!session.value) {
-    ElMessage.error('找不到这次练习');
+    ElMessage.error(t('retake.noPractice'));
     router.replace('/history');
     return;
   }
@@ -71,7 +73,7 @@ async function openCamera() {
     if (video.value) video.value.srcObject = stream.value;
     error.value = '';
   } catch {
-    error.value = '无法打开摄像头和麦克风，请检查浏览器权限。';
+    error.value = t('retake.cameraDenied');
   }
 }
 
@@ -91,7 +93,7 @@ function startRecording() {
       if (elapsed.value >= 180) stopRecording();
     }, 250);
   } catch {
-    ElMessage.error('当前浏览器无法启动录制');
+    ElMessage.error(t('retake.cannotRecord'));
   }
 }
 
@@ -105,7 +107,7 @@ function stopRecording() {
 async function upload() {
   const blob = new Blob(chunks, { type: recorder?.mimeType || 'video/webm' });
   if (!blob.size) {
-    ElMessage.warning('这一段没有录到内容，请重试');
+    ElMessage.warning(t('retake.emptyRecording'));
     return;
   }
   saving.value = true;
@@ -116,10 +118,10 @@ async function upload() {
     await tryCompleteAnswer(attempt.id);
     saved = true;
     await practice.loadFromServer();
-    ElMessage.success('新版本已保存，正在重新分析这一题');
+    ElMessage.success(t('retake.saved'));
     router.replace(`/practice/${route.params.id}/report?index=${index}`);
   } catch (err) {
-    ElMessage.error(err?.message || '上传失败，旧版本仍然保留');
+    ElMessage.error(err?.message || t('retake.uploadFailed'));
   } finally {
     saving.value = false;
   }
@@ -138,39 +140,39 @@ function timeLabel() {
   <section class="retake-page">
     <div class="page-heading">
       <div>
-        <button class="back-link" @click="back"><el-icon><ArrowLeft /></el-icon>返回报告</button>
-        <h1>照着改写重录</h1>
-        <p>第 {{ index + 1 }} 题 · 新版上传后才会替换当前答案，中途退出不会丢旧版本。</p>
+        <button class="back-link" @click="back"><el-icon><ArrowLeft /></el-icon>{{ t('retake.back') }}</button>
+        <h1>{{ t('retake.title') }}</h1>
+        <p>{{ t('retake.subtitle', { number: index + 1 }) }}</p>
       </div>
     </div>
 
     <div class="retake-grid">
       <section class="panel retake-copy">
-        <div class="section-title">题目</div>
-        <h2>{{ question?.text || '题目加载中' }}</h2>
+        <div class="section-title">{{ t('retake.question') }}</div>
+        <h2>{{ question?.text || t('retake.loadingQuestion') }}</h2>
         <div class="rewrite-box">
-          <div class="section-title">改写参考</div>
+          <div class="section-title">{{ t('retake.rewriteReference') }}</div>
           <p v-if="rewriteText">{{ rewriteText }}</p>
-          <p v-else class="muted">这一题还没有改写。先回报告页生成改写，再回来重录。</p>
+          <p v-else class="muted">{{ t('retake.noRewrite') }}</p>
         </div>
-        <p class="retake-tip">照着说即可，不需要逐字背诵；重点是结构、动词和结果。</p>
+        <p class="retake-tip">{{ t('retake.tip') }}</p>
       </section>
 
       <section class="panel retake-record">
         <div class="preview">
           <video ref="video" autoplay muted playsinline></video>
-          <span v-if="recording" class="recording-dot">录制中 {{ timeLabel() }}</span>
-          <span v-else-if="saving" class="recording-dot saving">上传中…</span>
+          <span v-if="recording" class="recording-dot">{{ t('retake.recording', { time: timeLabel() }) }}</span>
+          <span v-else-if="saving" class="recording-dot saving">{{ t('retake.uploading') }}</span>
         </div>
         <p v-if="error" class="retake-error">{{ error }}</p>
         <div class="retake-actions">
           <el-button v-if="!recording" class="primary-button" :disabled="saving || !stream" @click="startRecording">
-            <el-icon><VideoCamera /></el-icon>开始重录
+            <el-icon><VideoCamera /></el-icon>{{ t('retake.start') }}
           </el-button>
           <el-button v-else class="primary-button" @click="stopRecording">
-            <el-icon><CircleCheck /></el-icon>结束并保存
+            <el-icon><CircleCheck /></el-icon>{{ t('retake.finish') }}
           </el-button>
-          <el-button class="soft-button" :disabled="recording || saving" @click="back">取消</el-button>
+          <el-button class="soft-button" :disabled="recording || saving" @click="back">{{ t('retake.cancel') }}</el-button>
         </div>
       </section>
     </div>

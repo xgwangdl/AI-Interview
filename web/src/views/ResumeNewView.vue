@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { createResume, draftResume, parseResumeFile, refineResume } from '../services/resume';
 import {
-  BASICS_FIELDS, ENTRY_STEPS, EXAMPLES, WIZARD_STEPS, clearLocalDraft, countFilled, defaultTitle,
+  BASICS_FIELDS, ENTRY_STEPS, EXAMPLE_KEYS, WIZARD_STEPS, clearLocalDraft, countFilled, defaultTitle,
   emptyEntry, emptyState, loadLocalDraft, saveLocalDraft, toMaterials,
 } from '../services/resumeWizard';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const tab = ref('guided');
 
 // ---- 从零创建 ----
@@ -45,7 +47,7 @@ onMounted(() => {
   const restored = loadLocalDraft();
   if (restored) {
     Object.assign(state, restored);
-    ElMessage.info('已恢复上次没写完的内容，可以直接继续。');
+    ElMessage.info(t('resume.restored'));
   }
 });
 
@@ -58,7 +60,7 @@ watch(state, () => {
 function addEntry() {
   if (!entries.value) return;
   if (entries.value.length >= 12) {
-    ElMessage.warning('一段经历最多 12 条，再多就不是简历了。');
+    ElMessage.warning(t('resume.entryLimit'));
     return;
   }
   entries.value.push(emptyEntry());
@@ -74,9 +76,9 @@ async function generate() {
     const result = await draftResume(toMaterials(state));
     generated.value = result;
     draftText.value = result.rawText;
-    if (!title.value) title.value = defaultTitle(state);
+    if (!title.value) title.value = defaultTitle(state, t);
   } catch (error) {
-    ElMessage.error(error.message || '生成失败，请稍后重试');
+    ElMessage.error(error.message || t('resume.generateFailed'));
   } finally {
     generating.value = false;
   }
@@ -84,7 +86,7 @@ async function generate() {
 
 async function refine() {
   if (!supplement.value.trim()) {
-    ElMessage.warning('先写点要补充的内容，比如"接口耗时从 800ms 降到 120ms"。');
+    ElMessage.warning(t('resume.supplementRequired'));
     return;
   }
   refining.value = true;
@@ -94,10 +96,10 @@ async function refine() {
     draftText.value = result.rawText;
     supplement.value = '';
     ElMessage.success(result.placeholders?.length
-      ? `已更新，还有 ${result.placeholders.length} 处待补充。`
-      : '已更新，没有待补充的地方了。');
+      ? t('resume.updatedPending', { count: result.placeholders.length })
+      : t('resume.updatedComplete'));
   } catch (error) {
-    ElMessage.error(error.message || '补全失败，请稍后重试');
+    ElMessage.error(error.message || t('resume.refineFailed'));
   } finally {
     refining.value = false;
   }
@@ -106,7 +108,7 @@ async function refine() {
 /** optimize=true 时保存完直接跳到详情页的优化面板（Q10：不自动串，但要顺手）。 */
 async function save(optimize = false) {
   if (!title.value.trim() || !draftText.value.trim()) {
-    ElMessage.warning('标题和正文都要有内容。');
+    ElMessage.warning(t('resume.titleRequired'));
     return;
   }
   saving.value = true;
@@ -119,7 +121,7 @@ async function save(optimize = false) {
     const query = optimize ? { optimize: '1', role: state.targetRole || undefined } : {};
     router.push({ path: `/resumes/${created.id}`, query });
   } catch (error) {
-    ElMessage.error(error.message || '保存失败');
+    ElMessage.error(error.message || t('resume.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -141,16 +143,19 @@ async function onFile(event) {
   try {
     const parsed = await parseResumeFile(file);
     if (!parsed?.text) {
-      ElMessage.warning('这份文件读不出文字（可能是扫描件或纯图片），请改用手动粘贴。');
+      ElMessage.warning(t('resume.unreadableFile'));
       return;
     }
     manual.rawText = parsed.text;
     manual.fileName = parsed.fileName;
     manual.source = 'upload';
-    if (!manual.title) manual.title = (parsed.fileName || '简历').replace(/\.[^.]+$/, '');
-    ElMessage.success(`已解析 ${parsed.characters} 字${parsed.truncated ? '（超出部分已截断）' : ''}，请核对后保存。`);
+    if (!manual.title) manual.title = (parsed.fileName || t('resume.fileDefaultTitle')).replace(/\.[^.]+$/, '');
+    ElMessage.success(t('resume.parsedFile', {
+      count: parsed.characters,
+      truncated: parsed.truncated ? t('resume.truncated') : '',
+    }));
   } catch (error) {
-    ElMessage.error(error.message || '解析失败');
+    ElMessage.error(error.message || t('resume.parseFailed'));
   } finally {
     parsing.value = false;
     event.target.value = '';
@@ -159,7 +164,7 @@ async function onFile(event) {
 
 async function saveManual() {
   if (!manual.title.trim() || !manual.rawText.trim()) {
-    ElMessage.warning('标题和正文都要填。');
+    ElMessage.warning(t('resume.titleRequired'));
     return;
   }
   saving.value = true;
@@ -169,7 +174,7 @@ async function saveManual() {
     });
     router.push(`/resumes/${created.id}`);
   } catch (error) {
-    ElMessage.error(error.message || '保存失败');
+    ElMessage.error(error.message || t('resume.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -180,78 +185,78 @@ async function saveManual() {
   <section class="resume-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">RESUME</div>
-        <h1>添加简历</h1>
-        <p>没有简历就选「从零创建」，它会把该问的都问一遍；已有文件就传上来解析。</p>
+        <div class="eyebrow">{{ t('resume.eyebrow') }}</div>
+        <h1>{{ t('resume.addedTitle') }}</h1>
+        <p>{{ t('resume.addedSubtitle') }}</p>
       </div>
-      <el-button class="soft-button" @click="router.push('/resumes')">返回列表</el-button>
+      <el-button class="soft-button" @click="router.push('/resumes')">{{ t('resume.returnList') }}</el-button>
     </div>
 
     <el-tabs v-model="tab">
-      <el-tab-pane label="从零创建" name="guided">
+      <el-tab-pane :label="t('resume.fromScratch')" name="guided">
         <template v-if="!generated">
           <div class="step-bar">
             <button v-for="(item, index) in WIZARD_STEPS" :key="item.key" type="button"
                     :class="{ active: index === stepIndex, done: index < stepIndex }"
                     @click="stepIndex = index">
-              <i>{{ index + 1 }}</i>{{ item.label }}
+              <i>{{ index + 1 }}</i>{{ t(item.labelKey) }}
             </button>
           </div>
 
           <section class="panel step-panel">
             <div class="section-title">
-              {{ step.label }}
-              <small>不想写就跳过，AI 会留成待补充</small>
+              {{ t(step.labelKey) }}
+              <small>{{ t('resume.stepHint') }}</small>
             </div>
 
             <el-input v-if="step.kind === 'text'" v-model="state[step.key]" maxlength="200"
-                      :placeholder="EXAMPLES[step.key]" />
+                      :placeholder="t(EXAMPLE_KEYS[step.key])" />
             <p v-if="step.kind === 'text'" class="hint">
-              写上目标岗位，AI 会按它组织内容和用词；还没想好也行，后面随时能改。
+              {{ t('resume.targetRoleHint') }}
             </p>
 
             <el-form v-else-if="step.kind === 'basics'" label-position="top">
-              <el-form-item v-for="field in BASICS_FIELDS" :key="field.key" :label="field.label">
-                <el-input v-model="state.basics[field.key]" maxlength="200" :placeholder="field.example" />
+              <el-form-item v-for="field in BASICS_FIELDS" :key="field.key" :label="t(field.labelKey)">
+                <el-input v-model="state.basics[field.key]" maxlength="200" :placeholder="t(field.exampleKey)" />
               </el-form-item>
             </el-form>
 
             <template v-else-if="step.kind === 'entries'">
               <p v-if="!entries.length" class="hint">
-                还没有内容。点下面的按钮加一段，或者直接跳过 —— 生成时会留成待补充。
+                {{ t('resume.noEntries') }}
               </p>
               <div v-for="(entry, index) in entries" :key="index" class="entry-card">
                 <div class="entry-head">
-                  <strong>{{ entryConfig.entryLabel }} {{ index + 1 }}</strong>
-                  <el-button class="soft-button" size="small" @click="removeEntry(index)">删除</el-button>
+                  <strong>{{ t(entryConfig.entryLabelKey) }} {{ index + 1 }}</strong>
+                  <el-button class="soft-button" size="small" @click="removeEntry(index)">{{ t('resume.deleteEntry') }}</el-button>
                 </div>
                 <el-form label-position="top">
-                  <el-form-item v-for="field in entryConfig.fields" :key="field.key" :label="field.label">
+                  <el-form-item v-for="field in entryConfig.fields" :key="field.key" :label="t(field.labelKey)">
                     <el-input v-if="field.rows" v-model="entry[field.key]" type="textarea" :rows="field.rows"
-                              maxlength="600" :placeholder="field.example" />
-                    <el-input v-else v-model="entry[field.key]" maxlength="200" :placeholder="field.example" />
+                              maxlength="600" :placeholder="t(field.exampleKey)" />
+                    <el-input v-else v-model="entry[field.key]" maxlength="200" :placeholder="t(field.exampleKey)" />
                   </el-form-item>
                 </el-form>
               </div>
-              <el-button class="soft-button" @click="addEntry">{{ entryConfig.addLabel }}</el-button>
+              <el-button class="soft-button" @click="addEntry">{{ t(entryConfig.addLabelKey) }}</el-button>
             </template>
 
             <template v-else>
               <el-input v-model="state[step.key]" type="textarea" :rows="6" maxlength="600"
-                        :placeholder="EXAMPLES[step.key]" />
+                        :placeholder="t(EXAMPLE_KEYS[step.key])" />
             </template>
 
             <div class="step-actions">
-              <el-button class="soft-button" :disabled="stepIndex === 0" @click="stepIndex -= 1">上一步</el-button>
-              <span class="step-hint">已填 {{ filled }} 项；没填的会留成待补充，不会编造</span>
+              <el-button class="soft-button" :disabled="stepIndex === 0" @click="stepIndex -= 1">{{ t('resume.prev') }}</el-button>
+              <span class="step-hint">{{ t('resume.filledHint', { count: filled }) }}</span>
               <el-button v-if="stepIndex < WIZARD_STEPS.length - 1" class="soft-button"
-                         @click="stepIndex += 1">跳过 / 下一步</el-button>
+                         @click="stepIndex += 1">{{ t('resume.next') }}</el-button>
               <el-button v-else class="primary-button" :loading="generating" @click="generate">
-                {{ generating ? '正在生成…' : '生成简历' }}
+                {{ generating ? t('resume.generating') : t('resume.generate') }}
               </el-button>
             </div>
             <p v-if="!filled" class="hint">
-              什么都没填也能生成：出来是一份带占位符的骨架，你照着补就行。
+              {{ t('resume.emptySkeleton') }}
             </p>
           </section>
         </template>
@@ -259,12 +264,12 @@ async function saveManual() {
         <template v-else>
           <section class="panel draft-panel">
             <div class="section-title">
-              生成结果
+              {{ t('resume.generatedTitle') }}
               <span v-if="generated.placeholders?.length" class="pending">
-                还有 {{ generated.placeholders.length }} 处待补充
+                {{ t('resume.generatedPending', { count: generated.placeholders.length }) }}
               </span>
             </div>
-            <p class="hint">下面是 AI 写好的正文，可以直接改。带琥珀色的地方是它没敢编、留给你补的。</p>
+            <p class="hint">{{ t('resume.generatedHint') }}</p>
             <div class="draft-preview">
               <template v-for="(seg, index) in segmentsOf(draftText)" :key="index">
                 <mark v-if="seg.placeholder">{{ seg.text }}</mark>
@@ -275,69 +280,69 @@ async function saveManual() {
           </section>
 
           <section v-if="generated.questions?.length" class="panel">
-            <div class="section-title">还缺这些，补上会明显更好</div>
+            <div class="section-title">{{ t('resume.missingTitle') }}</div>
             <ul class="question-list">
               <li v-for="(question, index) in generated.questions" :key="index">{{ question }}</li>
             </ul>
             <el-input v-model="supplement" type="textarea" :rows="3" maxlength="4000"
-                      placeholder="在这里补上（例如：接口耗时从 800ms 降到 120ms；会 Docker）" />
+                      :placeholder="t('resume.supplementPlaceholder')" />
             <div class="step-actions">
-              <el-button class="soft-button" :loading="refining" @click="refine">继续完善</el-button>
-              <span class="step-hint">改完会整篇重写一遍，占位符会自动消掉</span>
+              <el-button class="soft-button" :loading="refining" @click="refine">{{ t('resume.refine') }}</el-button>
+              <span class="step-hint">{{ t('resume.refineHint') }}</span>
             </div>
           </section>
 
           <section class="panel">
-            <div class="section-title">保存到我的简历</div>
+            <div class="section-title">{{ t('resume.saveSection') }}</div>
             <el-form label-position="top">
-              <el-form-item label="简历标题">
-                <el-input v-model="title" maxlength="200" placeholder="例如：张三的简历" />
+              <el-form-item :label="t('resume.resumeTitle')">
+                <el-input v-model="title" maxlength="200" :placeholder="t('resume.resumeTitlePlaceholder')" />
               </el-form-item>
             </el-form>
             <div class="step-actions">
-              <el-button class="soft-button" @click="discard">返回修改素材</el-button>
-              <el-button class="soft-button" :loading="saving" @click="save(false)">只保存</el-button>
+              <el-button class="soft-button" @click="discard">{{ t('resume.returnEdit') }}</el-button>
+              <el-button class="soft-button" :loading="saving" @click="save(false)">{{ t('resume.saveOnly') }}</el-button>
               <el-button class="primary-button" :loading="saving" @click="save(true)">
-                保存并去按岗位优化
+                {{ t('resume.saveOptimize') }}
               </el-button>
             </div>
           </section>
         </template>
       </el-tab-pane>
 
-      <el-tab-pane label="上传解析" name="upload">
+      <el-tab-pane :label="t('resume.uploadParse')" name="upload">
         <section class="panel">
-          <div class="section-title">上传文件（PDF / Word / txt，≤ 8MB）</div>
+          <div class="section-title">{{ t('resume.uploadFileTitle') }}</div>
           <label class="upload-label">
             <input type="file" accept=".pdf,.doc,.docx,.txt" @change="onFile" />
-            <el-icon><Upload /></el-icon>{{ parsing ? '解析中…' : '选择文件' }}
+            <el-icon><Upload /></el-icon>{{ parsing ? t('resume.parsing') : t('resume.chooseFile') }}
           </label>
-          <small class="hint">解析结果会填到下面，先核对再保存；扫描件读不出文字时请改用手动填写。</small>
+          <small class="hint">{{ t('resume.uploadHint') }}</small>
         </section>
       </el-tab-pane>
 
-      <el-tab-pane label="手动填写" name="manual">
+      <el-tab-pane :label="t('resume.manual')" name="manual">
         <section class="panel">
-          <div class="section-title">直接粘贴</div>
-          <p class="hint">把简历内容粘到下面的正文里就行；没有现成简历的话，用「从零创建」更快。</p>
+          <div class="section-title">{{ t('resume.manualPaste') }}</div>
+          <p class="hint">{{ t('resume.manualHint') }}</p>
         </section>
       </el-tab-pane>
     </el-tabs>
 
     <section v-if="tab !== 'guided'" class="panel">
-      <div class="section-title">简历内容</div>
+      <div class="section-title">{{ t('resume.resumeContent') }}</div>
       <el-form label-position="top">
-        <el-form-item label="简历标题">
-          <el-input v-model="manual.title" maxlength="200" placeholder="例如：Java 后端-张三" />
+        <el-form-item :label="t('resume.resumeTitle')">
+          <el-input v-model="manual.title" maxlength="200" :placeholder="t('resume.manualTitlePlaceholder')" />
         </el-form-item>
-        <el-form-item label="简历正文">
+        <el-form-item :label="t('resume.body')">
           <el-input v-model="manual.rawText" type="textarea" :rows="14" maxlength="20000" show-word-limit
-                    placeholder="把简历内容粘在这里，或上传文件自动填入" />
+                    :placeholder="t('resume.bodyPlaceholder')" />
         </el-form-item>
       </el-form>
       <div class="step-actions">
-        <span class="step-hint">保存后可以继续按岗位优化、导出 Word / PDF</span>
-        <el-button class="primary-button" :loading="saving" @click="saveManual">保存简历</el-button>
+        <span class="step-hint">{{ t('resume.saveResumeHint') }}</span>
+        <el-button class="primary-button" :loading="saving" @click="saveManual">{{ t('resume.saveResume') }}</el-button>
       </div>
     </section>
   </section>

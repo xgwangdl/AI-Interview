@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import CodeEditor from '../components/CodeEditor.vue';
 import { getCodingSession, runCodingAnswer, submitCodingAnswer } from '../services/coding';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const session = ref(null);
 const loading = ref(true);
 const index = ref(0);
@@ -20,8 +22,6 @@ const current = computed(() => questions.value[index.value] || null);
 const submissionFor = (questionId) => (session.value?.submissions || []).find((item) => item.questionId === questionId);
 
 const languageLabels = { java: 'Java', python: 'Python', cpp: 'C++', javascript: 'JavaScript', go: 'Go', sql: 'SQL' };
-const typeLabels = { coding: '上机编程', sql: '数据库题', fill_blank: '编程填空', choice: '选择题', short_answer: '简答题' };
-
 onMounted(load);
 
 async function load() {
@@ -43,7 +43,7 @@ async function load() {
       if (saved && question.type !== 'coding' && question.type !== 'sql') answers[question.id] = '';
     }
   } catch (error) {
-    ElMessage.error(error.message || '无法加载笔试');
+    ElMessage.error(error.message || t('coding.loadExamFailed'));
   } finally {
     loading.value = false;
   }
@@ -61,10 +61,10 @@ async function run() {
   result.value = null;
   try {
     result.value = await runCodingAnswer(session.value.id, current.value.id, payloadFor(current.value));
-    if (result.value.status === 'passed') ElMessage.success('可见示例全部通过');
-    else ElMessage.warning('还有用例没通过，看看下面的差异');
+    if (result.value.status === 'passed') ElMessage.success(t('coding.samplesPassed'));
+    else ElMessage.warning(t('coding.samplesFailed'));
   } catch (error) {
-    ElMessage.error(error.message || '运行失败');
+    ElMessage.error(error.message || t('coding.runFailed'));
   } finally {
     busy.value = false;
   }
@@ -74,7 +74,7 @@ async function submit() {
   if (!current.value) return;
   const answer = payloadFor(current.value);
   if (!answer || answer === '[]') {
-    ElMessage.warning('先作答再提交');
+    ElMessage.warning(t('coding.answerRequired'));
     return;
   }
   busy.value = true;
@@ -82,11 +82,11 @@ async function submit() {
   try {
     result.value = await submitCodingAnswer(session.value.id, current.value.id, answer);
     const passed = result.value.status === 'passed';
-    if (passed) ElMessage.success('本题通过');
-    else ElMessage.warning(`本题未通过（${result.value.passedCases}/${result.value.totalCases} 个用例）`);
+    if (passed) ElMessage.success(t('coding.questionPassed'));
+    else ElMessage.warning(t('coding.questionFailed', { passed: result.value.passedCases, total: result.value.totalCases }));
     await refreshSummary();
   } catch (error) {
-    ElMessage.error(error.message || '提交失败');
+    ElMessage.error(error.message || t('coding.submitFailed'));
   } finally {
     busy.value = false;
   }
@@ -106,12 +106,18 @@ function selectQuestion(target) {
 }
 
 async function finish() {
-  await ElMessageBox.confirm('结束后会生成笔试报告，之后仍可回来修改。', '结束笔试', { confirmButtonText: '结束并查看报告', cancelButtonText: '继续作答' });
+  await ElMessageBox.confirm(t('coding.finishConfirmBody'), t('coding.finishConfirmTitle'), {
+    confirmButtonText: t('coding.finishConfirmAction'),
+    cancelButtonText: t('coding.continueAnswer'),
+  });
   router.push(`/coding/${session.value.id}/report`);
 }
 
 function caseLabel(item) {
-  return item.hidden ? `隐藏用例 ${item.index}` : `用例 ${item.index}${item.name ? ` · ${item.name}` : ''}`;
+  if (item.hidden) return t('coding.hiddenCase', { index: item.index });
+  return item.name
+    ? t('coding.caseNamed', { index: item.index, name: item.name })
+    : t('coding.caseNth', { index: item.index });
 }
 </script>
 
@@ -119,19 +125,19 @@ function caseLabel(item) {
   <section v-loading="loading" class="coding-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">CODING ASSESSMENT</div>
-        <h1>笔试作答</h1>
-        <p v-if="session">{{ session.role }} · 共 {{ questions.length }} 题 · 数据保留至 {{ String(session.retentionUntil).slice(0, 10) }}</p>
+        <div class="eyebrow">{{ t('coding.eyebrow') }}</div>
+        <h1>{{ t('coding.examTitle') }}</h1>
+        <p v-if="session">{{ t('coding.examSubtitle', { role: session.role, count: questions.length, retention: String(session.retentionUntil).slice(0, 10) }) }}</p>
       </div>
       <div class="heading-actions">
-        <el-button class="soft-button" @click="router.push('/coding')">返回列表</el-button>
-        <el-button class="primary-button" @click="finish">结束笔试</el-button>
+        <el-button class="soft-button" @click="router.push('/coding')">{{ t('coding.backList') }}</el-button>
+        <el-button class="primary-button" @click="finish">{{ t('coding.finish') }}</el-button>
       </div>
     </div>
 
     <div v-if="session" class="coding-layout">
       <aside class="question-rail panel">
-        <div class="rail-header"><span>题目</span><strong>{{ questions.length }}</strong></div>
+        <div class="rail-header"><span>{{ t('coding.questions') }}</span><strong>{{ questions.length }}</strong></div>
         <button
           v-for="(question, target) in questions"
           :key="question.id"
@@ -141,7 +147,7 @@ function caseLabel(item) {
         >
           <span class="question-index">{{ submissionFor(question.id) ? '✓' : String(target + 1).padStart(2, '0') }}</span>
           <span>
-            <small>{{ typeLabels[question.type] }}{{ question.language ? ` · ${languageLabels[question.language] || question.language}` : '' }}</small>
+            <small>{{ t(`domain.codingType.${question.type}`) }}{{ question.language ? ` · ${languageLabels[question.language] || question.language}` : '' }}</small>
             <strong>{{ question.title }}</strong>
           </span>
         </button>
@@ -150,31 +156,31 @@ function caseLabel(item) {
       <div v-if="current" class="coding-main">
         <section class="panel question-panel">
           <div class="question-head">
-            <span class="question-kicker">第 {{ index + 1 }} 题 · {{ typeLabels[current.type] }}<template v-if="current.language"> · {{ languageLabels[current.language] || current.language }}</template></span>
+            <span class="question-kicker">{{ t('coding.questionNth', { number: index + 1 }) }} · {{ t(`domain.codingType.${current.type}`) }}<template v-if="current.language"> · {{ languageLabels[current.language] || current.language }}</template></span>
             <el-tag v-if="submissionFor(current.id)" :class="submissionFor(current.id).status === 'passed' ? 'tag-ready' : 'tag-warn'" size="small">
-              {{ submissionFor(current.id).status === 'passed' ? '已通过' : `${submissionFor(current.id).passedCases}/${submissionFor(current.id).totalCases} 通过` }}
+              {{ submissionFor(current.id).status === 'passed' ? t('coding.passedStatus') : t('coding.partialPassed', { passed: submissionFor(current.id).passedCases, total: submissionFor(current.id).totalCases }) }}
             </el-tag>
           </div>
           <h2>{{ current.title }}</h2>
           <pre class="statement">{{ current.statement }}</pre>
 
           <div v-if="current.visibleTestCases?.length" class="samples">
-            <div class="samples-title">示例</div>
+            <div class="samples-title">{{ t('coding.sample') }}</div>
             <div v-for="(sample, sampleIndex) in current.visibleTestCases" :key="sampleIndex" class="sample-row">
-              <span>{{ sample.name || `示例 ${sampleIndex + 1}` }}</span>
-              <code>输入：{{ sample.stdin || '(无)' }}</code>
-              <code>输出：{{ sample.expectedStdout }}</code>
+              <span>{{ sample.name || t('coding.sampleNth', { number: sampleIndex + 1 }) }}</span>
+              <code>{{ t('coding.input', { value: sample.stdin || t('coding.none') }) }}</code>
+              <code>{{ t('coding.output', { value: sample.expectedStdout }) }}</code>
             </div>
           </div>
 
           <div v-if="current.type === 'sql' && current.sqlSetup" class="sql-setup">
-            <div class="samples-title">表结构与数据</div>
+            <div class="samples-title">{{ t('coding.sqlSetup') }}</div>
             <pre>{{ current.sqlSetup }}</pre>
           </div>
         </section>
 
         <section class="panel answer-panel">
-          <div class="answer-title">你的作答</div>
+          <div class="answer-title">{{ t('coding.yourAnswer') }}</div>
 
           <template v-if="current.type === 'coding' || current.type === 'sql'">
             <CodeEditor
@@ -188,8 +194,8 @@ function caseLabel(item) {
             <pre class="statement blank-code">{{ current.starterCode }}</pre>
             <div class="blank-list">
               <label v-for="(blank, blankIndex) in current.blanks" :key="blank.index" class="blank-row">
-                <span>第 {{ blank.index + 1 }} 空<small v-if="blank.hint">（{{ blank.hint }}）</small></span>
-                <el-input v-model="extra[current.id][blankIndex]" placeholder="填写这一空的内容" />
+                <span>{{ t('coding.blankNth', { number: blank.index + 1 }) }}<small v-if="blank.hint">{{ t('coding.blankHint', { hint: blank.hint }) }}</small></span>
+                <el-input v-model="extra[current.id][blankIndex]" :placeholder="t('coding.blankPlaceholder')" />
               </label>
             </div>
           </template>
@@ -203,7 +209,7 @@ function caseLabel(item) {
           </template>
 
           <template v-else>
-            <el-input v-model="answers[current.id]" type="textarea" :rows="8" maxlength="4000" show-word-limit placeholder="写清楚你的思路与结论" />
+            <el-input v-model="answers[current.id]" type="textarea" :rows="8" maxlength="4000" show-word-limit :placeholder="t('coding.shortAnswerPlaceholder')" />
           </template>
 
           <div class="answer-actions">
@@ -212,21 +218,21 @@ function caseLabel(item) {
               class="soft-button"
               :loading="busy"
               @click="run"
-            >运行示例</el-button>
-            <el-button class="primary-button" :loading="busy" @click="submit">提交本题</el-button>
-            <span class="answer-hint">运行只跑可见示例、不留记录；提交会跑全部用例（含隐藏）并计分。</span>
+            >{{ t('coding.runSamples') }}</el-button>
+            <el-button class="primary-button" :loading="busy" @click="submit">{{ t('coding.submitQuestion') }}</el-button>
+            <span class="answer-hint">{{ t('coding.runHint') }}</span>
           </div>
         </section>
 
         <section v-if="result" class="panel result-panel">
           <div class="result-head">
-            <strong>判分结果</strong>
+            <strong>{{ t('coding.result') }}</strong>
             <el-tag :class="result.status === 'passed' ? 'tag-ready' : 'tag-warn'" size="small">
-              {{ result.status === 'passed' ? '通过' : result.status === 'error' ? '运行错误' : '未通过' }}
+              {{ result.status === 'passed' ? t('coding.passed') : result.status === 'error' ? t('coding.error') : t('coding.failed') }}
             </el-tag>
-            <span class="result-score">{{ result.score ?? 0 }} 分</span>
-            <span class="result-cases">{{ result.passedCases }}/{{ result.totalCases }} 用例</span>
-            <span v-if="result.runtimeMs" class="result-cases">耗时 {{ result.runtimeMs }} ms</span>
+            <span class="result-score">{{ t('coding.score', { score: result.score ?? 0 }) }}</span>
+            <span class="result-cases">{{ t('coding.cases', { passed: result.passedCases, total: result.totalCases }) }}</span>
+            <span v-if="result.runtimeMs" class="result-cases">{{ t('coding.runtime', { ms: result.runtimeMs }) }}</span>
           </div>
 
           <pre v-if="result.compileOutput" class="console-output error">{{ result.compileOutput }}</pre>
@@ -234,22 +240,22 @@ function caseLabel(item) {
           <pre v-if="result.stderr" class="console-output error">{{ result.stderr }}</pre>
 
           <div v-if="result.review" class="review-box">
-            <div class="review-score">模型评分：{{ result.review.score }}</div>
+            <div class="review-score">{{ t('coding.modelScore', { score: result.review.score }) }}</div>
             <p>{{ result.review.summary }}</p>
-            <div v-if="result.review.matched?.length" class="review-list"><span>已覆盖：</span>{{ result.review.matched.join('、') }}</div>
-            <div v-if="result.review.missing?.length" class="review-list"><span>未覆盖：</span>{{ result.review.missing.join('、') }}</div>
+            <div v-if="result.review.matched?.length" class="review-list"><span>{{ t('coding.covered') }}</span>{{ result.review.matched.join(' / ') }}</div>
+            <div v-if="result.review.missing?.length" class="review-list"><span>{{ t('coding.missing') }}</span>{{ result.review.missing.join(' / ') }}</div>
           </div>
 
           <div v-if="result.cases?.length" class="case-list">
             <div v-for="item in result.cases" :key="item.index" class="case-row" :class="{ failed: !item.passed }">
               <span class="case-name">{{ caseLabel(item) }}</span>
-              <span class="case-status">{{ item.passed ? '通过' : item.message || '未通过' }}</span>
+              <span class="case-status">{{ item.passed ? t('coding.passed') : item.message || t('coding.failed') }}</span>
               <template v-if="!item.passed && !item.hidden">
-                <code>输入：{{ item.input || '(无)' }}</code>
-                <code>期望：{{ item.expected }}</code>
-                <code>实际：{{ item.actual || '(无输出)' }}</code>
+                <code>{{ t('coding.input', { value: item.input || t('coding.none') }) }}</code>
+                <code>{{ t('coding.output', { value: item.expected }) }}</code>
+                <code>{{ t('coding.output', { value: item.actual || t('coding.noOutput') }) }}</code>
               </template>
-              <small v-else-if="!item.passed && item.hidden">隐藏用例不展示输入输出</small>
+              <small v-else-if="!item.passed && item.hidden">{{ t('coding.hiddenNoDetails') }}</small>
             </div>
           </div>
         </section>

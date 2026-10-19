@@ -65,10 +65,11 @@ html[data-reduce-motion="true"] *::after {
 .breadcrumb { display: flex; align-items: center; gap: 10px; color: #939d98; font-size: 14px; }
 .breadcrumb .el-icon { font-size: 14px; }
 .breadcrumb strong { color: #35413c; font-weight: 600; }
-.topbar-actions { display: flex; align-items: center; gap: 15px; }
+.topbar-actions { display: flex; min-width: 0; align-items: center; gap: 15px; }
 /* 今日 AI 额度：共享成本，摆在顶栏让用户随时看得见（快用完变琥珀色，用完变红） */
 .quota-chip { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #5d6a64; font-size: 13px; }
 .quota-chip small { color: #98a29d; font-size: 12px; }
+.quota-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quota-chip.tight { border-color: #f2dfc2; background: #fdf6ea; color: #a9722f; }
 .quota-chip.empty { border-color: #f0d7d2; background: #fdf1ef; color: #b4553f; }
 .privacy-status { display: flex; align-items: center; gap: 7px; color: #718078; font-size: 14px; }
@@ -123,20 +124,27 @@ html[data-reduce-motion="true"] *::after {
   .sidebar.is-open { transform: translateX(0); }
   .main-area { margin-left: 0; }
   .topbar { height: 58px; gap: 12px; padding: 0 15px; }
+  .breadcrumb { min-width: 0; overflow: hidden; }
+  .breadcrumb strong { overflow: hidden; text-overflow: ellipsis; }
   .mobile-menu { display: grid; flex: none; }
   .breadcrumb { margin-right: auto; }
   .breadcrumb > span, .breadcrumb > .el-icon { display: none; }
   .breadcrumb strong { white-space: nowrap; }
   .topbar-actions { gap: 9px; }
   /* 手机上只留数字，重置时间与小字省掉：顶栏本来就窄 */
-  .quota-chip { flex: none; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+  .quota-chip { min-width: 0; max-width: 120px; flex: none; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
   .quota-chip small { display: none; }
-  .privacy-status { font-size: 0; }
-  .privacy-status i { width: 7px; height: 7px; }
+  .privacy-status { display: none; }
   .page-content { padding: 24px 16px 36px; }
   .page-heading { align-items: flex-start; flex-direction: column; gap: 14px; margin-bottom: 21px; }
   .page-heading h1 { font-size: 22px; }
   .mobile-backdrop { position: fixed; z-index: 30; inset: 0; background: rgba(22, 31, 27, .28); }
+}
+
+@media (max-width: 430px) {
+  .topbar-actions { gap: 0; }
+  .quota-chip { max-width: 108px; }
+  .help-button { display: none; }
 }
 
 /* --- 错题本（训练总览页与 /mistakes 页共用，见 docs/MISTAKE-BOOK-REQUIREMENTS.md）--- */

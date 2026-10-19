@@ -1,12 +1,14 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { createGoal, getGoal, STAGE_LABELS, toIsoDateTime, toLocalDateTime, updateGoal } from '../services/goals';
+import { createGoal, getGoal, STAGE_LABEL_KEYS, toIsoDateTime, toLocalDateTime, updateGoal } from '../services/goals';
 import { listResumes } from '../services/resume';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const formRef = ref();
 const resumes = ref([]);
 const loading = ref(false);
@@ -24,9 +26,9 @@ const form = reactive({
   status: 'preparing',
 });
 
-const rules = {
-  role: [{ required: true, message: '请填写目标岗位', trigger: 'blur' }],
-};
+const rules = computed(() => ({
+  role: [{ required: true, message: t('goals.roleRequired'), trigger: 'blur' }],
+}));
 
 onMounted(async () => {
   loading.value = true;
@@ -46,7 +48,7 @@ onMounted(async () => {
       });
     }
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取目标');
+    ElMessage.error(error?.message || t('goals.readFailed'));
   } finally {
     loading.value = false;
   }
@@ -73,10 +75,10 @@ async function save() {
     const saved = editing.value
       ? await updateGoal(route.params.id, payload)
       : await createGoal(payload);
-    ElMessage.success(editing.value ? '目标已更新' : '目标已创建');
+    ElMessage.success(editing.value ? t('goals.updated') : t('goals.created'));
     router.push(`/goals/${saved.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '保存失败');
+    ElMessage.error(error?.message || t('goals.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -87,57 +89,57 @@ async function save() {
   <section v-loading="loading" class="goal-form-page">
     <div class="page-heading">
       <div>
-        <button class="back-link" @click="router.push('/goals')"><el-icon><ArrowLeft /></el-icon>求职目标</button>
-        <h1>{{ editing ? '编辑目标' : '添加求职目标' }}</h1>
-        <p>把岗位信息填清楚，之后每天的练习都会围绕它。</p>
+        <button class="back-link" @click="router.push('/goals')"><el-icon><ArrowLeft /></el-icon>{{ t('goals.back') }}</button>
+        <h1>{{ editing ? t('goals.editTitle') : t('goals.addTitle') }}</h1>
+        <p>{{ t('goals.subtitleForm') }}</p>
       </div>
     </div>
 
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="panel goal-form">
       <div class="form-grid">
-        <el-form-item label="公司">
-          <el-input v-model="form.company" maxlength="200" placeholder="例如：字节跳动" />
+        <el-form-item :label="t('goals.company')">
+          <el-input v-model="form.company" maxlength="200" :placeholder="t('goals.companyPlaceholder')" />
         </el-form-item>
-        <el-form-item label="目标岗位" prop="role">
-          <el-input v-model="form.role" maxlength="160" placeholder="例如：Java 后端工程师" />
+        <el-form-item :label="t('goals.role')" prop="role">
+          <el-input v-model="form.role" maxlength="160" :placeholder="t('goals.rolePlaceholder')" />
         </el-form-item>
-        <el-form-item label="面试轮次">
+        <el-form-item :label="t('goals.stage')">
           <el-select v-model="form.stage">
-            <el-option v-for="(label, key) in STAGE_LABELS" :key="key" :label="label" :value="key" />
+            <el-option v-for="(path, key) in STAGE_LABEL_KEYS" :key="key" :label="t(path)" :value="key" />
           </el-select>
         </el-form-item>
-        <el-form-item label="面试时间">
+        <el-form-item :label="t('goals.interviewTime')">
           <el-date-picker v-model="form.interviewAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss"
-                          placeholder="选填，用于倒计时" />
+                          :placeholder="t('goals.interviewTimePlaceholder')" />
         </el-form-item>
-        <el-form-item label="关联简历">
-          <el-select v-model="form.resumeId" clearable placeholder="选填">
+        <el-form-item :label="t('goals.resume')">
+          <el-select v-model="form.resumeId" clearable :placeholder="t('goals.optional')">
             <el-option v-for="resume in resumes" :key="resume.id" :label="resume.title" :value="resume.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="目标状态">
+        <el-form-item :label="t('goals.status')">
           <el-select v-model="form.status">
-            <el-option label="准备中" value="preparing" />
-            <el-option label="已投递" value="applied" />
-            <el-option label="面试中" value="interviewing" />
-            <el-option label="已结束" value="done" />
+            <el-option :label="t('domain.goalStatus.preparing')" value="preparing" />
+            <el-option :label="t('domain.goalStatus.applied')" value="applied" />
+            <el-option :label="t('domain.goalStatus.interviewing')" value="interviewing" />
+            <el-option :label="t('domain.goalStatus.done')" value="done" />
           </el-select>
         </el-form-item>
       </div>
 
-      <el-form-item label="岗位描述 JD">
+      <el-form-item :label="t('goals.jobDescription')">
         <el-input v-model="form.jobDescription" type="textarea" :rows="5" maxlength="10000" show-word-limit
-                  placeholder="粘贴岗位职责与技能要求；出题会参考它" />
+                  :placeholder="t('goals.jobDescriptionPlaceholder')" />
       </el-form-item>
-      <el-form-item label="备注">
+      <el-form-item :label="t('goals.notes')">
         <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="2000"
-                  placeholder="例如：一面重点问项目，二面可能考系统设计" />
+                  :placeholder="t('goals.notesPlaceholder')" />
       </el-form-item>
 
       <div class="form-actions">
-        <el-button class="soft-button" @click="router.push('/goals')">取消</el-button>
+        <el-button class="soft-button" @click="router.push('/goals')">{{ t('goals.cancel') }}</el-button>
         <el-button class="primary-button" :loading="saving" @click="save">
-          {{ editing ? '保存修改' : '创建目标' }}
+          {{ editing ? t('goals.saveChanges') : t('goals.create') }}
         </el-button>
       </div>
     </el-form>

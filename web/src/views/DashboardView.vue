@@ -6,10 +6,12 @@ import { buildArchive, loadArchive, trendPoints } from '../services/practiceArch
 import { buildMistakes, loadMistakes } from '../services/practiceMistakes';
 import { ElMessage } from 'element-plus';
 import {
-  getTodayPlan, goalProgressPercent, interviewLabel, listGoals, PLAN_KIND_LABELS, startPlanItem,
+  getTodayPlan, goalProgressPercent, interviewLabel, listGoals, PLAN_KIND_LABEL_KEYS, startPlanItem,
 } from '../services/goals';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t, locale } = useI18n();
 const practice = usePracticeStore();
 const archive = ref(null);
 const archiveLoading = ref(true);
@@ -53,7 +55,7 @@ async function startTodayItem(item) {
     await practice.loadFromServer();
     router.push(`/practice/device-check?id=${session.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '无法开始这一题');
+    ElMessage.error(error?.message || t('dashboard.startFailed'));
   } finally {
     startingPlanItem.value = '';
   }
@@ -66,7 +68,7 @@ function createPractice() {
 async function loadArchiveSummary() {
   archiveLoading.value = true;
   try {
-    archive.value = buildArchive(await loadArchive(5));
+    archive.value = buildArchive(await loadArchive(5), t);
   } catch {
     // 档案是增强项：拿不到就不显示这一块，不影响练习列表
     archive.value = null;
@@ -83,7 +85,7 @@ async function loadArchiveSummary() {
 async function loadMistakeBook() {
   try {
     // 总览页只看最差的前 5 条：一次列几十条会让人不想开始（更多的走 /mistakes）
-    mistakeBook.value = buildMistakes(await loadMistakes({ limit: 5 }));
+    mistakeBook.value = buildMistakes(await loadMistakes({ limit: 5 }), t);
   } catch {
     mistakeBook.value = null;
   }
@@ -97,7 +99,7 @@ async function retryMistakeQuestion(item) {
     const sessionId = await practice.retryMistake(item.questionId);
     router.push(`/practice/device-check?id=${sessionId}`);
   } catch (error) {
-    ElMessage.error(error?.message || '暂时无法开始这次重练，请稍后再试。');
+    ElMessage.error(error?.message || t('dashboard.retryFailed'));
   } finally {
     retrying.value = '';
   }
@@ -115,100 +117,109 @@ const recordedSeconds = computed(() => practice.completed.reduce(
   (total, session) => total + (session.answers || []).reduce((sum, answer) => sum + (answer.durationSeconds || 0), 0),
   0));
 const recordedLabel = computed(() => (recordedSeconds.value >= 60
-  ? { value: Math.round(recordedSeconds.value / 60), unit: '分钟' }
-  : { value: recordedSeconds.value, unit: '秒' }));
-const dateLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+  ? { value: Math.round(recordedSeconds.value / 60), unit: t('dashboard.minutes') }
+  : { value: recordedSeconds.value, unit: t('dashboard.seconds') }));
+const dateLabel = computed(() => new Intl.DateTimeFormat(locale.value, {
+  month: 'long', day: 'numeric', weekday: 'long',
+}).format(new Date()));
 
 function openSession(session) {
   router.push(session.status === 'completed' ? `/practice/${session.id}/report` : `/practice/${session.id}/session`);
 }
 
 function timeLabel(value) {
-  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(value));
+  return new Intl.DateTimeFormat(locale.value, { month: 'numeric', day: 'numeric' }).format(new Date(value));
 }
 </script>
 
 <template>
   <section class="dashboard-page">
     <div class="page-heading dashboard-heading">
-      <div><div class="eyebrow">{{ dateLabel }}</div><h1>每一次练习，都让表达更清晰</h1><p>从一个真实岗位开始，循序完成练习、录制与复盘。</p></div>
-      <el-button class="primary-button" @click="createPractice"><el-icon><Plus /></el-icon> 创建练习</el-button>
+      <div><div class="eyebrow">{{ dateLabel }}</div><h1>{{ t('dashboard.title') }}</h1><p>{{ t('dashboard.subtitle') }}</p></div>
+      <el-button class="primary-button" @click="createPractice"><el-icon><Plus /></el-icon> {{ t('dashboard.createPractice') }}</el-button>
     </div>
 
     <section class="goal-today-grid">
       <article class="panel goal-focus">
         <template v-if="primaryGoal">
           <div class="goal-focus-head">
-            <span>当前目标</span>
-            <el-tag class="tag-ready" size="small">{{ interviewLabel(primaryGoal.daysUntilInterview) }}</el-tag>
+            <span>{{ t('dashboard.currentGoal') }}</span>
+            <el-tag class="tag-ready" size="small">{{ interviewLabel(primaryGoal.daysUntilInterview, t) }}</el-tag>
           </div>
-          <strong class="goal-focus-title">{{ primaryGoal.company || '目标岗位' }} · {{ primaryGoal.role }}</strong>
+          <strong class="goal-focus-title">{{ primaryGoal.company || t('dashboard.goalFallback') }} · {{ primaryGoal.role }}</strong>
           <div class="goal-focus-progress">
             <span><i :style="{ width: `${goalPercent}%` }"></i></span>
-            <small>{{ primaryGoal.progress?.planCompleted || 0 }}/{{ primaryGoal.progress?.planItems || 0 }} 训练项 · {{ primaryGoal.progress?.sessions || 0 }} 场练习</small>
+            <small>{{ t('dashboard.goalProgress', {
+              completed: primaryGoal.progress?.planCompleted || 0,
+              total: primaryGoal.progress?.planItems || 0,
+              sessions: primaryGoal.progress?.sessions || 0,
+            }) }}</small>
           </div>
           <button class="goal-focus-link" @click="router.push(`/goals/${primaryGoal.id}`)">
-            查看目标与计划 <el-icon><ArrowRight /></el-icon>
+            {{ t('dashboard.viewGoalPlan') }} <el-icon><ArrowRight /></el-icon>
           </button>
         </template>
         <template v-else>
-          <div class="goal-focus-head"><span>当前目标</span></div>
-          <strong class="goal-focus-title">还没有目标岗位</strong>
-          <p class="goal-focus-empty">添加岗位和面试日期，首页就会告诉你今天练什么。</p>
-          <el-button class="primary-button" @click="router.push('/goals/new')">添加求职目标</el-button>
+          <div class="goal-focus-head"><span>{{ t('dashboard.currentGoal') }}</span></div>
+          <strong class="goal-focus-title">{{ t('dashboard.noGoal') }}</strong>
+          <p class="goal-focus-empty">{{ t('dashboard.noGoalHint') }}</p>
+          <el-button class="primary-button" @click="router.push('/goals/new')">{{ t('dashboard.addGoal') }}</el-button>
         </template>
       </article>
 
       <article class="panel today-focus">
         <div class="today-focus-head">
-          <div><strong>今天练什么</strong><small>{{ todayPlan?.goalTitle || '通用训练' }} · 连续 {{ todayPlan?.streak?.current || 0 }} 天</small></div>
-          <button class="link-button" @click="router.push('/today')">查看全部 <el-icon><ArrowRight /></el-icon></button>
+          <div><strong>{{ t('dashboard.todayTitle') }}</strong><small>{{ t('dashboard.todaySubtitle', {
+            goal: todayPlan?.goalTitle || t('dashboard.generalTraining'),
+            days: todayPlan?.streak?.current || 0,
+          }) }}</small></div>
+          <button class="link-button" @click="router.push('/today')">{{ t('dashboard.viewAll') }} <el-icon><ArrowRight /></el-icon></button>
         </div>
         <div class="today-focus-list">
           <div v-for="(item, index) in todayPlan?.items || []" :key="item.id" class="today-focus-row" :class="item.status">
             <span class="today-index">{{ index + 1 }}</span>
-            <span class="today-main"><small>{{ PLAN_KIND_LABELS[item.kind] || item.kind }}</small><strong>{{ item.title }}</strong></span>
+            <span class="today-main"><small>{{ PLAN_KIND_LABEL_KEYS[item.kind] ? t(PLAN_KIND_LABEL_KEYS[item.kind]) : item.kind }}</small><strong>{{ item.title }}</strong></span>
             <el-button v-if="item.status === 'pending' || item.status === 'in_progress'" class="soft-button"
-                       :loading="startingPlanItem === item.id" @click="startTodayItem(item)">开始</el-button>
-            <span v-else class="today-done">{{ item.status === 'completed' ? '已完成' : '已跳过' }}</span>
+                       :loading="startingPlanItem === item.id" @click="startTodayItem(item)">{{ t('dashboard.start') }}</el-button>
+            <span v-else class="today-done">{{ item.status === 'completed' ? t('dashboard.completed') : t('dashboard.skipped') }}</span>
           </div>
-          <p v-if="!todayPlan?.items?.length" class="today-empty">计划正在生成；也可以先点「创建练习」。</p>
+          <p v-if="!todayPlan?.items?.length" class="today-empty">{{ t('dashboard.planGenerating') }}</p>
         </div>
       </article>
     </section>
 
     <div class="overview-grid">
       <article class="overview-card panel">
-        <div class="overview-card-label"><span>完成练习</span><i class="icon-green"><el-icon><Checked /></el-icon></i></div>
-        <div class="overview-number">{{ practice.completed.length }}<small> 次</small></div>
-        <div class="overview-foot">每一次回答都值得复盘</div>
+        <div class="overview-card-label"><span>{{ t('dashboard.completedPractices') }}</span><i class="icon-green"><el-icon><Checked /></el-icon></i></div>
+        <div class="overview-number">{{ practice.completed.length }}<small> {{ t('dashboard.times') }}</small></div>
+        <div class="overview-foot">{{ t('dashboard.eachAnswerReview') }}</div>
       </article>
       <article class="overview-card panel">
-        <div class="overview-card-label"><span>练习时长</span><i class="icon-blue"><el-icon><Timer /></el-icon></i></div>
+        <div class="overview-card-label"><span>{{ t('dashboard.practiceDuration') }}</span><i class="icon-blue"><el-icon><Timer /></el-icon></i></div>
         <div class="overview-number">{{ recordedLabel.value }}<small> {{ recordedLabel.unit }}</small></div>
-        <div class="overview-foot">累计录制与练习时间</div>
+        <div class="overview-foot">{{ t('dashboard.cumulativeTime') }}</div>
       </article>
       <article class="overview-card panel next-practice-card">
-        <div class="overview-card-label"><span>下一步</span><i class="icon-coral"><el-icon><Microphone /></el-icon></i></div>
-        <div class="next-practice-copy">用视频模拟一次<br />真实面试现场</div>
-        <button class="text-action" @click="createPractice">配置岗位与题目 <el-icon><ArrowRight /></el-icon></button>
+        <div class="overview-card-label"><span>{{ t('dashboard.nextStep') }}</span><i class="icon-coral"><el-icon><Microphone /></el-icon></i></div>
+        <div class="next-practice-copy">{{ t('dashboard.nextPracticeCopy') }}</div>
+        <button class="text-action" @click="createPractice">{{ t('dashboard.configureRole') }} <el-icon><ArrowRight /></el-icon></button>
       </article>
     </div>
 
     <section v-if="archive" class="archive-section">
       <div class="section-title">
-        <span>训练档案</span>
+        <span>{{ t('dashboard.archive') }}</span>
         <small class="archive-scope">{{ archive.scopeNote }}</small>
-        <button class="weekly-link" @click="router.push('/progress/weekly')">本周报告 <el-icon><ArrowRight /></el-icon></button>
+        <button class="weekly-link" @click="router.push('/progress/weekly')">{{ t('dashboard.weeklyReport') }} <el-icon><ArrowRight /></el-icon></button>
       </div>
 
       <div v-if="archive.scoredSessions" class="archive-grid">
         <article class="panel archive-card">
           <div class="archive-card-head">
-            <strong>最近得分</strong>
-            <span>{{ archive.scoredSessions }} 场 · {{ archive.evaluatedAnswers }} 个回答已评分</span>
+            <strong>{{ t('dashboard.recentScore') }}</strong>
+            <span>{{ t('dashboard.scoreSummary', { sessions: archive.scoredSessions, answers: archive.evaluatedAnswers }) }}</span>
           </div>
-          <svg class="trend-svg" :viewBox="`0 0 ${TREND_WIDTH} ${TREND_HEIGHT}`" role="img" aria-label="最近练习得分趋势">
+          <svg class="trend-svg" :viewBox="`0 0 ${TREND_WIDTH} ${TREND_HEIGHT}`" role="img" :aria-label="t('dashboard.scoreTrendAria')">
             <polyline v-if="trendDots.length > 1" :points="trendPath" class="trend-line" />
             <g v-for="(dot, index) in trendDots" :key="index">
               <circle :cx="dot.x" :cy="dot.y" r="3.6" class="trend-dot" />
@@ -217,12 +228,12 @@ function timeLabel(value) {
             </g>
           </svg>
           <p v-if="archive.needsMoreSessions" class="archive-hint">
-            再完成一场练习就能看到趋势；现在这个点是最近一场的成绩。
+            {{ t('dashboard.needsMoreSessions') }}
           </p>
         </article>
 
         <article class="panel archive-card">
-          <div class="archive-card-head"><strong>维度平均</strong><span>橙色的是需要重点练的</span></div>
+          <div class="archive-card-head"><strong>{{ t('dashboard.dimensionAverage') }}</strong><span>{{ t('dashboard.weakLegend') }}</span></div>
           <div class="dimension-list">
             <div v-for="item in archive.dimensions" :key="item.key" class="dimension-row"
                  :class="{ weak: archive.focusKeys.includes(item.key) }">
@@ -234,61 +245,61 @@ function timeLabel(value) {
         </article>
 
         <article class="panel archive-card">
-          <div class="archive-card-head"><strong>下一步练什么</strong></div>
+          <div class="archive-card-head"><strong>{{ t('dashboard.nextFocus') }}</strong></div>
           <template v-if="archive.weakest.length">
             <ul class="weakest-list">
               <li v-for="item in archive.weakest" :key="item.key">
-                <div class="weakest-head"><strong>{{ item.label }}</strong><span>{{ item.average }} 分</span></div>
+                <div class="weakest-head"><strong>{{ item.label }}</strong><span>{{ t('dashboard.points', { score: item.average }) }}</span></div>
                 <p>{{ item.advice }}</p>
               </li>
             </ul>
             <el-button class="primary-button" @click="retryWeakDimensions">
-              <el-icon><Aim /></el-icon> 针对短板再练一场
+              <el-icon><Aim /></el-icon> {{ t('dashboard.retryWeak') }}
             </el-button>
-            <p class="archive-hint">再练时会多出能暴露这些问题的题，岗位沿用「{{ archive.latestRole }}」。</p>
+            <p class="archive-hint">{{ t('dashboard.retryHint', { role: archive.latestRole }) }}</p>
           </template>
           <template v-else>
-            <p class="archive-hint">最近这几个维度都在 75 分以上，没有明显短板。可以试着提高难度。</p>
-            <el-button class="soft-button" @click="router.push('/practice/setup')">提高难度再练一场</el-button>
+            <p class="archive-hint">{{ t('dashboard.noWeak') }}</p>
+            <el-button class="soft-button" @click="router.push('/practice/setup')">{{ t('dashboard.improveDifficulty') }}</el-button>
           </template>
         </article>
       </div>
 
       <div v-else class="panel archive-empty">
-        <strong>还没有可复盘的练习</strong>
-        <p>完成一场练习、等分析跑完后，这里会出现你的成绩趋势、维度平均，以及下一步该重点练什么。</p>
-        <el-button class="soft-button" @click="router.push('/practice/setup')">开始第一次练习</el-button>
+        <strong>{{ t('dashboard.archiveEmptyTitle') }}</strong>
+        <p>{{ t('dashboard.archiveEmptyHint') }}</p>
+        <el-button class="soft-button" @click="router.push('/practice/setup')">{{ t('dashboard.firstPractice') }}</el-button>
       </div>
     </section>
 
     <section v-if="mistakeBook && mistakeBook.total" class="mistake-section">
       <div class="section-title">
-        <span>错题本</span>
+        <span>{{ t('dashboard.mistakeBook') }}</span>
         <small class="archive-scope">{{ mistakeBook.scopeNote }}</small>
       </div>
       <div class="panel mistake-list">
         <div v-for="item in mistakeBook.mistakes" :key="item.questionId" class="mistake-row">
           <span class="mistake-score">
             <strong>{{ item.label }}</strong>
-            <small v-if="item.gap">还差 {{ item.gap }} 分</small>
-            <small v-else>待评分</small>
+            <small v-if="item.gap">{{ t('dashboard.gap', { gap: item.gap }) }}</small>
+            <small v-else>{{ t('dashboard.pendingScore') }}</small>
           </span>
           <span class="mistake-main">
             <strong>{{ item.text }}</strong>
             <small>
               <el-tag class="mistake-tag" size="small">{{ item.category }}</el-tag>
-              {{ item.role }}<template v-if="item.difficultyLabel"> · {{ item.difficultyLabel }}</template><template v-if="item.weakestLabel"> · 主要栽在{{ item.weakestLabel }}</template>
+              {{ item.role }}<template v-if="item.difficultyLabel"> · {{ item.difficultyLabel }}</template><template v-if="item.weakestLabel">{{ t('dashboard.mainWeakness', { name: item.weakestLabel }) }}</template>
               · {{ item.attemptsLabel }}
             </small>
           </span>
           <el-button class="soft-button mistake-action" :loading="retrying === item.questionId"
                      @click="retryMistakeQuestion(item)">
-            <el-icon><Refresh /></el-icon> 重练这道题
+            <el-icon><Refresh /></el-icon> {{ t('dashboard.retryQuestion') }}
           </el-button>
         </div>
         <p v-if="mistakeBook.total > mistakeBook.mistakes.length" class="mistake-all-row">
           <button class="all-mistakes" @click="router.push('/mistakes')">
-            查看全部 {{ mistakeBook.total }} 道 <el-icon><ArrowRight /></el-icon>
+            {{ t('dashboard.viewAllMistakes', { total: mistakeBook.total }) }} <el-icon><ArrowRight /></el-icon>
           </button>
         </p>
       </div>
@@ -296,30 +307,30 @@ function timeLabel(value) {
 
     <div class="dashboard-lower">
       <section class="recent-section">
-        <div class="section-title"><span>最近练习</span><button class="link-button" @click="router.push('/history')">全部记录 <el-icon><ArrowRight /></el-icon></button></div>
+        <div class="section-title"><span>{{ t('dashboard.recent') }}</span><button class="link-button" @click="router.push('/history')">{{ t('dashboard.allRecords') }} <el-icon><ArrowRight /></el-icon></button></div>
         <div v-if="latest.length" class="recent-list panel">
           <button v-for="session in latest" :key="session.id" class="recent-row" @click="openSession(session)">
             <div class="recent-symbol" :class="session.status"><el-icon><VideoCamera /></el-icon></div>
-            <div class="recent-main"><strong>{{ session.role }}</strong><span>{{ session.company || '自主练习' }} · {{ session.questionCount }} 道题</span></div>
-            <el-tag v-if="session.status === 'completed'" class="status-done" size="small">已完成</el-tag>
-            <el-tag v-else class="status-progress" size="small">进行中</el-tag>
+            <div class="recent-main"><strong>{{ session.role }}</strong><span>{{ session.company || t('dashboard.selfPractice') }} · {{ t('dashboard.questionCount', { count: session.questionCount }) }}</span></div>
+            <el-tag v-if="session.status === 'completed'" class="status-done" size="small">{{ t('dashboard.completed') }}</el-tag>
+            <el-tag v-else class="status-progress" size="small">{{ t('dashboard.inProgress') }}</el-tag>
             <span class="recent-date">{{ timeLabel(session.createdAt) }}</span><el-icon class="recent-arrow"><ArrowRight /></el-icon>
           </button>
         </div>
         <div v-else class="empty-recent panel">
           <div class="empty-state-icon"><el-icon><VideoCamera /></el-icon></div>
-          <strong>还没有练习记录</strong><p>从目标岗位和面试类型开始，完成第一段模拟练习。</p>
-          <el-button class="soft-button" @click="router.push('/practice/setup')">开始第一次练习</el-button>
+          <strong>{{ t('dashboard.noRecords') }}</strong><p>{{ t('dashboard.noRecordsHint') }}</p>
+          <el-button class="soft-button" @click="router.push('/practice/setup')">{{ t('dashboard.firstPractice') }}</el-button>
         </div>
       </section>
 
       <aside class="guidance-section">
-        <div class="section-title">练习准备</div>
+        <div class="section-title">{{ t('dashboard.preparation') }}</div>
         <div class="guidance-panel panel">
           <div class="guidance-art"><div class="art-person"><span class="person-head"></span><span class="person-body"></span><span class="person-neck"></span></div><div class="art-window"><i></i><i></i><i></i></div><div class="art-spark spark-a">✦</div><div class="art-spark spark-b">✦</div></div>
-          <strong>让练习尽量接近现场</strong>
-          <p>准备岗位描述和简历，开启摄像头与麦克风后，每道题都可以单独录制与重来。</p>
-          <div class="guidance-meta"><span><el-icon><Clock /></el-icon>建议 15–30 分钟</span><span><el-icon><Lock /></el-icon>录制保留 7 天</span></div>
+          <strong>{{ t('dashboard.preparationTitle') }}</strong>
+          <p>{{ t('dashboard.preparationText') }}</p>
+          <div class="guidance-meta"><span><el-icon><Clock /></el-icon>{{ t('dashboard.suggestedTime') }}</span><span><el-icon><Lock /></el-icon>{{ t('dashboard.retention') }}</span></div>
         </div>
       </aside>
     </div>

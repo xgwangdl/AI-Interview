@@ -5,9 +5,11 @@ import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { setActiveStream, stopActiveStream } from '../services/mediaCapture';
 import { tryStartSession } from '../services/api';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const practice = usePracticeStore();
 const video = ref();
 const cameras = ref([]);
@@ -26,7 +28,7 @@ const draft = computed(() => practice.draft?.id === draftId ? practice.draft : p
 
 onMounted(async () => {
   if (!draft.value) {
-    ElMessage.warning('练习配置已失效，请重新创建。');
+    ElMessage.warning(t('deviceCheck.invalidDraft'));
     router.replace('/practice/setup');
     return;
   }
@@ -41,13 +43,13 @@ watch([selectedCamera, selectedMicrophone], async () => {
 async function refreshDevices() {
   if (!navigator.mediaDevices?.enumerateDevices) {
     state.value = 'unsupported';
-    issue.value = '当前浏览器不支持摄像头与麦克风检测，请使用桌面版 Chrome 或 Edge。';
+    issue.value = t('deviceCheck.browserUnsupported');
     return;
   }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    cameras.value = devices.filter((device) => device.kind === 'videoinput').map((device, index) => ({ ...device, label: device.label || `摄像头 ${index + 1}` }));
-    microphones.value = devices.filter((device) => device.kind === 'audioinput').map((device, index) => ({ ...device, label: device.label || `麦克风 ${index + 1}` }));
+    cameras.value = devices.filter((device) => device.kind === 'videoinput').map((device, index) => ({ ...device, label: device.label || t('deviceCheck.camera', { index: index + 1 }) }));
+    microphones.value = devices.filter((device) => device.kind === 'audioinput').map((device, index) => ({ ...device, label: device.label || t('deviceCheck.microphone', { index: index + 1 }) }));
     if (!selectedCamera.value) selectedCamera.value = cameras.value[0]?.deviceId || '';
     if (!selectedMicrophone.value) selectedMicrophone.value = microphones.value[0]?.deviceId || '';
   } catch {
@@ -61,7 +63,7 @@ async function startCheck() {
   issue.value = '';
   if (!navigator.mediaDevices?.getUserMedia) {
     state.value = 'unsupported';
-    issue.value = '浏览器不支持媒体设备访问，请使用最新版本的 Chrome 或 Edge。';
+    issue.value = t('deviceCheck.mediaUnsupported');
     checking.value = false;
     return;
   }
@@ -79,10 +81,10 @@ async function startCheck() {
     if (video.value) video.value.srcObject = nextStream;
   } catch (error) {
     state.value = 'error';
-    if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') issue.value = '未找到可用的摄像头或麦克风，请连接设备后重试。';
-    else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') issue.value = '设备权限被拒绝。请在浏览器地址栏的权限设置中允许摄像头和麦克风，再重新检测。';
-    else if (error.name === 'OverconstrainedError') issue.value = '所选设备当前不可用，请更换设备后重试。';
-    else issue.value = '无法访问媒体设备，请检查设备连接和浏览器权限。';
+    if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') issue.value = t('deviceCheck.notFound');
+    else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') issue.value = t('deviceCheck.denied');
+    else if (error.name === 'OverconstrainedError') issue.value = t('deviceCheck.overconstrained');
+    else issue.value = t('deviceCheck.unavailable');
   } finally {
     checking.value = false;
   }
@@ -93,7 +95,7 @@ async function continueToSession() {
   try {
     await tryStartSession(draftId);
   } catch (error) {
-    ElMessage.error(error.message || '无法开始练习，请检查网络后重试。');
+    ElMessage.error(error.message || t('deviceCheck.startFailed'));
     return;
   }
   keepStreamForSession = true;
@@ -110,29 +112,29 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="device-page">
-    <div class="page-heading"><div><div class="eyebrow">STEP 02 / 02</div><h1>检查设备与录制画面</h1><p>允许访问摄像头和麦克风后，确认画面清晰、声音正常。</p></div><el-tag class="tag-muted">{{ draft?.role || '模拟面试' }}</el-tag></div>
+    <div class="page-heading"><div><div class="eyebrow">{{ t('deviceCheck.step') }}</div><h1>{{ t('deviceCheck.title') }}</h1><p>{{ t('deviceCheck.subtitle') }}</p></div><el-tag class="tag-muted">{{ draft?.role || t('deviceCheck.mockInterview') }}</el-tag></div>
     <div class="device-layout">
       <div class="device-main panel">
         <div class="preview-frame" :class="{ 'preview-ready': cameraReady }">
           <video ref="video" autoplay muted playsinline></video>
-          <div v-if="!cameraReady" class="preview-placeholder"><div class="preview-icon"><el-icon><VideoCamera /></el-icon></div><strong>{{ state === 'error' ? '设备检测未完成' : state === 'unsupported' ? '浏览器不受支持' : '准备好后开启摄像头' }}</strong><span>{{ state === 'idle' ? '点击下方按钮，授权本次练习所需的设备权限' : issue }}</span></div>
-          <div v-if="cameraReady" class="preview-live"><i></i>画面预览</div>
-          <div class="preview-corner">16:9 预览</div>
+          <div v-if="!cameraReady" class="preview-placeholder"><div class="preview-icon"><el-icon><VideoCamera /></el-icon></div><strong>{{ state === 'error' ? t('deviceCheck.deviceCheckIncomplete') : state === 'unsupported' ? t('deviceCheck.unsupported') : t('deviceCheck.readyToEnable') }}</strong><span>{{ state === 'idle' ? t('deviceCheck.idleHint') : issue }}</span></div>
+          <div v-if="cameraReady" class="preview-live"><i></i>{{ t('deviceCheck.preview') }}</div>
+          <div class="preview-corner">{{ t('deviceCheck.previewRatio') }}</div>
         </div>
-        <div class="preview-controls"><div class="preview-status"><span class="status-indicator" :class="cameraReady ? 'ok' : 'wait'"></span><strong>{{ cameraReady ? '摄像头画面正常' : '等待设备授权' }}</strong><small>{{ cameraReady ? '录制仅在每题开始后进行' : '视频不会在检测时保存' }}</small></div><el-button v-if="!cameraReady" class="primary-button" :loading="checking" @click="startCheck"><el-icon><VideoCamera /></el-icon>{{ state === 'error' ? '重新检测' : '开启设备检测' }}</el-button><el-button v-else class="soft-button" @click="startCheck"><el-icon><Refresh /></el-icon>重新检测</el-button></div>
+        <div class="preview-controls"><div class="preview-status"><span class="status-indicator" :class="cameraReady ? 'ok' : 'wait'"></span><strong>{{ cameraReady ? t('deviceCheck.cameraNormal') : t('deviceCheck.waitingPermission') }}</strong><small>{{ cameraReady ? t('deviceCheck.recordingHint') : t('deviceCheck.noPreviewSave') }}</small></div><el-button v-if="!cameraReady" class="primary-button" :loading="checking" @click="startCheck"><el-icon><VideoCamera /></el-icon>{{ state === 'error' ? t('deviceCheck.retry') : t('deviceCheck.enable') }}</el-button><el-button v-else class="soft-button" @click="startCheck"><el-icon><Refresh /></el-icon>{{ t('deviceCheck.retry') }}</el-button></div>
       </div>
 
       <aside class="device-aside">
-        <div class="device-status-panel panel"><div class="section-title">设备状态 <small>需要两项均可用</small></div>
-          <div class="device-state-row"><div class="device-state-icon camera"><el-icon><VideoCamera /></el-icon></div><div class="device-state-copy"><strong>摄像头</strong><small>{{ cameraReady ? '权限已允许，可实时预览' : '尚未检测' }}</small></div><el-icon class="state-check" :class="{ good: cameraReady }"><CircleCheckFilled v-if="cameraReady" /><MoreFilled v-else /></el-icon></div>
-          <el-select v-if="cameras.length > 1" v-model="selectedCamera" class="device-select" aria-label="选择摄像头"><el-option v-for="camera in cameras" :key="camera.deviceId" :label="camera.label" :value="camera.deviceId" /></el-select>
-          <div class="device-state-row"><div class="device-state-icon mic"><el-icon><Microphone /></el-icon></div><div class="device-state-copy"><strong>麦克风</strong><small>{{ microphoneReady ? '权限已允许，录音已就绪' : '尚未检测' }}</small></div><el-icon class="state-check" :class="{ good: microphoneReady }"><CircleCheckFilled v-if="microphoneReady" /><MoreFilled v-else /></el-icon></div>
-          <el-select v-if="microphones.length > 1" v-model="selectedMicrophone" class="device-select" aria-label="选择麦克风"><el-option v-for="mic in microphones" :key="mic.deviceId" :label="mic.label" :value="mic.deviceId" /></el-select>
-          <div class="quality-row"><span>环境音量</span><div class="volume-meter" :class="{ active: microphoneReady }"><i v-for="n in 16" :key="n" :style="{ height: `${7 + (n * 13 % 17)}px`, animationDelay: `${n * -75}ms` }"></i></div><span>{{ microphoneReady ? '正常' : '—' }}</span></div>
+        <div class="device-status-panel panel"><div class="section-title">{{ t('deviceCheck.deviceStatus') }} <small>{{ t('deviceCheck.bothRequired') }}</small></div>
+          <div class="device-state-row"><div class="device-state-icon camera"><el-icon><VideoCamera /></el-icon></div><div class="device-state-copy"><strong>{{ t('deviceCheck.cameraLabel') }}</strong><small>{{ cameraReady ? t('deviceCheck.permissionReadyPreview') : t('deviceCheck.notChecked') }}</small></div><el-icon class="state-check" :class="{ good: cameraReady }"><CircleCheckFilled v-if="cameraReady" /><MoreFilled v-else /></el-icon></div>
+          <el-select v-if="cameras.length > 1" v-model="selectedCamera" class="device-select" :aria-label="t('deviceCheck.chooseCamera')"><el-option v-for="camera in cameras" :key="camera.deviceId" :label="camera.label" :value="camera.deviceId" /></el-select>
+          <div class="device-state-row"><div class="device-state-icon mic"><el-icon><Microphone /></el-icon></div><div class="device-state-copy"><strong>{{ t('deviceCheck.microphoneLabel') }}</strong><small>{{ microphoneReady ? t('deviceCheck.permissionReadyRecord') : t('deviceCheck.notChecked') }}</small></div><el-icon class="state-check" :class="{ good: microphoneReady }"><CircleCheckFilled v-if="microphoneReady" /><MoreFilled v-else /></el-icon></div>
+          <el-select v-if="microphones.length > 1" v-model="selectedMicrophone" class="device-select" :aria-label="t('deviceCheck.chooseMicrophone')"><el-option v-for="mic in microphones" :key="mic.deviceId" :label="mic.label" :value="mic.deviceId" /></el-select>
+          <div class="quality-row"><span>{{ t('deviceCheck.environmentVolume') }}</span><div class="volume-meter" :class="{ active: microphoneReady }"><i v-for="n in 16" :key="n" :style="{ height: `${7 + (n * 13 % 17)}px`, animationDelay: `${n * -75}ms` }"></i></div><span>{{ microphoneReady ? t('deviceCheck.normal') : '—' }}</span></div>
         </div>
-        <div class="privacy-detail"><el-icon><Lock /></el-icon><div><strong>授权仅用于本次练习</strong><p>离开检测或练习页面后会关闭设备。你可以随时在浏览器中撤销权限。</p></div></div>
-        <el-button class="primary-button continue-button" :disabled="!cameraReady || !microphoneReady" @click="continueToSession">进入面试 <el-icon><ArrowRight /></el-icon></el-button>
-        <button class="back-button" @click="router.push('/practice/setup')"><el-icon><ArrowLeft /></el-icon> 返回修改配置</button>
+        <div class="privacy-detail"><el-icon><Lock /></el-icon><div><strong>{{ t('deviceCheck.permissionTitle') }}</strong><p>{{ t('deviceCheck.permissionText') }}</p></div></div>
+        <el-button class="primary-button continue-button" :disabled="!cameraReady || !microphoneReady" @click="continueToSession">{{ t('deviceCheck.enterInterview') }} <el-icon><ArrowRight /></el-icon></el-button>
+        <button class="back-button" @click="router.push('/practice/setup')"><el-icon><ArrowLeft /></el-icon> {{ t('deviceCheck.backToSetup') }}</button>
       </aside>
     </div>
   </section>

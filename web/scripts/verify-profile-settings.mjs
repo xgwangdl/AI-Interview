@@ -48,6 +48,7 @@ async function restoreProfile(token, profile) {
       fontScale: profile.fontScale,
       reduceMotion: profile.reduceMotion,
       theme: profile.theme,
+      language: profile.language,
     }),
   });
   assert(response.ok, '恢复演示账号资料失败');
@@ -155,6 +156,26 @@ try {
   await page.getByRole('button', { name: '更新密码' }).click();
   await page.getByText('两次输入的新密码不一致').waitFor();
 
+  const languageOptions = page.locator('.language-options button');
+  assert(await languageOptions.count() === 3, '个人设置应提供三种界面语言');
+  await languageOptions.nth(1).click();
+  await page.getByRole('heading', { name: 'Personal settings' }).waitFor();
+  const languageSave = page.waitForResponse((response) =>
+    response.url().endsWith('/api/v1/me/profile') && response.request().method() === 'PUT',
+  { timeout: 5000 });
+  await page.getByRole('button', { name: 'Save personal settings' }).click();
+  assert((await languageSave).ok(), '保存英文界面语言失败');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('.profile-settings-page').waitFor();
+  await page.getByRole('heading', { name: 'Personal settings' }).waitFor();
+  assert((await page.locator('.main-nav').innerText()).includes('Practice history'), '英文导航未生效');
+  await page.locator('.language-options button').nth(2).click();
+  await page.getByRole('heading', { name: '個人設定' }).waitFor();
+  await page.locator('.language-options button').nth(0).click();
+  await page.getByRole('heading', { name: '个人设置' }).waitFor();
+  assert(await page.evaluate(() => localStorage.getItem('light-interview-locale')) === 'zh-CN',
+    '中文界面语言未写回本地设置');
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('.profile-settings-page').waitFor();
@@ -167,6 +188,7 @@ try {
   console.log('PASS personal settings menu and profile form');
   console.log('PASS theme, font scale, reduced motion and sidebar nickname');
   console.log('PASS refresh persistence and password error handling');
+  console.log('PASS Chinese, English and Japanese interface switching and refresh persistence');
   console.log('PASS desktop and mobile horizontal overflow checks');
   console.log(`SCREENSHOT ${out}/profile-settings-desktop.png`);
   console.log(`SCREENSHOT ${out}/profile-settings-mobile.png`);

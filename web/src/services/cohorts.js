@@ -80,14 +80,15 @@ export function completionPercent(item) {
   return Math.min(100, Math.round((item.myCompleted / item.myTotal) * 100));
 }
 
-export function dueLabel(value) {
-  if (!value) return '未设截止时间';
+export function dueLabel(value, t = null, locale = 'zh-CN') {
+  if (!value) return t ? t('cohorts.noDue') : '未设截止时间';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '未设截止时间';
-  return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  if (Number.isNaN(date.getTime())) return t ? t('cohorts.noDue') : '未设截止时间';
+  return new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     .format(date);
 }
 
-export function roleLabel(role) {
+export function roleLabel(role, t = null) {
+  if (t) return role === 'coach' ? t('cohorts.coach') : t('cohorts.learner');
   return role === 'coach' ? '助教' : '学员';
 }

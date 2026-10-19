@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { PAGE_SIZE, buildMistakes, loadMistakes } from '../services/practiceMistakes';
+import { useI18n } from 'vue-i18n';
 
 /**
  * 错题本全量页。
@@ -12,6 +13,7 @@ import { PAGE_SIZE, buildMistakes, loadMistakes } from '../services/practiceMist
  * 所以这一页做真分页 + 按岗位筛选；重练走的还是同一条链路（store 里的 retryMistake）。
  */
 const router = useRouter();
+const { t } = useI18n();
 const practice = usePracticeStore();
 const book = ref(null);
 const loading = ref(true);
@@ -30,9 +32,9 @@ async function load() {
       role: role.value,
       offset: (page.value - 1) * PAGE_SIZE,
       limit: PAGE_SIZE,
-    }));
+    }), t);
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取错题本，请稍后再试。');
+    ElMessage.error(error?.message || t('mistakeBook.loadFailed'));
     book.value = null;
   } finally {
     loading.value = false;
@@ -58,7 +60,7 @@ async function retry(item) {
     const sessionId = await practice.retryMistake(item.questionId);
     router.push(`/practice/device-check?id=${sessionId}`);
   } catch (error) {
-    ElMessage.error(error?.message || '暂时无法开始这次重练，请稍后再试。');
+    ElMessage.error(error?.message || t('mistakeBook.retryFailed'));
   } finally {
     retrying.value = '';
   }
@@ -69,14 +71,14 @@ async function retry(item) {
   <section class="mistakes-page">
     <div class="page-heading">
       <div>
-        <button class="report-back" @click="router.push('/')"><el-icon><ArrowLeft /></el-icon>训练总览</button>
-        <h1>错题本</h1>
+        <button class="report-back" @click="router.push('/')"><el-icon><ArrowLeft /></el-icon>{{ t('mistakeBook.back') }}</button>
+        <h1>{{ t('mistakeBook.title') }}</h1>
         <p v-if="book">{{ book.scopeNote }}</p>
       </div>
       <el-select v-if="roleOptions.length > 1" :model-value="role" class="role-filter"
-                 placeholder="全部岗位" clearable @change="changeRole">
-        <el-option label="全部岗位" value="" />
-        <el-option v-for="item in roleOptions" :key="item.role" :label="`${item.role}（${item.count}）`" :value="item.role" />
+                 :placeholder="t('mistakeBook.allRoles')" clearable @change="changeRole">
+        <el-option :label="t('mistakeBook.allRoles')" value="" />
+        <el-option v-for="item in roleOptions" :key="item.role" :label="t('mistakeBook.roleOption', { role: item.role, count: item.count })" :value="item.role" />
       </el-select>
     </div>
 
@@ -84,31 +86,31 @@ async function retry(item) {
       <div v-for="item in book?.mistakes || []" :key="item.questionId" class="mistake-row">
         <span class="mistake-score">
           <strong>{{ item.label }}</strong>
-          <small v-if="item.gap">还差 {{ item.gap }} 分</small>
-          <small v-else>待评分</small>
+          <small v-if="item.gap">{{ t('mistakeBook.gap', { gap: item.gap }) }}</small>
+          <small v-else>{{ t('mistakeBook.pendingScore') }}</small>
         </span>
         <span class="mistake-main">
           <strong>{{ item.text }}</strong>
           <small>
             <el-tag class="mistake-tag" size="small">{{ item.category }}</el-tag>
-            {{ item.role }}<template v-if="item.difficultyLabel"> · {{ item.difficultyLabel }}</template><template v-if="item.weakestLabel"> · 主要栽在{{ item.weakestLabel }}</template>
+            {{ item.role }}<template v-if="item.difficultyLabel"> · {{ item.difficultyLabel }}</template><template v-if="item.weakestLabel">{{ t('mistakeBook.mainWeakness', { name: item.weakestLabel }) }}</template>
             · {{ item.attemptsLabel }}
           </small>
         </span>
         <el-button class="soft-button mistake-action" :loading="retrying === item.questionId" @click="retry(item)">
-          <el-icon><Refresh /></el-icon> 重练这道题
+          <el-icon><Refresh /></el-icon> {{ t('mistakeBook.retry') }}
         </el-button>
       </div>
 
       <div v-if="!loading && book && !book.mistakes.length" class="mistake-empty">
-        <strong>{{ role ? '这个岗位下暂时没有错题' : '错题本是空的' }}</strong>
-        <p>{{ role ? '换个岗位看看，或者清掉筛选。' : '低分题会自动进本；重练过线后它会自己消失。' }}</p>
-        <el-button v-if="role" class="soft-button" @click="changeRole('')">看全部错题</el-button>
-        <el-button v-else class="soft-button" @click="router.push('/practice/setup')">去练一场</el-button>
+        <strong>{{ role ? t('mistakeBook.emptyRole') : t('mistakeBook.empty') }}</strong>
+        <p>{{ role ? t('mistakeBook.emptyRoleHint') : t('mistakeBook.emptyHint') }}</p>
+        <el-button v-if="role" class="soft-button" @click="changeRole('')">{{ t('mistakeBook.viewAll') }}</el-button>
+        <el-button v-else class="soft-button" @click="router.push('/practice/setup')">{{ t('mistakeBook.practice') }}</el-button>
       </div>
 
       <p v-if="!loading && book && book.total > book.mistakes.length" class="mistake-more">
-        本页 {{ book.mistakes.length }} 条，共 {{ book.total }} 条错题。
+        {{ t('mistakeBook.pageSummary', { visible: book.mistakes.length, total: book.total }) }}
       </p>
     </div>
 

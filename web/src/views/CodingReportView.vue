@@ -3,21 +3,21 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { getCodingReport } from '../services/coding';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const report = ref(null);
 const loading = ref(true);
 
-const typeLabels = { coding: '上机编程', sql: '数据库题', fill_blank: '编程填空', choice: '选择题', short_answer: '简答题' };
 const languageLabels = { java: 'Java', python: 'Python', cpp: 'C++', javascript: 'JavaScript', go: 'Go', sql: 'SQL' };
-const statusLabels = { passed: '已通过', failed: '未通过', error: '运行错误', unanswered: '未作答' };
 
 onMounted(async () => {
   try {
     report.value = await getCodingReport(route.params.id);
   } catch (error) {
-    ElMessage.error(error.message || '无法加载报告');
+    ElMessage.error(error.message || t('coding.loadReportFailed'));
   } finally {
     loading.value = false;
   }
@@ -28,25 +28,25 @@ onMounted(async () => {
   <section v-loading="loading" class="coding-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">CODING REPORT</div>
-        <h1>笔试报告</h1>
-        <p v-if="report">{{ report.role }} · 共 {{ report.totalQuestions }} 题 · 已答 {{ report.answeredQuestions }} 题 · 通过 {{ report.passedQuestions }} 题</p>
+        <div class="eyebrow">{{ t('coding.reportEyebrow') }}</div>
+        <h1>{{ t('coding.reportTitle') }}</h1>
+        <p v-if="report">{{ t('coding.reportSubtitle', { role: report.role, total: report.totalQuestions, answered: report.answeredQuestions, passed: report.passedQuestions }) }}</p>
       </div>
       <div class="heading-actions">
-        <el-button class="soft-button" @click="router.push('/coding')">返回列表</el-button>
-        <el-button class="primary-button" @click="router.push(`/coding/${route.params.id}`)">继续作答</el-button>
+        <el-button class="soft-button" @click="router.push('/coding')">{{ t('coding.backList') }}</el-button>
+        <el-button class="primary-button" @click="router.push(`/coding/${route.params.id}`)">{{ t('coding.continue') }}</el-button>
       </div>
     </div>
 
     <section v-if="report" class="panel summary-panel">
       <div class="summary-score">
         <strong>{{ report.averageScore ?? '—' }}</strong>
-        <span>平均得分</span>
+        <span>{{ t('coding.averageScore') }}</span>
       </div>
-      <div class="summary-item"><span>题目</span><strong>{{ report.totalQuestions }}</strong></div>
-      <div class="summary-item"><span>已作答</span><strong>{{ report.answeredQuestions }}</strong></div>
-      <div class="summary-item"><span>通过</span><strong>{{ report.passedQuestions }}</strong></div>
-      <p class="summary-note">客观题按通过的测试用例比例计分；简答题由模型按参考要点评分。「运行示例」不计入报告，只有「提交本题」才会落库。</p>
+      <div class="summary-item"><span>{{ t('coding.totalQuestions') }}</span><strong>{{ report.totalQuestions }}</strong></div>
+      <div class="summary-item"><span>{{ t('coding.answeredQuestions') }}</span><strong>{{ report.answeredQuestions }}</strong></div>
+      <div class="summary-item"><span>{{ t('coding.passedQuestions') }}</span><strong>{{ report.passedQuestions }}</strong></div>
+      <p class="summary-note">{{ t('coding.reportNote') }}</p>
     </section>
 
     <section v-for="question in report?.questions || []" :key="question.questionId" class="panel question-report">
@@ -54,27 +54,27 @@ onMounted(async () => {
         <span class="report-index">{{ String(question.position).padStart(2, '0') }}</span>
         <div>
           <strong>{{ question.title }}</strong>
-          <small>{{ typeLabels[question.type] }}<template v-if="question.language"> · {{ languageLabels[question.language] || question.language }}</template></small>
+          <small>{{ t(`domain.codingType.${question.type}`) }}<template v-if="question.language"> · {{ languageLabels[question.language] || question.language }}</template></small>
         </div>
         <el-tag :class="question.status === 'passed' ? 'tag-ready' : question.status === 'unanswered' ? 'tag-muted' : 'tag-warn'" size="small">
-          {{ statusLabels[question.status] || question.status }}
+          {{ t(`domain.codingStatus.${question.status}`) }}
         </el-tag>
-        <span class="report-score">{{ question.score ?? '—' }} 分</span>
-        <span class="report-cases">{{ question.passedCases }}/{{ question.totalCases }} 用例</span>
+        <span class="report-score">{{ t('coding.score', { score: question.score ?? '—' }) }}</span>
+        <span class="report-cases">{{ t('coding.cases', { passed: question.passedCases, total: question.totalCases }) }}</span>
         <span v-if="question.runtimeMs" class="report-cases">{{ question.runtimeMs }} ms</span>
       </div>
 
       <pre class="statement">{{ question.statement }}</pre>
 
       <div v-if="question.review" class="review-box">
-        <div class="review-score">模型评分：{{ question.review.score }}</div>
+        <div class="review-score">{{ t('coding.modelScore', { score: question.review.score }) }}</div>
         <p>{{ question.review.summary }}</p>
-        <div v-if="question.review.matched?.length" class="review-list"><span>已覆盖：</span>{{ question.review.matched.join('、') }}</div>
-        <div v-if="question.review.missing?.length" class="review-list"><span>未覆盖：</span>{{ question.review.missing.join('、') }}</div>
+        <div v-if="question.review.matched?.length" class="review-list"><span>{{ t('coding.covered') }}</span>{{ question.review.matched.join(' / ') }}</div>
+        <div v-if="question.review.missing?.length" class="review-list"><span>{{ t('coding.missing') }}</span>{{ question.review.missing.join(' / ') }}</div>
       </div>
 
       <details v-if="question.answerText" class="answer-details">
-        <summary>查看提交内容</summary>
+        <summary>{{ t('coding.viewSubmission') }}</summary>
         <pre>{{ question.answerText }}</pre>
       </details>
     </section>

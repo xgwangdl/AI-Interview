@@ -46,6 +46,7 @@ function ProfileBody($profile) {
         fontScale = $profile.fontScale
         reduceMotion = [bool]$profile.reduceMotion
         theme = $profile.theme
+        language = $profile.language
     } | ConvertTo-Json -Compress
 }
 
@@ -65,15 +66,18 @@ try {
             fontScale = 'large'
             reduceMotion = $true
             theme = 'blue'
+            language = 'ja-JP'
         } | ConvertTo-Json -Compress)
     Assert-Value '冒烟测试用户' $updated.displayName '昵称已保存'
     Assert-Value 'Asia/Tokyo' $updated.timezone '时区已保存'
     Assert-Value 'large' $updated.fontScale '界面字号已保存'
     Assert-Value 'blue' $updated.theme '主题色已保存'
+    Assert-Value 'ja-JP' $updated.language '界面语言已保存'
     Assert-Value $true $updated.reduceMotion '减弱动效已保存'
 
     $reloaded = Invoke-RestMethod -Uri "$api/me/profile" -Headers $headers
     Assert-Value 'smoke-profile@example.com' $reloaded.email '邮箱刷新后仍存在'
+    Assert-Value 'ja-JP' $reloaded.language '界面语言刷新后仍存在'
 
     Invoke-RestMethod -Method Put -Uri "$api/me/password" -Headers $headers `
         -ContentType 'application/json' -Body (@{

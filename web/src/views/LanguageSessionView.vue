@@ -10,6 +10,7 @@ import {
   fetchAudio, finishSession, getSession, latencyLabel, pickVoice, reportRows, sessionSubtitle,
   submitAudioTurn, submitTextTurn,
 } from '../services/language';
+import { useI18n } from 'vue-i18n';
 
 /*
  * 回放优先用服务端合成的音频（英语）；没有服务端音色（日语）时用浏览器语音，
@@ -17,6 +18,7 @@ import {
  */
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const session = ref(null);
 const loading = ref(true);
 const busy = ref(false);
@@ -50,11 +52,11 @@ const lastTurn = computed(() => {
 /** 开场白放在数字人下面；一旦有对话，文字就只留在右边的轮次卡里（避免同一句显示两遍）。 */
 const openingLine = computed(() => (lastTurn.value ? '' : (session.value?.opening || '')));
 const statusLine = computed(() => (speaking.value
-  ? '正在说…'
-  : (recording.value ? '在听你说…' : (busy.value ? '正在想怎么回你…' : '轮到你了，点下面的按钮开口'))));
+  ? t('languageSession.speaking')
+  : (recording.value ? t('languageSession.listeningStatus') : (busy.value ? t('languageSession.thinking') : t('languageSession.turnPrompt')))));
 const full = computed(() => Boolean(session.value && session.value.turnCount >= session.value.maxTurns));
 const finished = computed(() => session.value?.status === 'finished');
-const rows = computed(() => reportRows(session.value?.report));
+const rows = computed(() => reportRows(session.value?.report, t));
 const canSpeak = computed(() => Boolean(session.value?.serverVoice) || voices.value.length > 0);
 
 onMounted(async () => {
@@ -95,7 +97,7 @@ async function load() {
   try {
     session.value = await getSession(route.params.id);
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取这次练习');
+    ElMessage.error(error?.message || t('languageSession.loadFailed'));
     router.replace('/language');
   } finally {
     loading.value = false;
@@ -128,7 +130,7 @@ async function toggleRecording() {
     elapsed.value = 0;
     recording.value = true;
   } catch {
-    ElMessage.error('打不开麦克风：检查浏览器权限，或者先用手打输入。');
+    ElMessage.error(t('languageSession.micFailed'));
     textMode.value = true;
   }
 }
@@ -146,7 +148,7 @@ async function stopAndSend() {
   }
   const captured = await recorder.stop();
   if (!captured) {
-    ElMessage.warning('这一段没有录到声音，再说一次。');
+    ElMessage.warning(t('languageSession.emptyAudio'));
     return;
   }
   await send(() => submitAudioTurn(session.value.id, captured.blob, captured.durationMs));
@@ -164,7 +166,7 @@ async function connectStream() {
         capture = null;
         recording.value = false;
         busy.value = false;
-        ElMessage.error('实时通道断开了，请再试一次（或关掉实时模式）。');
+        ElMessage.error(t('languageSession.liveDisconnected'));
       }
     },
   });
@@ -176,7 +178,7 @@ async function connectStream() {
     stream = null;
     liveMode.value = false;
     localStorage.setItem('language-live-mode', 'off');
-    ElMessage.warning('实时通道没连上，已退回逐轮模式（仍然可用）。');
+    ElMessage.warning(t('languageSession.liveFallback'));
     return false;
   }
 }
@@ -253,7 +255,7 @@ function handleStreamMessage(message) {
       liveReply.value = '';
       busy.value = false;
       speaking.value = false;
-      ElMessage.error(message.message || '实时对话出错了');
+      ElMessage.error(message.message || t('languageSession.liveError'));
       break;
     default:
       break;
@@ -277,7 +279,7 @@ async function send(call) {
     await speak(turn.replyText, turn);
   } catch (error) {
     // 识别/模型失败只影响这一轮：说清原因，并提示可以手打继续
-    ElMessage.error(error?.message || '这一轮没成功，可以再试一次');
+    ElMessage.error(error?.message || t('languageSession.turnFailed'));
     textMode.value = true;
   } finally {
     busy.value = false;
@@ -291,7 +293,7 @@ async function finish() {
     stopSpeaking();
     session.value = await finishSession(session.value.id);
   } catch (error) {
-    ElMessage.error(error?.message || '生成复盘失败');
+    ElMessage.error(error?.message || t('languageSession.reviewFailed'));
   } finally {
     busy.value = false;
   }
@@ -328,12 +330,12 @@ async function speak(text, turn = null) {
 
 function speakBrowser(text, picked = null) {
   if (typeof window === 'undefined' || !window.speechSynthesis) {
-    ElMessage.warning('这台设备没有语音合成，先看文字。');
+    ElMessage.warning(t('languageSession.noSpeechSynthesis'));
     return;
   }
   const voice = picked || pickVoice(voices.value, session.value?.browserVoice);
   if (!voice) {
-    ElMessage.warning('本机没有这门语言的语音，先看文字。');
+    ElMessage.warning(t('languageSession.noLanguageVoice'));
     return;
   }
   const utterance = new SpeechSynthesisUtterance(text);
@@ -373,15 +375,15 @@ function backToList() {
     <template v-if="session">
       <div class="page-heading session-heading">
         <div>
-          <button class="back-link" @click="backToList"><el-icon><ArrowLeft /></el-icon>外语口语</button>
-          <h1>{{ session.languageName }} · {{ session.turns.length }}/{{ session.maxTurns }} 轮</h1>
-          <p>{{ session.target }} · {{ sessionSubtitle(session) }}</p>
+          <button class="back-link" @click="backToList"><el-icon><ArrowLeft /></el-icon>{{ t('languageSession.back') }}</button>
+          <h1>{{ session.languageName }} · {{ t('languageSession.roundCount', { count: session.turns.length, total: session.maxTurns }) }}</h1>
+          <p>{{ session.target }} · {{ sessionSubtitle(session, t) }}</p>
         </div>
         <div v-if="!finished" class="heading-actions">
           <!-- L2 实时对话：通道已通，实时识别输入待修（见 docs/STATUS.md），修好后再把开关放出来 -->
-          <el-switch v-if="false" v-model="liveMode" active-text="实时对话" @change="changeLiveMode" />
+          <el-switch v-if="false" v-model="liveMode" :active-text="t('languageSession.liveMode')" @change="changeLiveMode" />
           <el-button class="soft-button" :loading="busy" @click="finish">
-            <el-icon><Finished /></el-icon> 结束并看复盘
+            <el-icon><Finished /></el-icon> {{ t('languageSession.finishReview') }}
           </el-button>
         </div>
       </div>
@@ -391,26 +393,26 @@ function backToList() {
           <div class="interviewer-screen">
             <DigitalHuman :speaking="speaking" :amplitude="() => amplitude" />
             <div class="interviewer-info">
-              <div class="interviewer-role">AI 陪练 · {{ session.languageName }}</div>
+              <div class="interviewer-role">{{ t('languageSession.aiPartner', { language: session.languageName }) }}</div>
               <p v-if="liveReply" class="ai-line live">{{ liveReply }}</p>
               <p v-else-if="openingLine" class="ai-line">{{ openingLine }}</p>
               <p v-else class="ai-line status">{{ statusLine }}</p>
               <button v-if="lastTurn && canSpeak" class="replay" @click="speak(lastTurn.replyText, lastTurn)">
-                <el-icon><VideoPlay /></el-icon> 再听一遍
+                <el-icon><VideoPlay /></el-icon> {{ t('languageSession.replay') }}
               </button>
               <button v-else-if="openingLine && canSpeak" class="replay" @click="speak(openingLine)">
-                <el-icon><VideoPlay /></el-icon> 再听一遍
+                <el-icon><VideoPlay /></el-icon> {{ t('languageSession.replay') }}
               </button>
             </div>
           </div>
-          <p class="scene-hint">场景：{{ session.scenario }} · 说完会先给你回应，再指出这一句怎么更自然。</p>
+          <p class="scene-hint">{{ t('languageSession.sceneHint', { scenario: session.scenario }) }}</p>
         </section>
 
         <section class="talk-panel panel">
           <div class="turn-list">
-            <p v-if="!session.turns.length" class="turn-empty">先说第一句。说错也没关系，重点是开口。</p>
+            <p v-if="!session.turns.length" class="turn-empty">{{ t('languageSession.emptyConversation') }}</p>
             <div v-for="turn in session.turns" :key="turn.turnIndex" class="turn-card">
-              <div class="turn-you"><span>你 · 第 {{ turn.turnIndex }} 轮</span><strong>{{ turn.transcript }}</strong></div>
+              <div class="turn-you"><span>{{ t('languageSession.youRound', { round: turn.turnIndex }) }}</span><strong>{{ turn.transcript }}</strong></div>
               <div class="turn-ai"><span>{{ session.languageName }}</span><strong>{{ turn.replyText }}</strong></div>
               <div v-if="turn.feedback?.length" class="turn-feedback">
                 <div v-for="(item, index) in turn.feedback" :key="index">
@@ -419,8 +421,8 @@ function backToList() {
                 </div>
               </div>
               <div class="turn-foot">
-                <button class="mini-link" @click="speak(turn.replyText, turn)">听回复</button>
-                <span>{{ latencyLabel(turn.latency) }}</span>
+                <button class="mini-link" @click="speak(turn.replyText, turn)">{{ t('languageSession.listenReply') }}</button>
+                <span>{{ latencyLabel(turn.latency, t) }}</span>
               </div>
             </div>
           </div>
@@ -429,19 +431,19 @@ function backToList() {
             <button class="talk-button" :class="{ recording }" :disabled="busy || full"
                     @click="toggleRecording">
               <el-icon><Microphone v-if="!recording" /><VideoPause v-else /></el-icon>
-              <span v-if="recording">正在听（{{ elapsed }}s）· 点一下结束</span>
-              <span v-else-if="busy">正在想怎么回你…</span>
-              <span v-else-if="full">说满 {{ session.maxTurns }} 轮了，点右上角看复盘</span>
-              <span v-else>{{ liveMode ? '点一下开始说（实时）' : '点一下开始说' }}</span>
+              <span v-if="recording">{{ t('languageSession.listening', { seconds: elapsed }) }}</span>
+              <span v-else-if="busy">{{ t('languageSession.thinking') }}</span>
+              <span v-else-if="full">{{ t('languageSession.full', { count: session.maxTurns }) }}</span>
+              <span v-else>{{ liveMode ? t('languageSession.startLive') : t('languageSession.startSpeaking') }}</span>
             </button>
-            <p v-if="partialText" class="partial-line">识别中：{{ partialText }}</p>
+            <p v-if="partialText" class="partial-line">{{ t('languageSession.recognizing', { text: partialText }) }}</p>
             <button class="mini-link text-toggle" @click="textMode = !textMode">
-              {{ textMode ? '收起手打' : '不方便说话？手打这一句' }}
+              {{ textMode ? t('languageSession.closeTextMode') : t('languageSession.openTextMode') }}
             </button>
             <div v-if="textMode" class="text-input">
               <el-input v-model="draft" type="textarea" :rows="2" maxlength="1000"
-                        :placeholder="`用${session.languageName}写下这一句`" @keyup.ctrl.enter="sendText" />
-              <el-button class="soft-button" :loading="busy" @click="sendText">发送</el-button>
+                        :placeholder="t('languageSession.writeInLanguage', { language: session.languageName })" @keyup.ctrl.enter="sendText" />
+              <el-button class="soft-button" :loading="busy" @click="sendText">{{ t('languageSession.send') }}</el-button>
             </div>
           </div>
         </section>
@@ -450,11 +452,11 @@ function backToList() {
       <section v-else class="report-panel panel">
         <div class="report-head">
           <div>
-            <div class="eyebrow">REVIEW</div>
-            <h2>这次对话的复盘</h2>
-            <p>{{ session.report?.summary || '本次练习已完成。' }}</p>
+            <div class="eyebrow">{{ t('languageSession.reviewEyebrow') }}</div>
+            <h2>{{ t('languageSession.reviewTitle') }}</h2>
+            <p>{{ session.report?.summary || t('languageSession.summaryFallback') }}</p>
           </div>
-          <el-button class="soft-button" @click="backToList">再练一场</el-button>
+          <el-button class="soft-button" @click="backToList">{{ t('languageSession.practiceAgain') }}</el-button>
         </div>
         <div class="score-grid">
           <div v-for="row in rows" :key="row.key" class="score-cell">
@@ -464,13 +466,13 @@ function backToList() {
           </div>
         </div>
         <div v-if="session.report?.improvements?.length" class="improvements">
-          <h3>下一步可以这样练</h3>
+          <h3>{{ t('languageSession.nextSteps') }}</h3>
           <ul>
             <li v-for="(item, index) in session.report.improvements" :key="index">{{ item }}</li>
           </ul>
         </div>
         <div class="transcript">
-          <h3>完整对话</h3>
+          <h3>{{ t('languageSession.fullConversation') }}</h3>
           <div v-for="turn in session.turns" :key="turn.turnIndex" class="transcript-row">
             <span>{{ turn.turnIndex }}</span>
             <div><strong>{{ turn.transcript }}</strong><p>{{ turn.replyText }}</p></div>

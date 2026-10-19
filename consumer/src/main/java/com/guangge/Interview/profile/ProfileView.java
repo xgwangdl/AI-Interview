@@ -10,5 +10,6 @@ public record ProfileView(
         String fontScale,
         boolean reduceMotion,
         String theme,
+        String language,
         Instant joinedAt) {
 }

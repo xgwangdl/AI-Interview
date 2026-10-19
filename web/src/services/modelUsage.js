@@ -12,7 +12,7 @@ export function loadModelUsage() {
   return apiRequest('/me/model-usage');
 }
 
-export function buildUsage(usage) {
+export function buildUsage(usage, t = null) {
   if (!usage || usage.enabled === false) {
     return { enabled: false, label: '', note: '', ratio: 0, exhausted: false, tight: false };
   }
@@ -23,9 +23,9 @@ export function buildUsage(usage) {
 
   return {
     enabled: true,
-    label: `今日 AI 额度 ${remaining}/${limit}`,
+    label: t ? t('usage.label', { remaining, limit }) : `今日 AI 额度 ${remaining}/${limit}`,
     note: usage.note || '',
-    resetLabel: resetLabel(usage.resetsAt),
+    resetLabel: resetLabel(usage.resetsAt, t),
     ratio,
     used,
     limit,
@@ -36,11 +36,11 @@ export function buildUsage(usage) {
   };
 }
 
-function resetLabel(resetsAt) {
+function resetLabel(resetsAt, t = null) {
   if (!resetsAt) return '';
   const date = new Date(resetsAt);
   if (Number.isNaN(date.getTime())) return '';
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes} 重置`;
+  return t ? t('usage.reset', { time: `${hours}:${minutes}` }) : `${hours}:${minutes} 重置`;
 }

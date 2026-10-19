@@ -10,6 +10,12 @@ import { apiRequest } from './api';
 export const LEVEL_LABELS = { beginner: '初级', intermediate: '中级', advanced: '高级' };
 export const STATUS_LABELS = { active: '进行中', finished: '已完成', abandoned: '已放弃' };
 export const LANGUAGE_LABELS = { en: 'English', ja: '日本語' };
+export const LEVEL_LABEL_KEYS = Object.fromEntries(
+  Object.keys(LEVEL_LABELS).map((key) => [key, `language.level.${key}`]),
+);
+export const STATUS_LABEL_KEYS = Object.fromEntries(
+  Object.keys(STATUS_LABELS).map((key) => [key, `language.status.${key}`]),
+);
 
 export const REPORT_DIMENSIONS = [
   { key: 'fluency', label: '流利度' },
@@ -17,6 +23,9 @@ export const REPORT_DIMENSIONS = [
   { key: 'grammar', label: '语法' },
   { key: 'task', label: '任务完成' },
 ];
+export const REPORT_DIMENSION_KEYS = Object.fromEntries(
+  REPORT_DIMENSIONS.map((item) => [item.key, `language.dimensions.${item.key}`]),
+);
 
 export function loadOptions() {
   return apiRequest('/language-options');
@@ -88,24 +97,25 @@ export function pickVoice(voices, lang) {
 }
 
 /** 报告 → 页面用的 4 行分数（缺分显示 —，不拿 0 分冒充）。 */
-export function reportRows(report) {
+export function reportRows(report, t = null) {
   return REPORT_DIMENSIONS.map((dimension) => ({
-    ...dimension,
+    key: dimension.key,
+    label: t ? t(REPORT_DIMENSION_KEYS[dimension.key]) : dimension.label,
     value: typeof report?.[dimension.key] === 'number' ? report[dimension.key] : null,
     display: typeof report?.[dimension.key] === 'number' ? String(report[dimension.key]) : '—',
   }));
 }
 
 /** 每轮的耗时，给"为什么这一轮等了这么久"一个说法。 */
-export function latencyLabel(latency) {
+export function latencyLabel(latency, t = null) {
   if (!latency) return '';
   const parts = [];
-  if (latency.asrMs != null) parts.push(`听写 ${seconds(latency.asrMs)}`);
+  if (latency.asrMs != null) parts.push(t ? t('languageSession.latencyAsr', { time: seconds(latency.asrMs) }) : `听写 ${seconds(latency.asrMs)}`);
   // L2 的关键是"多快看到字、多快听到第一句"，总时长反而次要
-  if (latency.llmFirstMs != null) parts.push(`首字 ${seconds(latency.llmFirstMs)}`);
-  if (latency.audioFirstMs != null) parts.push(`出声 ${seconds(latency.audioFirstMs)}`);
-  if (latency.llmMs != null) parts.push(`回复 ${seconds(latency.llmMs)}`);
-  if (latency.ttsMs != null) parts.push(`配音 ${seconds(latency.ttsMs)}`);
+  if (latency.llmFirstMs != null) parts.push(t ? t('languageSession.latencyFirstToken', { time: seconds(latency.llmFirstMs) }) : `首字 ${seconds(latency.llmFirstMs)}`);
+  if (latency.audioFirstMs != null) parts.push(t ? t('languageSession.latencyAudio', { time: seconds(latency.audioFirstMs) }) : `出声 ${seconds(latency.audioFirstMs)}`);
+  if (latency.llmMs != null) parts.push(t ? t('languageSession.latencyReply', { time: seconds(latency.llmMs) }) : `回复 ${seconds(latency.llmMs)}`);
+  if (latency.ttsMs != null) parts.push(t ? t('languageSession.latencyTts', { time: seconds(latency.ttsMs) }) : `配音 ${seconds(latency.ttsMs)}`);
   return parts.join(' · ');
 }
 
@@ -114,8 +124,14 @@ function seconds(ms) {
 }
 
 /** 会话列表 / 详情都会用到的中文副标题。 */
-export function sessionSubtitle(session) {
-  const level = LEVEL_LABELS[session?.level] || '中级';
-  const status = STATUS_LABELS[session?.status] || session?.status || '';
-  return `${level} · ${session?.turnCount || 0}/${session?.maxTurns || 0} 轮 · ${status}`;
+export function sessionSubtitle(session, t = null) {
+  const level = t && LEVEL_LABEL_KEYS[session?.level]
+    ? t(LEVEL_LABEL_KEYS[session.level])
+    : LEVEL_LABELS[session?.level] || '中级';
+  const status = t && STATUS_LABEL_KEYS[session?.status]
+    ? t(STATUS_LABEL_KEYS[session.status])
+    : STATUS_LABELS[session?.status] || session?.status || '';
+  return t
+    ? t('language.sessionSubtitle', { level, current: session?.turnCount || 0, total: session?.maxTurns || 0, status })
+    : `${level} · ${session?.turnCount || 0}/${session?.maxTurns || 0} 轮 · ${status}`;
 }

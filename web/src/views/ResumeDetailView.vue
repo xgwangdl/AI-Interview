@@ -6,9 +6,11 @@ import {
   applyOptimization, deleteResume, downloadResume, getResume, optimizeResume, updateResume,
   RESUME_EXPORT_FORMATS,
 } from '../services/resume';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const loading = ref(true);
 const saving = ref(false);
 const optimizing = ref(false);
@@ -56,7 +58,7 @@ async function load() {
       document.querySelector('.optimize-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (error) {
-    ElMessage.error(error.message || '无法加载简历');
+    ElMessage.error(error.message || t('resume.loadDetailFailed'));
     router.replace('/resumes');
   } finally {
     loading.value = false;
@@ -65,7 +67,7 @@ async function load() {
 
 async function save() {
   if (!form.title.trim() || !form.rawText.trim()) {
-    ElMessage.warning('标题和正文都要填。');
+    ElMessage.warning(t('resume.titleBodyRequired'));
     return;
   }
   saving.value = true;
@@ -75,9 +77,9 @@ async function save() {
       fileName: resume.value.fileName, rawText: form.rawText,
     });
     form.rawText = resume.value.rawText;
-    ElMessage.success(`已保存（v${resume.value.version}）`);
+    ElMessage.success(t('resume.saved', { version: resume.value.version }));
   } catch (error) {
-    ElMessage.error(error.message || '保存失败');
+    ElMessage.error(error.message || t('resume.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -85,7 +87,7 @@ async function save() {
 
 async function optimize() {
   if (!job.jobDescription.trim()) {
-    ElMessage.warning('请先粘贴目标岗位的 JD。');
+    ElMessage.warning(t('resume.jdRequired'));
     return;
   }
   optimizing.value = true;
@@ -95,7 +97,7 @@ async function optimize() {
     const result = await optimizeResume(resume.value.id, job.role.trim(), job.jobDescription.trim());
     optimization.value = result;
     if (result.status !== 'completed') {
-      ElMessage.error(result.error || '优化失败，可以稍后重试');
+      ElMessage.error(result.error || t('resume.optimizeFailedRetry'));
       return;
     }
     // 默认勾选真正有改动、且原文能在正文里定位到的段
@@ -105,7 +107,7 @@ async function optimize() {
         && section.original && form.rawText.includes(section.original))
       .map(({ index }) => index);
   } catch (error) {
-    ElMessage.error(error.message || '优化失败');
+    ElMessage.error(error.message || t('resume.optimizeFailed'));
   } finally {
     optimizing.value = false;
   }
@@ -114,32 +116,36 @@ async function optimize() {
 async function apply(selectedOnly) {
   const indices = selectedOnly ? selected.value : [];
   if (selectedOnly && !indices.length) {
-    ElMessage.warning('还没有勾选任何段落。');
+    ElMessage.warning(t('resume.noSelection'));
     return;
   }
   if (!selectedOnly) {
-    await ElMessageBox.confirm('会用优化后的内容整体替换正文（采纳其中能定位到的段落）。继续？', '全部采用', { type: 'warning' });
+    await ElMessageBox.confirm(t('resume.allConfirm'), t('resume.allConfirmTitle'), { type: 'warning' });
   }
   applying.value = true;
   try {
     const updated = await applyOptimization(resume.value.id, optimization.value.id, indices);
     resume.value = updated;
     form.rawText = updated.rawText;
-    ElMessage.success(`已采纳，版本 v${updated.version}`);
+    ElMessage.success(t('resume.applied', { version: updated.version }));
   } catch (error) {
-    ElMessage.error(error.message || '采纳失败');
+    ElMessage.error(error.message || t('resume.adoptFailed'));
   } finally {
     applying.value = false;
   }
 }
 
 async function remove() {
-  await ElMessageBox.confirm(`删除「${resume.value.title}」？优化记录会一起删掉。`, '删除简历', { type: 'warning' });
+  await ElMessageBox.confirm(
+    t('resume.deleteConfirmBody', { title: resume.value.title }),
+    t('resume.deleteConfirmTitle'),
+    { type: 'warning' },
+  );
   try {
     await deleteResume(resume.value.id);
     router.replace('/resumes');
   } catch (error) {
-    ElMessage.error(error.message || '删除失败');
+    ElMessage.error(error.message || t('resume.deleteFailed'));
   }
 }
 
@@ -148,7 +154,7 @@ async function exportResume(format) {
   try {
     await downloadResume(resume.value.id, resume.value.title, format);
   } catch (error) {
-    ElMessage.error(error.message || '导出失败');
+    ElMessage.error(error.message || t('resume.exportFailed'));
   } finally {
     exporting.value = false;
   }
@@ -159,18 +165,18 @@ async function exportResume(format) {
   <section v-loading="loading" class="resume-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">RESUME</div>
-        <h1>{{ resume?.title || '简历' }}</h1>
+        <div class="eyebrow">{{ t('resume.eyebrow') }}</div>
+        <h1>{{ resume?.title || t('resume.fallbackTitle') }}</h1>
         <p v-if="resume">
-          {{ resume.source === 'upload' ? '上传解析' : '手动填写' }}
-          · v{{ resume.version }} · 更新于 {{ String(resume.updatedAt).slice(0, 16).replace('T', ' ') }}
+          {{ resume.source === 'upload' ? t('resume.uploadSource') : t('resume.manualSource') }}
+          · {{ t('resume.version', { version: resume.version }) }} · {{ t('resume.updatedAt', { date: String(resume.updatedAt).slice(0, 16).replace('T', ' ') }) }}
         </p>
       </div>
       <div class="heading-actions">
-        <el-button class="soft-button" @click="router.push('/resumes')">返回列表</el-button>
+        <el-button class="soft-button" @click="router.push('/resumes')">{{ t('resume.returnList') }}</el-button>
         <el-dropdown trigger="click" @command="exportResume">
           <el-button class="soft-button" :loading="exporting">
-            <el-icon><Download /></el-icon> 导出
+            <el-icon><Download /></el-icon> {{ t('resume.export') }}
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -180,52 +186,52 @@ async function exportResume(format) {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button class="soft-button danger" @click="remove">删除</el-button>
+        <el-button class="soft-button danger" @click="remove">{{ t('resume.delete') }}</el-button>
       </div>
     </div>
 
     <div v-if="resume" class="resume-layout">
       <section class="panel">
-        <div class="section-title">简历正文</div>
-        <el-input v-model="form.title" maxlength="200" placeholder="标题" class="title-input" />
+        <div class="section-title">{{ t('resume.content') }}</div>
+        <el-input v-model="form.title" maxlength="200" :placeholder="t('resume.titlePlaceholder')" class="title-input" />
         <el-input v-model="form.rawText" type="textarea" :rows="18" maxlength="20000" show-word-limit />
         <div class="row-actions">
-          <el-button class="primary-button" :loading="saving" @click="save">保存修改</el-button>
+          <el-button class="primary-button" :loading="saving" @click="save">{{ t('resume.saveChanges') }}</el-button>
         </div>
       </section>
 
       <section class="panel optimize-panel">
-        <div class="section-title">按岗位优化</div>
+        <div class="section-title">{{ t('resume.optimize') }}</div>
         <el-form label-position="top">
-          <el-form-item label="目标岗位"><el-input v-model="job.role" maxlength="200" placeholder="例如：Java 后端工程师" /></el-form-item>
-          <el-form-item label="岗位描述（JD）">
+          <el-form-item :label="t('resume.targetRole')"><el-input v-model="job.role" maxlength="200" :placeholder="t('resume.targetRolePlaceholder')" /></el-form-item>
+          <el-form-item :label="t('resume.jobDescription')">
             <el-input v-model="job.jobDescription" type="textarea" :rows="6" maxlength="10000" show-word-limit
-                      placeholder="粘贴 JD，AI 会按它调整简历" />
+                      :placeholder="t('resume.jobDescriptionPlaceholder')" />
           </el-form-item>
         </el-form>
         <el-button class="primary-button" :loading="optimizing" @click="optimize">
-          {{ optimizing ? '正在优化…' : '开始优化' }}
+          {{ optimizing ? t('resume.optimizing') : t('resume.startOptimize') }}
         </el-button>
-        <p class="hint">优化只改措辞与结构，不会编造经历和数字；缺数据的地方会标成待补充。</p>
+        <p class="hint">{{ t('resume.optimizeHint') }}</p>
       </section>
     </div>
 
     <section v-if="optimization" class="panel result-panel">
       <div class="result-head">
-        <div class="section-title">优化结果</div>
+        <div class="section-title">{{ t('resume.result') }}</div>
         <el-tag :class="optimization.status === 'completed' ? 'tag-ready' : 'tag-warn'" size="small">
-          {{ optimization.status === 'completed' ? '已完成' : '失败' }}
+          {{ optimization.status === 'completed' ? t('resume.completed') : t('resume.failed') }}
         </el-tag>
-        <span v-if="pendingCount" class="pending">有 {{ pendingCount }} 处待你补充</span>
+        <span v-if="pendingCount" class="pending">{{ t('resume.pendingCount', { count: pendingCount }) }}</span>
       </div>
 
       <p v-if="optimization.summary" class="summary">{{ optimization.summary }}</p>
       <p v-if="optimization.error" class="error-text">{{ optimization.error }}</p>
 
       <div v-if="optimization.keywordCoverage" class="coverage">
-        <span>JD 关键词：</span>
+        <span>{{ t('resume.jdKeywords') }}</span>
         <em v-for="word in optimization.keywordCoverage.matched || []" :key="word" class="matched">{{ word }}</em>
-        <em v-for="word in optimization.keywordCoverage.missing || []" :key="word" class="missing">{{ word }}（缺）</em>
+        <em v-for="word in optimization.keywordCoverage.missing || []" :key="word" class="missing">{{ t('resume.missingWord', { word }) }}</em>
       </div>
 
       <div class="section-list">
@@ -236,11 +242,11 @@ async function exportResume(format) {
           </el-checkbox>
           <div class="pair">
             <div class="col">
-              <small>原文</small>
-              <p class="muted">{{ section.original || '（新增段落）' }}</p>
+              <small>{{ t('resume.original') }}</small>
+              <p class="muted">{{ section.original || t('resume.newSection') }}</p>
             </div>
             <div class="col">
-              <small>优化后</small>
+              <small>{{ t('resume.optimizedText') }}</small>
               <p>
                 <template v-for="(seg, i) in segmentsOf(section.optimized)" :key="i">
                   <mark v-if="seg.placeholder">{{ seg.text }}</mark>
@@ -255,9 +261,9 @@ async function exportResume(format) {
 
       <div class="row-actions">
         <el-button class="primary-button" :loading="applying" @click="apply(true)">
-          采纳选中的 {{ selected.length }} 段
+          {{ t('resume.adoptSelected', { count: selected.length }) }}
         </el-button>
-        <el-button class="soft-button" :loading="applying" @click="apply(false)">全部采用</el-button>
+        <el-button class="soft-button" :loading="applying" @click="apply(false)">{{ t('resume.adoptAll') }}</el-button>
       </div>
     </section>
   </section>

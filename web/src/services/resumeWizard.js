@@ -7,59 +7,65 @@
 
 /** 采集步骤；kind 决定这一步长什么样。 */
 export const WIZARD_STEPS = [
-  { key: 'targetRole', label: '目标岗位', kind: 'text' },
-  { key: 'basics', label: '基本信息', kind: 'basics' },
-  { key: 'education', label: '教育背景', kind: 'entries' },
-  { key: 'work', label: '工作经历', kind: 'entries' },
-  { key: 'projects', label: '项目经历', kind: 'entries' },
-  { key: 'skills', label: '技能与证书', kind: 'long' },
-  { key: 'other', label: '其他', kind: 'long' },
+  { key: 'targetRole', label: '目标岗位', labelKey: 'resume.wizard.steps.targetRole', kind: 'text' },
+  { key: 'basics', label: '基本信息', labelKey: 'resume.wizard.steps.basics', kind: 'basics' },
+  { key: 'education', label: '教育背景', labelKey: 'resume.wizard.steps.education', kind: 'entries' },
+  { key: 'work', label: '工作经历', labelKey: 'resume.wizard.steps.work', kind: 'entries' },
+  { key: 'projects', label: '项目经历', labelKey: 'resume.wizard.steps.projects', kind: 'entries' },
+  { key: 'skills', label: '技能与证书', labelKey: 'resume.wizard.steps.skills', kind: 'long' },
+  { key: 'other', label: '其他', labelKey: 'resume.wizard.steps.other', kind: 'long' },
 ];
 
 /** 每段最多这么多条：再多就不是简历，是流水账。 */
 export const ENTRY_LIMIT = 12;
 
 export const BASICS_FIELDS = [
-  { key: 'name', label: '姓名', example: '例如：张三' },
-  { key: 'phone', label: '电话', example: '例如：13800000000' },
-  { key: 'email', label: '邮箱', example: '例如：zhangsan@example.com' },
-  { key: 'city', label: '城市', example: '例如：上海' },
-  { key: 'extra', label: '其他想说的', example: '例如：3 年经验、在职看机会' },
+  { key: 'name', label: '姓名', labelKey: 'resume.wizard.basics.name', example: '例如：张三', exampleKey: 'resume.wizard.examples.name' },
+  { key: 'phone', label: '电话', labelKey: 'resume.wizard.basics.phone', example: '例如：13800000000', exampleKey: 'resume.wizard.examples.phone' },
+  { key: 'email', label: '邮箱', labelKey: 'resume.wizard.basics.email', example: '例如：zhangsan@example.com', exampleKey: 'resume.wizard.examples.email' },
+  { key: 'city', label: '城市', labelKey: 'resume.wizard.basics.city', example: '例如：上海', exampleKey: 'resume.wizard.examples.city' },
+  { key: 'extra', label: '其他想说的', labelKey: 'resume.wizard.basics.extra', example: '例如：3 年经验、在职看机会', exampleKey: 'resume.wizard.examples.extra' },
 ];
 
 /** 三个"经历类"步骤共用同一张卡片，只是字段名与示例不同。 */
 export const ENTRY_STEPS = {
   education: {
     entryLabel: '学校',
+    entryLabelKey: 'resume.wizard.entries.education.entry',
     addLabel: '+ 再加一段学历',
+    addLabelKey: 'resume.wizard.entries.education.add',
     fields: [
-      { key: 'title', label: '学校', example: '例如：某某大学' },
-      { key: 'role', label: '专业 / 学历', example: '例如：计算机科学与技术 / 本科' },
-      { key: 'period', label: '时间', example: '例如：2016.09 - 2020.06' },
-      { key: 'detail', label: '主修课程 / 在校经历', example: '例如：数据结构、数据库系统原理；担任班级学习委员', rows: 2 },
-      { key: 'result', label: '成绩 / 奖项', example: '例如：GPA 3.7/4.0，两次校级奖学金', rows: 2 },
+      { key: 'title', label: '学校', labelKey: 'resume.wizard.entries.education.title', example: '例如：某某大学', exampleKey: 'resume.wizard.entries.education.titleExample' },
+      { key: 'role', label: '专业 / 学历', labelKey: 'resume.wizard.fields.roleEducation', example: '例如：计算机科学与技术 / 本科', exampleKey: 'resume.wizard.entries.education.roleExample' },
+      { key: 'period', label: '时间', labelKey: 'resume.wizard.fields.period', example: '例如：2016.09 - 2020.06', exampleKey: 'resume.wizard.entries.education.periodExample' },
+      { key: 'detail', label: '主修课程 / 在校经历', labelKey: 'resume.wizard.entries.education.detail', example: '例如：数据结构、数据库系统原理；担任班级学习委员', exampleKey: 'resume.wizard.entries.education.detailExample', rows: 2 },
+      { key: 'result', label: '成绩 / 奖项', labelKey: 'resume.wizard.fields.result', example: '例如：GPA 3.7/4.0，两次校级奖学金', exampleKey: 'resume.wizard.entries.education.resultExample', rows: 2 },
     ],
   },
   work: {
     entryLabel: '公司',
+    entryLabelKey: 'resume.wizard.entries.work.entry',
     addLabel: '+ 再加一段工作',
+    addLabelKey: 'resume.wizard.entries.work.add',
     fields: [
-      { key: 'title', label: '公司', example: '例如：某某科技有限公司' },
-      { key: 'role', label: '职位', example: '例如：后端开发工程师' },
-      { key: 'period', label: '时间', example: '例如：2020.07 - 至今' },
-      { key: 'detail', label: '负责什么', example: '例如：负责订单系统的接口开发与维护，参与需求评审', rows: 3 },
-      { key: 'result', label: '结果 / 成绩', example: '例如：把订单查询从 3 次库调用改成 1 次，平均耗时 800ms → 120ms', rows: 2 },
+      { key: 'title', label: '公司', labelKey: 'resume.wizard.entries.work.title', example: '例如：某某科技有限公司', exampleKey: 'resume.wizard.entries.work.titleExample' },
+      { key: 'role', label: '职位', labelKey: 'resume.wizard.entries.work.role', example: '例如：后端开发工程师', exampleKey: 'resume.wizard.entries.work.roleExample' },
+      { key: 'period', label: '时间', labelKey: 'resume.wizard.fields.period', example: '例如：2020.07 - 至今', exampleKey: 'resume.wizard.entries.work.periodExample' },
+      { key: 'detail', label: '负责什么', labelKey: 'resume.wizard.entries.work.detail', example: '例如：负责订单系统的接口开发与维护，参与需求评审', exampleKey: 'resume.wizard.entries.work.detailExample', rows: 3 },
+      { key: 'result', label: '结果 / 成绩', labelKey: 'resume.wizard.fields.result', example: '例如：把订单查询从 3 次库调用改成 1 次，平均耗时 800ms → 120ms', exampleKey: 'resume.wizard.entries.work.resultExample', rows: 2 },
     ],
   },
   projects: {
     entryLabel: '项目',
+    entryLabelKey: 'resume.wizard.entries.projects.entry',
     addLabel: '+ 再加一个项目',
+    addLabelKey: 'resume.wizard.entries.projects.add',
     fields: [
-      { key: 'title', label: '项目名称', example: '例如：订单中心改造' },
-      { key: 'role', label: '你的角色', example: '例如：后端主力开发（3 人团队）' },
-      { key: 'period', label: '时间', example: '例如：2021.03 - 2021.08' },
-      { key: 'detail', label: '做了什么', example: '例如：拆订单表、引入缓存、把同步调用改成消息队列', rows: 3 },
-      { key: 'result', label: '结果 / 成绩', example: '例如：峰值 QPS 提升 3 倍，超时投诉降到 0', rows: 2 },
+      { key: 'title', label: '项目名称', labelKey: 'resume.wizard.entries.projects.title', example: '例如：订单中心改造', exampleKey: 'resume.wizard.entries.projects.titleExample' },
+      { key: 'role', label: '你的角色', labelKey: 'resume.wizard.entries.projects.role', example: '例如：后端主力开发（3 人团队）', exampleKey: 'resume.wizard.entries.projects.roleExample' },
+      { key: 'period', label: '时间', labelKey: 'resume.wizard.fields.period', example: '例如：2021.03 - 2021.08', exampleKey: 'resume.wizard.entries.projects.periodExample' },
+      { key: 'detail', label: '做了什么', labelKey: 'resume.wizard.entries.projects.detail', example: '例如：拆订单表、引入缓存、把同步调用改成消息队列', exampleKey: 'resume.wizard.entries.projects.detailExample', rows: 3 },
+      { key: 'result', label: '结果 / 成绩', labelKey: 'resume.wizard.fields.result', example: '例如：峰值 QPS 提升 3 倍，超时投诉降到 0', exampleKey: 'resume.wizard.entries.projects.resultExample', rows: 2 },
     ],
   },
 };
@@ -69,6 +75,11 @@ export const EXAMPLES = {
   targetRole: '例如：Java 后端工程师 / 测试开发 / 前端工程师',
   skills: '例如：Java、Spring Boot、MySQL、Redis；CET-6',
   other: '例如：2021 年公司最佳新人；业余维护过一个 200 star 的开源项目',
+};
+export const EXAMPLE_KEYS = {
+  targetRole: 'resume.wizard.examples.targetRole',
+  skills: 'resume.wizard.examples.skills',
+  other: 'resume.wizard.examples.other',
 };
 
 const STORAGE_KEY = 'light-interview-resume-guide';
@@ -143,8 +154,9 @@ export function countFilled(state) {
 }
 
 /** 保存前默认标题：`<姓名>的简历`，没写名字就退回通用标题。 */
-export function defaultTitle(state) {
+export function defaultTitle(state, t = null) {
   const name = text(state?.basics?.name);
+  if (t) return name ? t('resume.defaultTitle', { name }) : t('resume.defaultTitleFallback');
   return name ? `${name}的简历` : '我的简历';
 }
 

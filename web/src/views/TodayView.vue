@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
-import { getTodayPlan, PLAN_KIND_LABELS, startPlanItem, updatePlanItem } from '../services/goals';
+import { getTodayPlan, PLAN_KIND_LABEL_KEYS, startPlanItem, updatePlanItem } from '../services/goals';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const practice = usePracticeStore();
 const plan = ref(null);
 const loading = ref(true);
@@ -24,7 +26,7 @@ async function load() {
   try {
     plan.value = await getTodayPlan();
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取今日计划');
+    ElMessage.error(error?.message || t('today.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -38,7 +40,7 @@ async function start(item) {
     await practice.loadFromServer();
     router.push(`/practice/device-check?id=${session.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '无法开始这一题');
+    ElMessage.error(error?.message || t('today.startFailed'));
   } finally {
     starting.value = '';
   }
@@ -49,7 +51,7 @@ async function skip(item) {
     await updatePlanItem(item.id, 'skipped');
     await load();
   } catch (error) {
-    ElMessage.error(error?.message || '操作失败');
+    ElMessage.error(error?.message || t('today.actionFailed'));
   }
 }
 </script>
@@ -58,19 +60,19 @@ async function skip(item) {
   <section v-loading="loading" class="today-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">TODAY</div>
-        <h1>今天练什么</h1>
-        <p v-if="plan">{{ plan.goalTitle }} · 约 15 分钟 · 连续 {{ plan.streak?.current || 0 }} 天</p>
+        <div class="eyebrow">{{ t('today.eyebrow') }}</div>
+        <h1>{{ t('today.title') }}</h1>
+        <p v-if="plan">{{ t('today.subtitle', { goal: plan.goalTitle, days: plan.streak?.current || 0 }) }}</p>
       </div>
       <el-button v-if="plan?.goalId" class="soft-button" @click="router.push(`/goals/${plan.goalId}`)">
-        查看目标
+        {{ t('today.viewGoal') }}
       </el-button>
     </div>
 
     <div class="progress-panel panel">
       <div class="progress-copy">
         <strong>{{ completed }}/{{ plan?.totalCount || 3 }}</strong>
-        <span>{{ completed >= 2 ? '今天已经达标，继续完成全部更好' : '完成 2 题就算今天达标' }}</span>
+        <span>{{ completed >= 2 ? t('today.goalMet') : t('today.goalRule') }}</span>
       </div>
       <span class="progress-bar"><i :style="{ width: `${progress}%` }"></i></span>
     </div>
@@ -79,19 +81,22 @@ async function skip(item) {
       <div v-for="(item, index) in plan?.items || []" :key="item.id" class="plan-row" :class="item.status">
         <span class="plan-number">{{ index + 1 }}</span>
         <span class="plan-main">
-          <small>{{ PLAN_KIND_LABELS[item.kind] || item.kind }} · 约 {{ item.estimatedMinutes }} 分钟</small>
+          <small>{{ t('today.itemMeta', {
+            kind: PLAN_KIND_LABEL_KEYS[item.kind] ? t(PLAN_KIND_LABEL_KEYS[item.kind]) : item.kind,
+            minutes: item.estimatedMinutes,
+          }) }}</small>
           <strong>{{ item.title }}</strong>
         </span>
         <el-button v-if="item.status === 'pending' || item.status === 'in_progress'" class="soft-button"
                    :loading="starting === item.id" @click="start(item)">
-          {{ item.status === 'in_progress' ? '继续' : '开始' }}
+          {{ item.status === 'in_progress' ? t('today.resume') : t('today.start') }}
         </el-button>
-        <span v-else class="done-label">{{ item.status === 'completed' ? '已完成' : '已跳过' }}</span>
-        <button v-if="item.status === 'pending'" class="skip-link" @click="skip(item)">跳过</button>
+        <span v-else class="done-label">{{ item.status === 'completed' ? t('today.completed') : t('today.skipped') }}</span>
+        <button v-if="item.status === 'pending'" class="skip-link" @click="skip(item)">{{ t('today.skip') }}</button>
       </div>
     </div>
 
-    <p class="today-note">计划项完成后，目标进度与连续天数会自动更新。没有目标时会生成通用训练。</p>
+    <p class="today-note">{{ t('today.note') }}</p>
   </section>
 </template>
 
