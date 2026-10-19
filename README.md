@@ -105,13 +105,25 @@ flowchart LR
 
 ## 快速开始
 
-需要 Docker Desktop，以及已安装的 Git。
+### 本机开发（打开 5173）
+
+需要 Docker Desktop、Java 21、Maven、Node.js 和 Git。
 
 ```bash
 git clone https://github.com/xgwangdl/AI-Interview.git
 cd AI-Interview
 cp .env.example .env
-docker compose --profile full up -d --build
+
+# 终端 1：基础设施
+docker compose up -d postgres redis s3mock
+
+# 终端 2：后端
+mvn -B package -DskipTests
+java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar
+
+# 终端 3：前端
+npm --prefix web ci
+npm --prefix web run dev
 ```
 
 Windows PowerShell 把 `cp` 换成：
@@ -120,11 +132,26 @@ Windows PowerShell 把 `cp` 换成：
 Copy-Item .env.example .env
 ```
 
-首次构建需要下载依赖，完成后打开 <http://localhost:8080>：
+后端和前端都启动后，打开：
+
+<http://localhost:5173>
 
 ```text
 演示账号：smoke / 123456
 ```
+
+更完整的 Windows 本地启动、重启、停止和排错步骤见
+[本地启动手顺](docs/LOCAL-STARTUP.md)。
+
+### 完整 Docker（打开 8080）
+
+如果不想分别启动 Java 和 Node：
+
+```bash
+docker compose --profile full up -d --build
+```
+
+完成后打开 <http://localhost:8080>。这个入口由 nginx 提供，和本机 Vite 的 `5173` 是两个不同端口。
 
 在 `.env` 中至少设置：
 
@@ -140,9 +167,6 @@ Ali_API_KEY=local-placeholder
 PRACTICE_ASR_PROVIDER=stub
 PRACTICE_EVALUATION_PROVIDER=stub
 ```
-
-更完整的 Windows 本地启动、重启、停止和排错步骤见
-[本地启动手顺](docs/LOCAL-STARTUP.md)。
 
 ## 为什么不是套壳 Demo
 
