@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class CodeJudgeService {
-
     private static final Logger log = LoggerFactory.getLogger(CodeJudgeService.class);
     private static final double SHORT_ANSWER_PASS_SCORE = 60;
 
@@ -256,12 +255,18 @@ public class CodeJudgeService {
             JsonNode node = objectMapper.readTree(question.getAnswerJson());
             if (node == null || !node.hasNonNull(field)) return List.of();
             JsonNode array = node.get(field);
-            if (!array.isArray()) return List.of();
+            if (!array.isArray()) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "题目数据损坏：参考答案字段 " + field + " 不是数组");
+            }
             List<String> values = new ArrayList<>();
             array.forEach(item -> values.add(item.asText()));
             return values;
         } catch (Exception exception) {
-            return List.of();
+            log.warn("题目参考答案损坏 question={} field={}", question.getId(), field, exception);
+            if (exception instanceof ResponseStatusException statusException) throw statusException;
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "题目数据损坏：无法读取参考答案", exception);
         }
     }
 

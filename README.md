@@ -17,14 +17,14 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 适合准备校招、社招、转岗和技术晋升面试的开发者。
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
-[![Backend tests](https://img.shields.io/badge/backend_tests-299-brightgreen.svg)](#工程质量)
+[![Backend tests](https://img.shields.io/badge/backend_tests-312-brightgreen.svg)](#工程质量)
 [![Frontend tests](https://img.shields.io/badge/frontend_tests-145-brightgreen.svg)](#工程质量)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring AI](https://img.shields.io/badge/Spring_AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [English](docs/README.md)
+[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
 
 <p align="center">
   <img src="docs/images/08-session-avatar-speaking.png" alt="Light-Interview 模拟面试界面" width="92%" />
@@ -105,13 +105,25 @@ flowchart LR
 
 ## 快速开始
 
-需要 Docker Desktop，以及已安装的 Git。
+### 本机开发（打开 5173）
+
+需要 Docker Desktop、Java 21、Maven、Node.js 和 Git。
 
 ```bash
 git clone https://github.com/xgwangdl/AI-Interview.git
 cd AI-Interview
 cp .env.example .env
-docker compose --profile full up -d --build
+
+# 终端 1：基础设施
+docker compose up -d postgres redis s3mock
+
+# 终端 2：后端
+mvn -B package -DskipTests
+java -jar consumer/target/consumer-0.0.1-SNAPSHOT.jar
+
+# 终端 3：前端
+npm --prefix web ci
+npm --prefix web run dev
 ```
 
 Windows PowerShell 把 `cp` 换成：
@@ -120,11 +132,26 @@ Windows PowerShell 把 `cp` 换成：
 Copy-Item .env.example .env
 ```
 
-首次构建需要下载依赖，完成后打开 <http://localhost:8080>：
+后端和前端都启动后，打开：
+
+<http://localhost:5173>
 
 ```text
 演示账号：smoke / 123456
 ```
+
+更完整的 Windows 本地启动、重启、停止和排错步骤见
+[本地启动手顺](docs/LOCAL-STARTUP.md)。
+
+### 完整 Docker（打开 8080）
+
+如果不想分别启动 Java 和 Node：
+
+```bash
+docker compose --profile full up -d --build
+```
+
+完成后打开 <http://localhost:8080>。这个入口由 nginx 提供，和本机 Vite 的 `5173` 是两个不同端口。
 
 在 `.env` 中至少设置：
 
@@ -140,9 +167,6 @@ Ali_API_KEY=local-placeholder
 PRACTICE_ASR_PROVIDER=stub
 PRACTICE_EVALUATION_PROVIDER=stub
 ```
-
-更完整的 Windows 本地启动、重启、停止和排错步骤见
-[本地启动手顺](docs/LOCAL-STARTUP.md)。
 
 ## 为什么不是套壳 Demo
 
@@ -188,10 +212,10 @@ PRACTICE_EVALUATION_PROVIDER=stub
 
 ## 工程质量
 
-- 后端 **299** 个测试通过，11 个依赖外部环境的测试按配置跳过。
+- 后端 **312** 个测试通过，13 个依赖外部环境的测试按配置跳过；集成环境下仅 7 个跳过。
 - 前端 **145** 个测试通过，生产构建通过。
 - 浏览器认证冒烟使用系统 Chrome，可重复验证登录、注册、空值提示和路由保护。
-- GitHub Actions 执行后端测试、前端测试和前端构建。
+- GitHub Actions 执行后端测试、前端测试、数据库/S3 集成测试和五语言 Docker 沙箱测试。
 - 已完成真实 PostgreSQL、Redis、S3 兼容存储和真实模型供应商的链路验证。
 - 当前已知边界：数字人口型是按音量驱动，不是音素级同步；L2 流式外语通道默认关闭。
 

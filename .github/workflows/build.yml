@@ -72,3 +72,85 @@ jobs:
           name: auth-e2e-evidence
           path: reports/evidence/auth
           if-no-files-found: ignore
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: interview
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d interview"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      s3mock:
+        image: adobe/s3mock:latest
+        env:
+          COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: light-interview-media
+        ports:
+          - 9090:9090
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Wait for S3 mock
+        run: |
+          for i in $(seq 1 30); do
+            if curl --silent --show-error http://127.0.0.1:9090/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Database and S3 integration tests
+        run: mvn -B test -Ddb.integration=true -Ds3.integration=true
+      - name: Upload integration reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-surefire-reports
+          path: '**/target/surefire-reports/*.txt'
+          if-no-files-found: ignore
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Docker sandbox tests
+        run: >-
+          mvn -B -pl consumer -am test
+          "-Dtest=CodeRunnerServiceTest"
+          "-Dcode.runner.integration=true"
+          "-Dsurefire.failIfNoSpecifiedTests=false"
+      - name: Upload sandbox reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-surefire-reports
+          path: '**/target/surefire-reports/*.txt'
+          if-no-files-found: ignore

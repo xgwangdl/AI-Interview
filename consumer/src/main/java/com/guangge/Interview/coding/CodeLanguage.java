@@ -24,7 +24,7 @@ public enum CodeLanguage {
             null, "node main.js"),
 
     GO("go", "golang:1.22-alpine", "main.go",
-            null, "go run main.go");
+            "go build -o main main.go", "./main");
 
     private final String id;
     private final String image;

@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     container_name: light-interview-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -42,7 +42,7 @@ services:
     environment:
       COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${MEDIA_S3_BUCKET:-light-interview-media}
     ports:
-      - "${S3_API_PORT:-9090}:9090"
+      - "${BIND_HOST:-127.0.0.1}:${S3_API_PORT:-9090}:9090"
 
   # ---- 应用本身（可选）：docker compose --profile full up -d ----
   # 默认不启动，这样"只起基础设施 + 本地跑应用"的开发方式和以前完全一样。
@@ -70,10 +70,18 @@ services:
       # 没配 Key 也能起来：出题回退内置题库、语音降级为字幕（见 README 的演示模式）
       Ali_API_KEY: ${Ali_API_KEY:-}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-change-this-in-docker}
+      TRUST_FORWARDED_FOR: "true"
+      APP_ENV: ${APP_ENV:-local}
       # 代码沙箱要在容器里再起容器，默认关；本机开发仍由 .env 单独打开
       CODE_RUNNER_ENABLED: ${CODE_RUNNER_ENABLED_IN_DOCKER:-false}
     ports:
-      - "${BACKEND_PORT:-8088}:8088"
+      - "${BIND_HOST:-127.0.0.1}:${BACKEND_PORT:-8088}:8088"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8088/actuator/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     volumes:
       - app-media:/app/data/media
 
@@ -85,10 +93,17 @@ services:
     container_name: light-interview-web
     profiles: ["full"]
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     # 容器用 8080，避免和本地 vite（5173）抢端口
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
 
 volumes:
   postgres-data:

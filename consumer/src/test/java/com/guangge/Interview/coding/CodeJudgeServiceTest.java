@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,6 +42,19 @@ class CodeJudgeServiceTest {
         assertEquals(JudgeOutcome.PASSED, judge.judge(question, "c, a", false).status(), "顺序与大小写不影响");
         assertEquals(JudgeOutcome.FAILED, judge.judge(question, "A", false).status(), "少选不算对");
         assertEquals(JudgeOutcome.FAILED, judge.judge(question, "A,B,C", false).status(), "多选不算对");
+    }
+
+    @Test
+    void malformedChoiceAnswerIsReportedAsDataDamage() {
+        CodeQuestionEntity question = question(QuestionType.CHOICE, null);
+        question.setOptionsJson("[{\"key\":\"A\",\"text\":\"a\"}]");
+        question.setAnswerJson("{not-json");
+
+        var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> judge.judge(question, "A", false));
+
+        assertEquals(500, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("题目数据损坏"));
     }
 
     @Test

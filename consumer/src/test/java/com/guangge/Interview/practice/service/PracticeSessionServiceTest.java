@@ -19,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
+import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -120,6 +122,28 @@ class PracticeSessionServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, error.getStatusCode());
         verify(answers, never()).findAllBySessionIdOrderByQuestionIndexAsc(any());
+    }
+
+    @Test
+    void continuesExpiredCleanupWhenOneSessionFails() throws Exception {
+        PracticeSessionEntity broken = ownedSession(UUID.randomUUID());
+        broken.setRetentionUntil(Instant.now().minusSeconds(60));
+        PracticeSessionEntity healthy = ownedSession(UUID.randomUUID());
+        healthy.setRetentionUntil(Instant.now().minusSeconds(60));
+        PracticeAnswerEntity brokenAnswer = answer(broken.getId(), mediaKey());
+        when(sessions.findAllByRetentionUntilBefore(any())).thenReturn(List.of(broken, healthy));
+        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(broken.getId())).thenReturn(List.of(brokenAnswer));
+        when(answers.findAllBySessionIdOrderByQuestionIndexAsc(healthy.getId())).thenReturn(List.of());
+        MediaStorage storage = mock(MediaStorage.class);
+        org.mockito.Mockito.doThrow(new IOException("permission denied"))
+                .when(storage).delete(brokenAnswer.getMediaKey());
+        service = new PracticeSessionService(sessions, answers, storage, new ObjectMapper(),
+                mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class), 7);
+
+        service.deleteExpiredSessions();
+
+        verify(sessions).delete(healthy);
+        verify(sessions, never()).delete(broken);
     }
 
     @Test

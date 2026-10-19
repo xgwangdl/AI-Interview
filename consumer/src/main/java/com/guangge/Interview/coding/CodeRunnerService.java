@@ -1,5 +1,6 @@
 package com.guangge.Interview.coding;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,7 +13,9 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -29,6 +32,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code --memory} + {@code --memory-swap}：内存上限，且不允许用 swap 绕过</li>
  *   <li>{@code --cpus 0.5} + {@code --pids-limit 64}：防 fork 炸弹与 CPU 抢占</li>
  *   <li>{@code --read-only} + {@code --tmpfs /tmp}：根文件系统只读，只开放 /tmp</li>
+ *   <li>{@code --user} / {@code --cap-drop ALL} / {@code no-new-privileges}：降低容器逃逸影响</li>
  *   <li>只把当次运行的临时目录挂到 /work，进程结束即删除</li>
  *   <li>shell 里 {@code ulimit -f}：限制单文件大小，防写爆磁盘</li>
  *   <li>整体超时后 {@code docker kill}，避免只杀掉客户端进程而容器仍在跑</li>
@@ -91,6 +95,7 @@ public class CodeRunnerService {
         String containerName = "light-interview-run-" + UUID.randomUUID();
         try {
             workDir = Files.createTempDirectory("code-run-");
+            makeWorldWritable(workDir);
             Files.writeString(workDir.resolve(language.fileName()),
                     source == null ? "" : source, StandardCharsets.UTF_8);
 
@@ -131,18 +136,22 @@ public class CodeRunnerService {
         }
     }
 
-    private List<String> dockerCommand(CodeLanguage language, Path workDir, String containerName) {
+    List<String> dockerCommand(CodeLanguage language, Path workDir, String containerName) {
         List<String> command = new ArrayList<>(List.of(
                 dockerExecutable, "run", "--rm", "-i",
                 "--name", containerName,
+                "--user", "65534:65534",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges:true",
                 "--network", "none",
                 "--memory", memoryMb + "m",
                 "--memory-swap", memoryMb + "m",
                 "--cpus", "0.5",
                 "--pids-limit", "64",
+                "--ulimit", "nofile=256:256",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,size=64m",
-                "-v", workDir.toAbsolutePath() + ":/work",
+                "-v", workDir.toAbsolutePath() + ":/work:rw",
                 "-w", "/work",
                 language.image(),
                 "sh", "-c", script(language)));
@@ -155,7 +164,8 @@ public class CodeRunnerService {
         script.append("cd /work\n");
         script.append("export HOME=/tmp\n");          // 有些工具需要可写的 HOME
         script.append("export GOCACHE=/tmp/go-cache\n"); // Go 需要可写的构建缓存
-        script.append("ulimit -f 4096\n");            // 单文件上限 2MB（512B 块 × 4096）
+        // Go 工具链需要写较大的临时包文件；其他语言仍保持 2MB 单文件上限。
+        script.append("ulimit -f ").append(language == CodeLanguage.GO ? "65536" : "4096").append('\n');
         String compileLimit = String.valueOf(compileTimeout.toSeconds());
         String runLimit = String.valueOf(runTimeout.toSeconds());
         if (language.needsCompile()) {
@@ -244,16 +254,50 @@ public class CodeRunnerService {
     }
 
     private void deleteQuietly(Path dir) {
+        int[] failures = {0};
         try (var paths = Files.walk(dir)) {
             paths.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try {
                     Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                    // 临时目录清理失败不影响结果。
+                } catch (IOException exception) {
+                    failures[0]++;
                 }
             });
         } catch (IOException exception) {
-            log.debug("清理临时目录 {} 失败：{}", dir, exception.getMessage());
+            failures[0]++;
+            log.warn("遍历临时目录 {} 失败：{}", dir, exception.getMessage());
+        }
+        if (failures[0] > 0) {
+            log.warn("清理临时目录 {} 时有 {} 个条目失败，请检查 /tmp 权限", dir, failures[0]);
+        }
+    }
+
+    private static void makeWorldWritable(Path directory) {
+        try {
+            Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwxrwxrwx"));
+        } catch (IOException | UnsupportedOperationException exception) {
+            log.debug("当前文件系统不支持 POSIX 权限，跳过临时目录 chmod：{}", exception.getMessage());
+        }
+    }
+
+    /** 清理上次进程异常退出后遗留的目录；只处理一小时前的目录，避免误删正在执行的任务。 */
+    @PostConstruct
+    void cleanupStaleDirectories() {
+        Path tempRoot = Path.of(System.getProperty("java.io.tmpdir"));
+        Instant cutoff = Instant.now().minus(Duration.ofHours(1));
+        try (var paths = Files.list(tempRoot)) {
+            paths.filter(path -> path.getFileName().toString().startsWith("code-run-"))
+                    .filter(Files::isDirectory)
+                    .filter(path -> {
+                        try {
+                            return Files.getLastModifiedTime(path).toInstant().isBefore(cutoff);
+                        } catch (IOException exception) {
+                            return false;
+                        }
+                    })
+                    .forEach(this::deleteQuietly);
+        } catch (IOException exception) {
+            log.warn("扫描遗留沙箱目录失败：{}", exception.getMessage());
         }
     }
 }

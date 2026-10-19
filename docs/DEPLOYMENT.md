@@ -104,9 +104,14 @@ MEDIA_S3_PATH_STYLE=true
 | `MEDIA_MAX_REQUEST_SIZE` | `250MB` | 单个 multipart 请求体上限 |
 | `PRACTICE_FLYWAY_ENABLED` | `true` | 启动时是否执行 Flyway 迁移 |
 | `AUTH_TOKEN_SECRET` | 开发占位值 | JWT 与媒体签名密钥，**生产必须替换** |
+| `APP_ENV` | `local` | `production` 时若仍使用默认 JWT 密钥会拒绝启动 |
+| `BIND_HOST` | `127.0.0.1` | Docker Compose 默认只绑定本机；对局域网开放需显式修改 |
 | `AUTH_TOKEN_TTL_HOURS` | `12` | 令牌有效期（小时）。一轮练习约 20 分钟，别设太短 |
 | `AUTH_LOGIN_MAX_ATTEMPTS` | `10` | 同一用户名允许的连续登录失败次数 |
 | `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | `15` | 超过阈值后的锁定与计数窗口 |
+| `RATE_LIMIT_REGISTER_PER_HOUR` | `10` | 同一 IP 每小时注册请求上限 |
+| `RATE_LIMIT_LOGIN_PER_10_MINUTES` | `30` | 同一 IP 每 10 分钟登录请求上限 |
+| `TRUST_FORWARDED_FOR` | `false` | 是否信任反向代理传来的客户端 IP |
 | `Ali_API_KEY` | 空 | DashScope：对话、ASR、TTS、图像 |
 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` | `3` | 分析任务最大重试次数 |
 | `PRACTICE_ANALYSIS_PROVIDER_TIMEOUT_MS` | `120000` | 单次转写/评分调用超时，避免挂起拖垮队列 |
@@ -138,8 +143,9 @@ CODE_RUNNER_RUN_TIMEOUT_SECONDS=5
 CODE_RUNNER_MEMORY_MB=256
 ```
 
-执行时的隔离参数（禁网、内存/CPU/进程数上限、只读根文件系统、单文件大小上限、
-按容器名强杀超时任务）写在 `CodeRunnerService` 的类注释里，修改前请先读那段。
+执行时的隔离参数（禁网、non-root、capability 全收敛、no-new-privileges、内存/CPU/进程数上限、
+只读根文件系统、单文件大小上限、按容器名强杀超时任务）写在 `CodeRunnerService` 的类注释里。
+Go 因为编译缓存文件较大使用 32MB 上限，其他语言维持 2MB。
 
 各语言的镜像与体积：
 

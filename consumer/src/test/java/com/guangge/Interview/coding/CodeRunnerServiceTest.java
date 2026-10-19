@@ -2,7 +2,11 @@ package com.guangge.Interview.coding;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 默认不跑（CI 上没有 Docker daemon，跑了必然失败）。
  */
 class CodeRunnerServiceTest {
+
+    @TempDir
+    Path tempDir;
 
     private static CodeRunnerService runner(int runSeconds, int compileSeconds) {
         return new CodeRunnerService(true, 2, compileSeconds, runSeconds, 256, "docker");
@@ -38,7 +45,23 @@ class CodeRunnerServiceTest {
         assertEquals(CodeLanguage.CPP, CodeLanguage.fromId("CPP").orElseThrow());
         assertTrue(CodeLanguage.fromId("rust").isEmpty());
         assertTrue(CodeLanguage.JAVA.needsCompile());
+        assertTrue(CodeLanguage.GO.needsCompile());
         assertFalse(CodeLanguage.PYTHON.needsCompile());
+    }
+
+    @Test
+    void hardensTheContainerBoundary() {
+        List<String> command = runner(5, 10).dockerCommand(
+                CodeLanguage.PYTHON, tempDir, "test-container");
+
+        assertTrue(command.containsAll(List.of(
+                "--user", "65534:65534",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges:true",
+                "--network", "none"
+        )), command.toString());
+        assertTrue(command.stream().anyMatch(item -> item.startsWith("--ulimit")));
+        assertTrue(command.stream().anyMatch(item -> item.endsWith(":/work:rw")));
     }
 
     @Test
@@ -66,6 +89,26 @@ class CodeRunnerServiceTest {
 
         assertTrue(result.ok(), () -> "stderr=" + result.stderr());
         assertEquals("2,4,6", result.stdout().trim());
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "code.runner.integration", matches = "true")
+    void runsCpp() {
+        CodeRunResult result = runner(5, 60).run(CodeLanguage.CPP,
+                "#include <iostream>\nint main(){ std::cout << \"cpp\"; }\n", "");
+
+        assertTrue(result.ok(), () -> "stderr=" + result.stderr() + " compile=" + result.compileOutput());
+        assertEquals("cpp", result.stdout().trim());
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "code.runner.integration", matches = "true")
+    void runsGo() {
+        CodeRunResult result = runner(5, 60).run(CodeLanguage.GO,
+                "package main\nimport \"fmt\"\nfunc main(){ fmt.Print(\"go\") }\n", "");
+
+        assertTrue(result.ok(), () -> "stderr=" + result.stderr() + " compile=" + result.compileOutput());
+        assertEquals("go", result.stdout().trim());
     }
 
     @Test
