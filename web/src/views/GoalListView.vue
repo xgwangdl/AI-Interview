@@ -3,10 +3,12 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import {
-  GOAL_STATUS_LABELS, STAGE_LABELS, goalProgressPercent, interviewLabel, listGoals,
+  GOAL_STATUS_LABEL_KEYS, STAGE_LABEL_KEYS, goalProgressPercent, interviewLabel, listGoals,
 } from '../services/goals';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t, locale } = useI18n();
 const goals = ref([]);
 const loading = ref(true);
 const showArchived = ref(false);
@@ -18,7 +20,7 @@ async function load() {
   try {
     goals.value = await listGoals();
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取求职目标');
+    ElMessage.error(error?.message || t('goals.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -29,8 +31,8 @@ function visible(goal) {
 }
 
 function dateLabel(value) {
-  if (!value) return '未设日期';
-  return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
+  if (!value) return t('goals.noDate');
+  return new Intl.DateTimeFormat(locale.value, { month: 'long', day: 'numeric', weekday: 'short' })
     .format(new Date(value));
 }
 </script>
@@ -39,52 +41,52 @@ function dateLabel(value) {
   <section v-loading="loading" class="goals-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">JOB GOALS</div>
-        <h1>求职目标</h1>
-        <p>一个岗位一个目标：JD、简历、轮次和面试日期。练习会回挂到对应目标上。</p>
+        <div class="eyebrow">{{ t('goals.eyebrow') }}</div>
+        <h1>{{ t('goals.title') }}</h1>
+        <p>{{ t('goals.subtitle') }}</p>
       </div>
       <el-button class="primary-button" @click="router.push('/goals/new')">
-        <el-icon><Plus /></el-icon> 添加目标
+        <el-icon><Plus /></el-icon> {{ t('goals.add') }}
       </el-button>
     </div>
 
     <div class="goal-toolbar">
-      <el-switch v-model="showArchived" active-text="显示已归档" />
+      <el-switch v-model="showArchived" :active-text="t('goals.showArchived')" />
     </div>
 
     <div v-if="goals.filter(visible).length" class="goal-grid">
       <button v-for="goal in goals.filter(visible)" :key="goal.id" class="goal-card panel"
               @click="router.push(`/goals/${goal.id}`)">
         <div class="goal-top">
-          <span class="goal-company">{{ goal.company || '目标岗位' }}</span>
+          <span class="goal-company">{{ goal.company || t('goals.targetRole') }}</span>
           <el-tag :class="goal.status === 'archived' ? 'tag-muted' : 'tag-ready'" size="small">
-            {{ GOAL_STATUS_LABELS[goal.status] || goal.status }}
+            {{ GOAL_STATUS_LABEL_KEYS[goal.status] ? t(GOAL_STATUS_LABEL_KEYS[goal.status]) : goal.status }}
           </el-tag>
         </div>
         <strong class="goal-role">{{ goal.role }}</strong>
         <div class="goal-meta">
-          <span>{{ STAGE_LABELS[goal.stage] || goal.stage }}</span>
+          <span>{{ STAGE_LABEL_KEYS[goal.stage] ? t(STAGE_LABEL_KEYS[goal.stage]) : goal.stage }}</span>
           <span>{{ dateLabel(goal.interviewAt) }}</span>
         </div>
         <div class="goal-countdown" :class="{ urgent: goal.daysUntilInterview != null && goal.daysUntilInterview <= 3 }">
-          {{ interviewLabel(goal.daysUntilInterview) }}
+          {{ interviewLabel(goal.daysUntilInterview, t) }}
         </div>
         <div class="goal-progress">
           <span><i :style="{ width: `${goalProgressPercent(goal.progress)}%` }"></i></span>
-          <small>{{ goal.progress?.planCompleted || 0 }}/{{ goal.progress?.planItems || 0 }} 训练项</small>
+          <small>{{ t('goals.trainingItems', { completed: goal.progress?.planCompleted || 0, total: goal.progress?.planItems || 0 }) }}</small>
         </div>
         <div class="goal-stats">
-          <span>{{ goal.progress?.sessions || 0 }} 场练习</span>
-          <span>{{ goal.progress?.averageScore != null ? goal.progress.averageScore + ' 分' : '还没有分数' }}</span>
+          <span>{{ t('goals.sessions', { count: goal.progress?.sessions || 0 }) }}</span>
+          <span>{{ goal.progress?.averageScore != null ? t('goals.points', { score: goal.progress.averageScore }) : t('goals.noScore') }}</span>
         </div>
       </button>
     </div>
 
     <div v-else class="panel empty-goals">
       <el-icon><Aim /></el-icon>
-      <strong>还没有求职目标</strong>
-      <p>先添加一个目标岗位和面试日期，系统才能生成"今天练什么"。</p>
-      <el-button class="primary-button" @click="router.push('/goals/new')">添加第一个目标</el-button>
+      <strong>{{ t('goals.emptyTitle') }}</strong>
+      <p>{{ t('goals.emptyHint') }}</p>
+      <el-button class="primary-button" @click="router.push('/goals/new')">{{ t('goals.addFirst') }}</el-button>
     </div>
   </section>
 </template>

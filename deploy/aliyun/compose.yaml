@@ -1,0 +1,121 @@
+name: light-interview
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-interview}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-interview}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 500m
+    shm_size: 128m
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "64mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 96m
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: light-interview-backend:aliyun
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-interview}
+      DATABASE_USERNAME: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      REDIS_HOST: redis
+      SERVER_PORT: 8088
+      MEDIA_PROVIDER: local
+      MEDIA_STORAGE_DIR: /app/data/media
+      PRACTICE_FLYWAY_ENABLED: "true"
+      APP_ENV: production
+      TRUST_FORWARDED_FOR: "true"
+      CODE_RUNNER_ENABLED: "false"
+    volumes:
+      - app-media:/app/data/media
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:8088/actuator/health >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    mem_limit: 900m
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    image: light-interview-web:aliyun
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1/ >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-media:

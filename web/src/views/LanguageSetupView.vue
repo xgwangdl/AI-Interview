@@ -3,8 +3,9 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  LANGUAGE_LABELS, createSession, deleteSession, listSessions, loadOptions, pickVoice, sessionSubtitle,
+  LANGUAGE_LABELS, LEVEL_LABEL_KEYS, createSession, deleteSession, listSessions, loadOptions, pickVoice, sessionSubtitle,
 } from '../services/language';
+import { useI18n } from 'vue-i18n';
 
 /**
  * 外语口语的入口：选语言 → 选场景 → 选水平 → 开始。
@@ -12,6 +13,7 @@ import {
  * 这里不做向导：口语练习的门槛在"敢开口"，配置每多一步就多一层劝退。
  */
 const router = useRouter();
+const { t, locale } = useI18n();
 const options = ref(null);
 const sessions = ref([]);
 const loading = ref(true);
@@ -37,7 +39,7 @@ async function load() {
     maxTurns.value = options.value?.defaultMaxTurns || 8;
     chooseLanguage(language.value);
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取外语练习配置');
+    ElMessage.error(error?.message || t('language.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -71,12 +73,12 @@ function checkVoice() {
   const spec = currentLanguage.value;
   if (!spec || spec.serverVoice) return;
   if (typeof window === 'undefined' || !window.speechSynthesis) {
-    voiceHint.value = '这台设备没有语音合成能力：AI 的话只能看文字。';
+    voiceHint.value = t('language.noSpeech');
     return;
   }
   const voices = window.speechSynthesis.getVoices();
   if (voices.length && !pickVoice(voices, spec.browserVoice)) {
-    voiceHint.value = '本机没有日语语音：AI 的话会显示成文字。用 Edge 或在系统中安装日语语音包就能听到。';
+    voiceHint.value = t('language.noJapaneseVoice');
   }
 }
 
@@ -92,7 +94,7 @@ async function start() {
     });
     router.push(`/language/${session.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '无法开始这次练习');
+    ElMessage.error(error?.message || t('language.startFailed'));
   } finally {
     starting.value = false;
   }
@@ -104,8 +106,8 @@ function open(session) {
 
 async function remove(session) {
   try {
-    await ElMessageBox.confirm('删除后这段对话的录音与复盘都会清除。', '删除这次练习？', {
-      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
+    await ElMessageBox.confirm(t('language.deleteConfirmBody'), t('language.deleteConfirmTitle'), {
+      confirmButtonText: t('language.deleteAction'), cancelButtonText: t('common.cancel'), type: 'warning',
     });
   } catch {
     return;
@@ -114,7 +116,7 @@ async function remove(session) {
     await deleteSession(session.id);
     sessions.value = sessions.value.filter((item) => item.id !== session.id);
   } catch (error) {
-    ElMessage.error(error?.message || '删除失败');
+    ElMessage.error(error?.message || t('language.deleteFailed'));
   }
 }
 
@@ -129,16 +131,16 @@ function scenarioTitle(session) {
   <section v-loading="loading" class="language-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">SPEAKING PRACTICE</div>
-        <h1>外语口语练习</h1>
-        <p>选一个场景，和 AI 一句一句聊。说完先给回复，再指出这一句怎么说得更好。</p>
+        <div class="eyebrow">{{ t('language.eyebrow') }}</div>
+        <h1>{{ t('language.title') }}</h1>
+        <p>{{ t('language.subtitle') }}</p>
       </div>
-      <el-tag class="tag-muted">L1 轮次对话 · 每轮约 3-6 秒</el-tag>
+      <el-tag class="tag-muted">{{ t('language.modeTag') }}</el-tag>
     </div>
 
     <section v-if="options" class="panel setup-panel">
       <div class="field-row">
-        <span class="field-label">语言</span>
+        <span class="field-label">{{ t('language.language') }}</span>
         <el-radio-group v-if="options.languages.length > 1" :model-value="language" class="language-tabs" @change="chooseLanguage">
           <el-radio-button v-for="item in options.languages" :key="item.code" :value="item.code">
             {{ item.displayName }}<small>{{ LANGUAGE_LABELS[item.code] }}</small>
@@ -148,7 +150,7 @@ function scenarioTitle(session) {
       </div>
 
       <div class="field-row">
-        <span class="field-label">场景</span>
+        <span class="field-label">{{ t('language.scenario') }}</span>
         <div class="scenario-grid">
           <button v-for="item in scenarios" :key="item.id" class="scenario-card"
                   :class="{ active: scenario === item.id }" @click="scenario = item.id">
@@ -159,45 +161,45 @@ function scenarioTitle(session) {
       </div>
 
       <div class="field-row compact">
-        <span class="field-label">水平</span>
+        <span class="field-label">{{ t('language.levelLabel') }}</span>
         <el-select v-model="level" class="small-select">
-          <el-option v-for="item in options.levels" :key="item.key" :label="item.label" :value="item.key" />
+          <el-option v-for="item in options.levels" :key="item.key" :label="LEVEL_LABEL_KEYS[item.key] ? t(LEVEL_LABEL_KEYS[item.key]) : item.label" :value="item.key" />
         </el-select>
-        <span class="field-label second">轮数</span>
+        <span class="field-label second">{{ t('language.turns') }}</span>
         <el-select v-model="maxTurns" class="small-select">
-          <el-option v-for="count in [4, 8, 12]" :key="count" :label="`${count} 轮`" :value="count" />
+          <el-option v-for="count in [4, 8, 12]" :key="count" :label="t('language.turnCount', { count })" :value="count" />
         </el-select>
-        <span class="field-label second">AI 声音</span>
+        <span class="field-label second">{{ t('language.voice') }}</span>
         <el-select :model-value="voiceMode" class="small-select wide" @change="changeVoiceMode">
-          <el-option label="系统语音（更快）" value="browser" />
-          <el-option label="服务端音色（更自然）" value="server" />
+          <el-option :label="t('language.browserVoice')" value="browser" />
+          <el-option :label="t('language.serverVoice')" value="server" />
         </el-select>
       </div>
 
-      <p v-if="selectedScenario" class="goal-line">这一场的目标：{{ selectedScenario.goal }}</p>
+      <p v-if="selectedScenario" class="goal-line">{{ t('language.scenarioGoal', { goal: selectedScenario.goal }) }}</p>
       <p v-if="voiceHint" class="voice-hint"><el-icon><WarningFilled /></el-icon>{{ voiceHint }}</p>
 
       <el-button class="primary-button start-button" :loading="starting" @click="start">
-        <el-icon><Microphone /></el-icon> 开始对话
+        <el-icon><Microphone /></el-icon> {{ t('language.start') }}
       </el-button>
     </section>
 
     <section class="history-section">
-      <div class="section-title"><span>练习记录</span><small>录音与文字保留 7 天</small></div>
+      <div class="section-title"><span>{{ t('language.history') }}</span><small>{{ t('language.retention') }}</small></div>
       <div v-if="sessions.length" class="panel history-list">
         <button v-for="item in sessions" :key="item.id" class="history-row" @click="open(item)">
           <span class="history-lang">{{ LANGUAGE_LABELS[item.language] || item.language }}</span>
           <span class="history-main">
             <strong>{{ scenarioTitle(item) }}</strong>
-            <small>{{ sessionSubtitle(item) }}</small>
+            <small>{{ sessionSubtitle(item, t) }}</small>
           </span>
-          <span class="history-date">{{ new Date(item.createdAt).toLocaleDateString('zh-CN') }}</span>
+          <span class="history-date">{{ new Date(item.createdAt).toLocaleDateString(locale) }}</span>
           <el-icon class="history-arrow"><ArrowRight /></el-icon>
         </button>
       </div>
       <div v-else class="panel history-empty">
-        <strong>还没有外语练习</strong>
-        <p>选一个场景，先说第一句。每轮都会给出回复和一句"更自然的说法"。</p>
+        <strong>{{ t('language.empty') }}</strong>
+        <p>{{ t('language.emptyHint') }}</p>
       </div>
     </section>
   </section>

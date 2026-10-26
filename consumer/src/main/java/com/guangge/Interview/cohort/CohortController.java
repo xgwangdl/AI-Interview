@@ -109,6 +109,15 @@ public class CohortController {
         return assignments.get(owners.requireOwner(authorization), id, assignmentId);
     }
 
+    @PutMapping("/{id}/assignments/{assignmentId}")
+    public AssignmentView updateAssignment(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id,
+            @PathVariable UUID assignmentId,
+            @Valid @RequestBody AssignmentRequest request) {
+        return assignments.update(owners.requireOwner(authorization), id, assignmentId, request);
+    }
+
     @PostMapping("/{id}/help")
     public ResponseEntity<CohortHelpView> requestHelp(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,

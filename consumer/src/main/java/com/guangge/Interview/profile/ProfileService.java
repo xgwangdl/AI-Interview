@@ -16,9 +16,11 @@ public class ProfileService {
 
     private static final Set<String> ALLOWED_THEMES = Set.of("green", "blue", "amber");
     private static final Set<String> ALLOWED_FONT_SCALES = Set.of("standard", "large", "xlarge");
+    private static final Set<String> ALLOWED_LANGUAGES = Set.of("zh-CN", "en-US", "ja-JP");
     private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
     private static final String DEFAULT_FONT_SCALE = "standard";
     private static final String DEFAULT_THEME = "green";
+    private static final String DEFAULT_LANGUAGE = "zh-CN";
 
     private final CandidatesRepository candidates;
 
@@ -53,12 +55,23 @@ public class ProfileService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "未知主题色：" + theme);
         }
 
+        String language = request.language();
+        if (language == null || language.isBlank()) {
+            language = defaultIfBlank(candidate.getLanguage(), DEFAULT_LANGUAGE);
+        } else {
+            language = language.trim();
+            if (!ALLOWED_LANGUAGES.contains(language)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "未知界面语言：" + language);
+            }
+        }
+
         candidate.setDisplayName(displayName);
         candidate.setEmail(normalizeOptional(request.email()));
         candidate.setTimezone(timezone);
         candidate.setFontScale(fontScale);
         candidate.setReduceMotion(request.reduceMotion());
         candidate.setTheme(theme);
+        candidate.setLanguage(language);
         return toView(candidates.save(candidate));
     }
 
@@ -93,6 +106,7 @@ public class ProfileService {
                 defaultIfBlank(candidate.getFontScale(), DEFAULT_FONT_SCALE),
                 candidate.isReduceMotion(),
                 defaultIfBlank(candidate.getTheme(), DEFAULT_THEME),
+                defaultIfBlank(candidate.getLanguage(), DEFAULT_LANGUAGE),
                 candidate.getCreatedAt());
     }
 }

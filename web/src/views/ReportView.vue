@@ -8,7 +8,8 @@ import {
   generateAnswerRewrite, getAnswerMedia, getPracticeReport, reEvaluateAnswer,
   retryPracticeAnalysis, saveAnswerRewrite, updateAnswerTranscript,
 } from '../services/api';
-import { buildQuestions, styleLabels, typeLabels } from '../data/questions';
+import { buildQuestions, STYLE_LABEL_KEYS, TYPE_LABEL_KEYS } from '../data/questions';
+import { DIMENSION_LABEL_KEYS, DIMENSION_LABELS } from '../services/practiceArchive';
 import DigitalHuman from '../components/DigitalHuman.vue';
 import { createAvatarAudio } from '../services/avatarAudio';
 import { revealedSentenceCount, splitSentences } from '../services/mouthAnimation';
@@ -17,9 +18,11 @@ import {
 } from '../services/avatarState';
 import { getSampleAnswerAudio, getSampleAnswerNarration } from '../services/api';
 import { listCohorts, requestHelp } from '../services/cohorts';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t, locale } = useI18n();
 const practice = usePracticeStore();
 const video = ref();
 const currentIndex = ref(0);
@@ -32,7 +35,23 @@ const questions = computed(() => session.value ? (session.value.questions || bui
 const currentQuestion = computed(() => questions.value[currentIndex.value]);
 const currentAnswer = computed(() => session.value?.answers.find((answer) => answer.questionIndex === currentIndex.value));
 const totalSeconds = computed(() => session.value?.answers.reduce((sum, answer) => sum + answer.durationSeconds, 0) || 0);
-const totalTime = computed(() => `${Math.floor(totalSeconds.value / 60)} 分 ${totalSeconds.value % 60} 秒`);
+const totalTime = computed(() => t('report.totalTime', {
+  minutes: Math.floor(totalSeconds.value / 60),
+  seconds: totalSeconds.value % 60,
+}));
+const interviewTypeLabel = computed(() => (
+  TYPE_LABEL_KEYS[session.value?.interviewType]
+    ? t(TYPE_LABEL_KEYS[session.value.interviewType])
+    : t('report.mockInterview')
+));
+const interviewStyleLabel = computed(() => (
+  STYLE_LABEL_KEYS[session.value?.interviewerStyle]
+    ? t(STYLE_LABEL_KEYS[session.value.interviewerStyle])
+    : t('report.professionalCalm')
+));
+const formattedSessionDate = computed(() => new Intl.DateTimeFormat(locale.value, {
+  year: 'numeric', month: 'long', day: 'numeric',
+}).format(new Date(session.value?.completedAt || session.value?.createdAt || Date.now())));
 const currentReport = computed(() => report.value?.questions?.find((item) => item.questionIndex === currentIndex.value) || null);
 const currentEvaluation = computed(() => currentReport.value?.evaluation || null);
 const transcriptEdited = computed(() => Boolean(
@@ -66,8 +85,10 @@ function followUpLabel(index) {
   const item = report.value?.questions?.find((question) => question.questionIndex === index);
   if (!item?.followUp) return '';
   const parent = Number.isInteger(item.parentQuestionIndex) ? item.parentQuestionIndex + 1 : null;
-  const round = item.followUpRound > 1 ? `第 ${item.followUpRound} 次追问` : '面试官追问';
-  return parent ? `${round} · 关于第 ${parent} 题` : round;
+  const round = item.followUpRound > 1
+    ? t('report.followUpNth', { round: item.followUpRound })
+    : t('session.interviewerFollowUp');
+  return parent ? t('report.followUpAbout', { label: round, parent }) : round;
 }
 
 // --- 让面试官把「示范回答」念出来 ---
@@ -149,56 +170,67 @@ async function speakSampleAnswer() {
       // 点击按钮本身就是用户手势，正常不会走到这里；真被拦就退回静止
       sampleSpeaking.value = false;
       setAvatarState(AVATAR_STATE.IDLE);
-      ElMessage.warning('浏览器拦了自动播放，请再点一次。');
+      ElMessage.warning(t('report.sampleAutoplayBlocked'));
       return;
     }
     sampleSpeaking.value = true;
   } catch (error) {
     sampleSpeaking.value = false;
     finished.value = true;           // 拿不到语音也要让用户能读到文字
-    if (error?.status === 503) ElMessage.warning('语音合成暂不可用，可以直接看下面的文字示范。');
-    else ElMessage.error(error?.message || '无法播放示范回答');
+    if (error?.status === 503) ElMessage.warning(t('report.speechUnavailable'));
+    else ElMessage.error(error?.message || t('report.samplePlayFailed'));
     setAvatarState(AVATAR_STATE.IDLE);
   } finally {
     sampleLoading.value = false;
   }
 }
-const dimensions = [
-  { key: 'relevance', label: '内容相关性' },
-  { key: 'completeness', label: '回答完整度' },
-  { key: 'professionalism', label: '专业程度' },
-  { key: 'starStructure', label: 'STAR 结构' },
-  { key: 'logic', label: '回答逻辑' },
-];
-const dimensionLabels = Object.fromEntries(dimensions.map((item) => [item.key, item.label]));
+const dimensions = computed(() => Object.keys(DIMENSION_LABEL_KEYS).map((key) => ({
+  key,
+  label: t(DIMENSION_LABEL_KEYS[key]),
+})));
+const dimensionLabels = computed(() => Object.fromEntries(
+  Object.keys(DIMENSION_LABELS).map((key) => [key, t(DIMENSION_LABEL_KEYS[key])]),
+));
 const reportStatusLabel = computed(() => {
-  if (reportLoading.value) return '正在分析';
+  if (reportLoading.value) return t('report.analyzing');
   const status = report.value?.status;
-  if (status === 'ready') return '分析已完成';
-  if (status === 'partial') return '部分题目已分析';
-  if (status === 'analysis_failed') return '分析失败';
-  if (report.value?.analysis?.status === 'processing') return '正在分析';
-  if (status === 'awaiting_analysis') return '等待分析服务';
-  return session.value?.answers.some((answer) => answer.mediaId) ? '等待分析服务' : '录像未同步';
+  if (status === 'ready') return t('report.analysisReady');
+  if (status === 'partial') return t('report.partialReady');
+  if (status === 'analysis_failed') return t('report.analysisFailed');
+  if (report.value?.analysis?.status === 'processing') return t('report.analyzing');
+  if (status === 'awaiting_analysis') return t('report.awaitingAnalysis');
+  return session.value?.answers.some((answer) => answer.mediaId)
+    ? t('report.awaitingAnalysis')
+    : t('report.videoNotSynced');
 });
-const reportHeadline = computed(() => (report.value?.status === 'ready' ? '视频练习与复盘已完成' : '视频练习已完成'));
+const reportHeadline = computed(() => (
+  report.value?.status === 'ready' ? t('report.readyHeadline') : t('report.completedHeadline')
+));
 const reportSummaryText = computed(() => {
-  const base = `已保存 ${session.value?.answers.length || 0} 段回答，共 ${totalTime.value}。`;
-  if (reportLoading.value) return `${base} 正在读取 AI 复盘结果…`;
+  const base = t('report.summaryBase', { count: session.value?.answers.length || 0, duration: totalTime.value });
+  if (reportLoading.value) return t('report.summaryReading', { base });
   const analysis = report.value?.analysis;
   if (analysis?.status === 'failed') {
-    return `${base} 转写或评分任务失败${analysis.error ? `：${analysis.error}` : ''}。可以点击重试，或删除后重新录制。`;
+    return t('report.summaryAnalysisFailed', {
+      base,
+      error: analysis.error ? t('report.summaryErrorDetail', { error: analysis.error }) : '',
+    });
   }
   const summary = report.value?.summary;
   if (summary?.averageOverallScore != null) {
     const details = [];
-    if (summary.speechRateCharactersPerMinute) details.push(`平均语速 ${Math.round(summary.speechRateCharactersPerMinute)} 字/分`);
-    if (summary.totalPauseCount) details.push(`平均停顿 ${summary.totalPauseCount} 次`);
-    if (summary.totalFillerWordCount) details.push(`平均口头禅 ${summary.totalFillerWordCount} 次`);
-    const followUps = followUpCount.value ? ` 其中 ${followUpCount.value} 个回答是面试官的追问。` : '';
-    return `${base} 综合 ${summary.averageOverallScore.toFixed(1)} 分${details.length ? ` · ${details.join(' · ')}` : ''}。${followUps}`;
+    if (summary.speechRateCharactersPerMinute) details.push(t('report.speechRate', { value: Math.round(summary.speechRateCharactersPerMinute) }));
+    if (summary.totalPauseCount) details.push(t('report.pauses', { count: summary.totalPauseCount }));
+    if (summary.totalFillerWordCount) details.push(t('report.fillers', { count: summary.totalFillerWordCount }));
+    const followUps = followUpCount.value ? t('report.followUps', { count: followUpCount.value }) : '';
+    return t('report.summaryScore', {
+      base,
+      score: summary.averageOverallScore.toFixed(1),
+      details: details.length ? ` · ${details.join(' · ')}` : '',
+      followUps,
+    });
   }
-  return `${base} 后台正在转写并评分，完成后会自动显示逐题反馈。`;
+  return t('report.summaryPending', { base });
 });
 let activeUrl;
 let mediaRequest = 0;
@@ -258,7 +290,7 @@ async function retryAnalysis() {
   try {
     report.value = await retryPracticeAnalysis(session.value.id);
   } catch {
-    ElMessage.error('重试失败，请稍后再试。');
+    ElMessage.error(t('report.retryFailed'));
   } finally {
     reportLoading.value = false;
     scheduleReportPoll();
@@ -300,7 +332,7 @@ async function selectQuestion(index) {
     }
   } catch {
     if (requestId !== mediaRequest) return;
-    if (!signedMediaUrl.value) ElMessage.error('无法读取视频片段，请确认练习仍在保留期内。');
+    if (!signedMediaUrl.value) ElMessage.error(t('report.videoReadFailed'));
   } finally {
     if (requestId === mediaRequest) {
       if (!mediaUrl.value && signedMediaUrl.value) mediaUrl.value = signedMediaUrl.value;
@@ -322,10 +354,10 @@ async function saveTranscript() {
     await updateAnswerTranscript(currentReport.value.answerId, text);
     await reEvaluateAnswer(currentReport.value.answerId);
     editingTranscript.value = false;
-    ElMessage.success('转写已修正，正在重新评分这一题…');
+    ElMessage.success(t('report.transcriptUpdated'));
     await loadReport();
   } catch (error) {
-    ElMessage.error(error?.message || '保存转写失败');
+    ElMessage.error(error?.message || t('report.transcriptSaveFailed'));
   } finally {
     transcriptSaving.value = false;
   }
@@ -340,9 +372,9 @@ async function generateRewrite() {
     rewriteEditing.value = false;
     // 报告是服务端组装的：生成成功后重新拉一次，页面才有 rewriteText / source 标签
     await loadReport();
-    ElMessage.success('已生成改写；需要的话可以点「编辑」再改');
+    ElMessage.success(t('report.rewriteGenerated'));
   } catch (error) {
-    ElMessage.error(error?.message || '生成改写失败');
+    ElMessage.error(error?.message || t('report.rewriteGenerateFailed'));
   } finally {
     rewriting.value = false;
   }
@@ -352,17 +384,17 @@ async function saveRewrite() {
   if (!currentReport.value?.answerId || savingRewrite.value) return;
   const text = rewriteDraft.value.trim();
   if (!text) {
-    ElMessage.warning('改写内容不能为空');
+    ElMessage.warning(t('report.rewriteEmpty'));
     return;
   }
   savingRewrite.value = true;
   try {
     await saveAnswerRewrite(currentReport.value.answerId, text);
     rewriteEditing.value = false;
-    ElMessage.success('改写已保存');
+    ElMessage.success(t('report.rewriteSaved'));
     await loadReport();
   } catch (error) {
-    ElMessage.error(error?.message || '保存改写失败');
+    ElMessage.error(error?.message || t('report.rewriteSaveFailed'));
   } finally {
     savingRewrite.value = false;
   }
@@ -384,7 +416,7 @@ async function playAttempt(attempt) {
     mediaUrl.value = activeUrl;
   } catch {
     mediaUrl.value = attempt.mediaSignedUrl || '';
-    if (!mediaUrl.value) ElMessage.error('这段视频暂时无法读取');
+    if (!mediaUrl.value) ElMessage.error(t('report.attemptVideoFailed'));
   }
 }
 
@@ -399,9 +431,9 @@ async function submitHelp() {
       note: helpNote.value.trim() || null,
     });
     helpNote.value = '';
-    ElMessage.success('已发给助教，可以在小组详情里查看反馈');
+    ElMessage.success(t('report.helpSent'));
   } catch (error) {
-    ElMessage.error(error?.message || '发送失败');
+    ElMessage.error(error?.message || t('report.sendFailed'));
   } finally {
     helpSending.value = false;
   }
@@ -426,14 +458,20 @@ function evidenceWidth(item) {
 }
 
 async function removeSession() {
-  try { await ElMessageBox.confirm('删除后，这次练习的所有视频片段与报告数据都会清除，无法恢复。', '删除练习？', { confirmButtonText: '删除全部数据', cancelButtonText: '取消', type: 'warning' }); }
+  try {
+    await ElMessageBox.confirm(
+      t('report.deleteConfirmBody'),
+      t('report.deleteConfirmTitle'),
+      { confirmButtonText: t('report.deleteConfirmAction'), cancelButtonText: t('common.cancel'), type: 'warning' },
+    );
+  }
   catch { return; }
   try {
     await practice.remove(session.value.id);
-    ElMessage.success('练习视频与记录已删除');
+    ElMessage.success(t('report.deleted'));
     router.replace('/history');
   } catch (error) {
-    ElMessage.error(error.message || '删除失败，请检查连接后重试。');
+    ElMessage.error(error.message || t('report.deleteFailed'));
   }
 }
 
@@ -449,95 +487,157 @@ onBeforeUnmount(() => {
 
 <template>
   <section v-if="session" class="report-page">
-    <div class="report-heading"><div><button class="report-back" @click="router.push('/history')"><el-icon><ArrowLeft /></el-icon>练习记录</button><h1>{{ session.role }} <span>练习报告</span></h1><p>{{ typeLabels[session.interviewType] || '模拟面试' }} · {{ styleLabels[session.interviewerStyle] || '专业平和' }} · {{ new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(session.completedAt || session.createdAt)) }}</p></div><el-button class="delete-button" @click="removeSession"><el-icon><Delete /></el-icon>删除练习数据</el-button></div>
+    <div class="report-heading"><div><button class="report-back" @click="router.push('/history')"><el-icon><ArrowLeft /></el-icon>{{ t('report.backHistory') }}</button><h1>{{ session.role }} <span>{{ t('report.reportSuffix') }}</span></h1><p>{{ interviewTypeLabel }} · {{ interviewStyleLabel }} · {{ formattedSessionDate }}</p></div><el-button class="delete-button" @click="removeSession"><el-icon><Delete /></el-icon>{{ t('report.deleteData') }}</el-button></div>
     <div class="report-status panel"><div class="status-symbol"><el-icon><VideoCamera /></el-icon></div><div class="status-copy"><strong>{{ reportHeadline }}</strong><span>{{ reportSummaryText }}</span></div><el-tag class="analysis-tag" size="small"><i></i>{{ reportStatusLabel }}</el-tag></div>
     <div class="report-layout">
-      <section class="review-section"><div class="section-title">逐题回放 <small>{{ session.answers.length }} 段视频<template v-if="followUpCount">（含 {{ followUpCount }} 个追问）</template> · 点击问题可切换片段</small></div><div class="player-panel panel"><div class="player-frame"><video v-if="mediaUrl" ref="video" :src="mediaUrl" controls playsinline></video><div v-else class="player-empty"><el-icon v-if="mediaLoading" class="loading"><Loading /></el-icon><template v-else><el-icon><VideoCamera /></el-icon><strong>{{ currentAnswer ? '这段视频暂时无法读取' : '本题尚未录制' }}</strong><span>{{ currentAnswer ? '本地媒体文件可能已被清理。' : '本轮练习未完成全部问题。' }}</span></template></div><div class="player-label">{{ String(currentIndex + 1).padStart(2,'0') }} / {{ String(questions.length).padStart(2,'0') }}</div></div><div class="transcript-panel"><div class="transcript-header"><strong>回答转写</strong><el-tag :class="currentReport?.transcriptText ? 'tag-ready' : 'tag-muted'" size="small">{{ currentReport?.transcriptText ? '已生成' : '尚未生成' }}</el-tag></div><p v-if="currentReport?.transcriptText" class="transcript-text">{{ currentReport.transcriptText }}</p><p v-else>ASR 服务配置后，回答转写和时间戳会显示在这里，并可点击时间跳转到对应视频片段。</p><div v-if="currentAnswer" class="answer-meta"><span><el-icon><Timer /></el-icon>回答时长 {{ formatDuration(currentAnswer.durationSeconds) }}</span><span><el-icon><Files /></el-icon>{{ (currentAnswer.bytes / 1024 / 1024).toFixed(1) }} MB</span></div></div></div>
+      <section class="review-section"><div class="section-title">{{ t('report.replayTitle') }} <small>{{ t('report.videoCount', { count: session.answers.length }) }}<template v-if="followUpCount">{{ t('report.followUpsPart', { count: followUpCount }) }}</template>{{ t('report.switchClipHint') }}</small></div><div class="player-panel panel"><div class="player-frame"><video v-if="mediaUrl" ref="video" :src="mediaUrl" controls playsinline></video><div v-else class="player-empty"><el-icon v-if="mediaLoading" class="loading"><Loading /></el-icon><template v-else><el-icon><VideoCamera /></el-icon><strong>{{ currentAnswer ? t('report.unavailableClip') : t('report.notRecorded') }}</strong><span>{{ currentAnswer ? t('report.localCleared') : t('report.incomplete') }}</span></template></div><div class="player-label">{{ String(currentIndex + 1).padStart(2,'0') }} / {{ String(questions.length).padStart(2,'0') }}</div></div><div class="transcript-panel"><div class="transcript-header"><strong>{{ t('report.transcript') }}</strong><el-tag :class="currentReport?.transcriptText ? 'tag-ready' : 'tag-muted'" size="small">{{ currentReport?.transcriptText ? t('report.generated') : t('report.notGenerated') }}</el-tag></div><p v-if="currentReport?.transcriptText" class="transcript-text">{{ currentReport.transcriptText }}</p><p v-else>{{ t('report.transcriptEmpty') }}</p><div v-if="currentAnswer" class="answer-meta"><span><el-icon><Timer /></el-icon>{{ t('report.answerDuration', { duration: formatDuration(currentAnswer.durationSeconds) }) }}</span><span><el-icon><Files /></el-icon>{{ (currentAnswer.bytes / 1024 / 1024).toFixed(1) }} MB</span></div></div></div>
       <div v-if="currentReport?.transcriptText" class="transcript-edit-bar panel">
         <div class="transcript-edit-head">
           <div>
-            <strong>转写校正</strong>
-            <el-tag v-if="transcriptEdited" class="tag-warn" size="small">已人工修正</el-tag>
-            <small>修正后只重新评分这一题，视频不会改变</small>
+            <strong>{{ t('report.transcriptCorrection') }}</strong>
+            <el-tag v-if="transcriptEdited" class="tag-warn" size="small">{{ t('report.manuallyCorrected') }}</el-tag>
+            <small>{{ t('report.correctionHint') }}</small>
           </div>
           <button v-if="!editingTranscript" class="text-action" @click="beginTranscriptEdit">
-            <el-icon><EditPen /></el-icon>修正转写
+            <el-icon><EditPen /></el-icon>{{ t('report.editTranscript') }}
           </button>
         </div>
         <template v-if="editingTranscript">
           <el-input v-model="transcriptDraft" type="textarea" :rows="4" maxlength="20000" show-word-limit />
           <div class="transcript-edit-actions">
-            <el-button class="soft-button" :disabled="transcriptSaving" @click="editingTranscript = false">取消</el-button>
-            <el-button class="primary-button" :loading="transcriptSaving" @click="saveTranscript">保存并重新评分</el-button>
+            <el-button class="soft-button" :disabled="transcriptSaving" @click="editingTranscript = false">{{ t('common.cancel') }}</el-button>
+            <el-button class="primary-button" :loading="transcriptSaving" @click="saveTranscript">{{ t('report.saveAndRegrade') }}</el-button>
           </div>
         </template>
         <template v-else>
           <button v-if="currentReport?.transcriptOriginal" class="text-action muted"
                   @click="showTranscriptOriginal = !showTranscriptOriginal">
-            {{ showTranscriptOriginal ? '收起原始转写' : '查看原始转写' }}
+            {{ showTranscriptOriginal ? t('report.collapseOriginal') : t('report.viewOriginal') }}
           </button>
           <p v-if="showTranscriptOriginal && currentReport?.transcriptOriginal" class="transcript-original">
-            原始：{{ currentReport.transcriptOriginal }}
+            {{ t('report.original', { text: currentReport.transcriptOriginal }) }}
           </p>
         </template>
       </div>
       <div v-if="currentReport?.transcriptText" class="rewrite-panel panel">
         <div class="transcript-edit-head">
           <div>
-            <strong>回答改写</strong>
-            <el-tag v-if="currentReport?.rewriteText" class="tag-warn" size="small">{{ currentReport.rewriteSource === 'user' ? '已编辑' : 'AI 改写' }}</el-tag>
-            <small>只优化表达，不新增事实；改写后可照着重录。</small>
+            <strong>{{ t('report.rewriteTitle') }}</strong>
+            <el-tag v-if="currentReport?.rewriteText" class="tag-warn" size="small">{{ currentReport.rewriteSource === 'user' ? t('report.edited') : t('report.aiRewrite') }}</el-tag>
+            <small>{{ t('report.rewriteHint') }}</small>
           </div>
           <div class="rewrite-actions">
             <el-button class="soft-button" :loading="rewriting" @click="generateRewrite">
-              {{ currentReport?.rewriteText ? '重新生成' : '让 AI 改写' }}
+              {{ currentReport?.rewriteText ? t('report.regenerate') : t('report.askAiRewrite') }}
             </el-button>
             <el-button v-if="currentReport?.rewriteText" class="soft-button" @click="rewriteEditing = !rewriteEditing">
-              {{ rewriteEditing ? '取消编辑' : '编辑' }}
+              {{ rewriteEditing ? t('report.cancelEdit') : t('report.edit') }}
             </el-button>
           </div>
         </div>
         <template v-if="rewriteEditing">
           <el-input v-model="rewriteDraft" type="textarea" :rows="4" maxlength="4000" show-word-limit />
           <div class="transcript-edit-actions">
-            <el-button class="soft-button" :disabled="savingRewrite" @click="rewriteEditing = false">取消</el-button>
-            <el-button class="primary-button" :loading="savingRewrite" @click="saveRewrite">保存改写</el-button>
+            <el-button class="soft-button" :disabled="savingRewrite" @click="rewriteEditing = false">{{ t('common.cancel') }}</el-button>
+            <el-button class="primary-button" :loading="savingRewrite" @click="saveRewrite">{{ t('report.saveRewrite') }}</el-button>
           </div>
         </template>
         <p v-else-if="currentReport?.rewriteText" class="rewrite-text">{{ currentReport.rewriteText }}</p>
-        <p v-else class="rewrite-empty">点「让 AI 改写」，基于你的原话生成一版更清楚的回答。</p>
+        <p v-else class="rewrite-empty">{{ t('report.rewriteEmptyHint') }}</p>
         <div v-if="currentReport?.rewriteText" class="rewrite-footer">
-          <button class="text-action" @click="startRetake"><el-icon><Refresh /></el-icon>照着重录（第 {{ (currentReport?.attempt || 1) + 1 }} 次）</button>
-          <small>每题最多 3 个版本</small>
+          <button class="text-action" @click="startRetake"><el-icon><Refresh /></el-icon>{{ t('report.retryTake', { attempt: (currentReport?.attempt || 1) + 1 }) }}</button>
+          <small>{{ t('report.maxVersions') }}</small>
         </div>
       </div>
       <div v-if="learnerCohorts.length && currentReport?.answerId" class="help-panel panel">
         <div class="transcript-edit-head">
-          <div><strong>这题需要帮助？</strong><small>把这道题发给小组助教，不会公开录像和转写</small></div>
+          <div><strong>{{ t('report.helpTitle') }}</strong><small>{{ t('report.helpHint') }}</small></div>
         </div>
         <div class="help-form">
           <el-select v-model="helpCohortId" class="help-select">
             <el-option v-for="cohort in learnerCohorts" :key="cohort.id" :label="cohort.name" :value="cohort.id" />
           </el-select>
-          <el-input v-model="helpNote" maxlength="1000" placeholder="补充你想问的问题（选填）" />
-          <el-button class="soft-button" :loading="helpSending" @click="submitHelp">发给助教</el-button>
+          <el-input v-model="helpNote" maxlength="1000" :placeholder="t('report.helpPlaceholder')" />
+          <el-button class="soft-button" :loading="helpSending" @click="submitHelp">{{ t('report.sendTeacher') }}</el-button>
         </div>
       </div>
       <div v-if="(currentReport?.attempts?.length || 0) > 1" class="attempt-panel panel">
-        <div class="section-title">版本对比 <small>旧 → 新</small></div>
+        <div class="section-title">{{ t('report.versionCompare') }} <small>{{ t('report.oldToNew') }}</small></div>
         <div class="attempt-grid">
           <button v-for="attempt in currentReport.attempts" :key="attempt.answerId" class="attempt-card"
                   :class="{ current: attempt.current, selected: selectedAttemptId === attempt.answerId }"
                   @click="playAttempt(attempt)">
-            <span>第 {{ attempt.attempt }} 次<el-tag v-if="attempt.current" class="tag-ready" size="small">当前</el-tag></span>
-            <strong>{{ attempt.evaluation?.overallScore != null ? attempt.evaluation.overallScore.toFixed(1) + ' 分' : '待评分' }}</strong>
-            <p>{{ attempt.transcriptText || '（还没有转写）' }}</p>
+            <span>{{ t('report.attemptNth', { attempt: attempt.attempt }) }}<el-tag v-if="attempt.current" class="tag-ready" size="small">{{ t('report.current') }}</el-tag></span>
+            <strong>{{ attempt.evaluation?.overallScore != null ? t('dashboard.points', { score: attempt.evaluation.overallScore.toFixed(1) }) : t('report.pendingScore') }}</strong>
+            <p>{{ attempt.transcriptText || t('report.noTranscript') }}</p>
           </button>
         </div>
-        <p class="attempt-tip">点某个版本可以在左侧播放器回看；当前版本用于趋势与档案。</p>
+        <p class="attempt-tip">{{ t('report.attemptTip') }}</p>
       </div>
-      <div class="question-list"><button v-for="(question,index) in questions" :key="question.id" class="question-card panel" :class="{ active: currentIndex === index, 'is-follow-up': Boolean(followUpLabel(index)) }" @click="selectQuestion(index)"><span class="question-number">{{ String(index + 1).padStart(2,'0') }}</span><span class="question-info"><small>{{ followUpLabel(index) || question.category }}</small><strong>{{ question.text }}</strong></span><span class="question-duration">{{ session.answers.find((answer) => answer.questionIndex === index) ? formatDuration(session.answers.find((answer) => answer.questionIndex === index).durationSeconds) : '未回答' }}</span><el-icon v-if="currentIndex === index"><ArrowRight /></el-icon></button></div></section>
-      <aside class="score-section"><div class="section-title">回答分析 <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? '已生成' : (reportLoading ? '分析中' : '等待接入') }}</el-tag></div><div class="score-panel panel"><template v-if="currentEvaluation"><div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>综合得分</span></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div><div class="delivery-list"><div><span>语速</span><i>{{ Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }} 字/分</i></div><div><span>停顿</span><i>{{ currentEvaluation.delivery.pauseCount }} 次 · 共 {{ currentEvaluation.delivery.totalPauseSeconds }} 秒</i></div><div><span>口头禅</span><i>{{ currentEvaluation.delivery.fillerWordCount }} 次</i></div></div></template><template v-else><div class="score-empty"><div class="score-mark"><el-icon><DataAnalysis /></el-icon></div><strong>{{ reportLoading ? '正在读取分析结果' : (report?.analysis?.status === 'failed' ? '分析失败' : '分析结果尚未生成') }}</strong><p>练习完成后台会自动转写并评分，完成后此处会展示逐题反馈。</p><el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">重试分析</el-button></div><div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div></template><div class="rubric-legend"><div class="legend-title">评分口径</div><ul><li><strong>80-100</strong> 表现良好：切题、有细节与结果</li><li><strong>60-79</strong> 基本合格：答到了，但缺细节</li><li><strong>40-59</strong> 需要加强：泛泛而谈</li><li><strong>0-39</strong> 明显不足：几乎没有有效信息</li></ul><p>分数衡量的是这一段回答本身，不代表对你的整体评价。</p></div><div class="score-footnote"><el-icon><InfoFilled /></el-icon>报告仅评价回答内容与表达，不进行人脸或情绪判断。</div></div><div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel"><div class="section-title">改进建议</div><ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul></div><div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel"><div class="section-title">优秀回答示例</div><div class="sample-row"><div class="sample-avatar"><DigitalHuman :speaking="sampleSpeaking" :amplitude="avatarAudio.amplitude" /></div><div class="sample-side"><button class="sample-play" :class="{ playing: sampleSpeaking }" :disabled="sampleLoading" @click="speakSampleAnswer"><el-icon><VideoPause v-if="sampleSpeaking" /><Microphone v-else /></el-icon><span>{{ sampleSpeaking ? '停止' : (sampleLoading ? '准备中…' : '让它回答') }}</span></button><small v-if="!sampleSpeaking && !sampleLoading">点这里，面试官会把这段示范答一遍</small><small v-else-if="sampleSpeaking">正在回答，字幕会跟着出现</small></div></div><p v-if="visibleSampleText" class="sample-text" :class="{ speaking: sampleSpeaking }">{{ visibleSampleText }}</p><p v-else class="sample-text sample-hidden">点「让它回答」，面试官会把这段示范答一遍，字幕随朗读出现。</p><p v-if="sampleTruncated" class="sample-note">示范回答较长，语音只念了前半段；点「停止」或播完后会显示完整文字。</p><p v-if="avatarError" class="sample-note error">{{ avatarError }}</p></div><div class="evidence-panel panel"><div class="section-title">可定位证据 <small>视频时间轴</small></div><div v-if="evidenceList.length" class="evidence-list"><div v-for="(item, index) in evidenceList" :key="index" class="evidence-row"><button class="timeline-play" :aria-label="`播放证据 ${index + 1}`" :title="`播放证据 ${formatDuration(item.startSeconds)}`" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button><div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div><span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span></div></div><div v-else-if="currentAnswer" class="evidence-row"><button class="timeline-play" aria-label="播放本题视频" title="播放本题视频" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button><div><strong>回答片段</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div><span class="timeline-track"><i></i></span></div><p v-else class="no-evidence">录制本题后将可定位到对应视频时间点。</p></div></aside>
+      <div class="question-list"><button v-for="(question,index) in questions" :key="question.id" class="question-card panel" :class="{ active: currentIndex === index, 'is-follow-up': Boolean(followUpLabel(index)) }" @click="selectQuestion(index)"><span class="question-number">{{ String(index + 1).padStart(2,'0') }}</span><span class="question-info"><small>{{ followUpLabel(index) || question.category }}</small><strong>{{ question.text }}</strong></span><span class="question-duration">{{ session.answers.find((answer) => answer.questionIndex === index) ? formatDuration(session.answers.find((answer) => answer.questionIndex === index).durationSeconds) : t('report.unanswered') }}</span><el-icon v-if="currentIndex === index"><ArrowRight /></el-icon></button></div></section>
+      <aside class="score-section">
+        <div class="section-title">{{ t('report.answerAnalysis') }} <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? t('report.generated') : (reportLoading ? t('report.analyzing') : t('report.waitingIntegration')) }}</el-tag></div>
+        <div class="score-panel panel">
+          <template v-if="currentEvaluation">
+            <div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>{{ t('report.overallScore') }}</span></div>
+            <div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div>
+            <div class="delivery-list">
+              <div><span>{{ t('report.speechRateLabel') }}</span><i>{{ t('report.charsPerMinute', { value: Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }) }}</i></div>
+              <div><span>{{ t('report.pauseLabel') }}</span><i>{{ t('report.pauseValue', { count: currentEvaluation.delivery.pauseCount, seconds: currentEvaluation.delivery.totalPauseSeconds }) }}</i></div>
+              <div><span>{{ t('report.fillerLabel') }}</span><i>{{ t('report.countTimes', { count: currentEvaluation.delivery.fillerWordCount }) }}</i></div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="score-empty">
+              <div class="score-mark"><el-icon><DataAnalysis /></el-icon></div>
+              <strong>{{ reportLoading ? t('report.loadingAnalysis') : (report?.analysis?.status === 'failed' ? t('report.analysisFailed') : t('report.noAnalysis')) }}</strong>
+              <p>{{ t('report.analysisHint') }}</p>
+              <el-button v-if="report?.analysis?.status === 'failed'" class="soft-button" @click="retryAnalysis">{{ t('report.retryAnalysis') }}</el-button>
+            </div>
+            <div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i>—</i></div></div>
+          </template>
+          <div class="rubric-legend">
+            <div class="legend-title">{{ t('report.rubricTitle') }}</div>
+            <ul><li><strong>80-100</strong> {{ t('report.rubricGood') }}</li><li><strong>60-79</strong> {{ t('report.rubricPass') }}</li><li><strong>40-59</strong> {{ t('report.rubricWeak') }}</li><li><strong>0-39</strong> {{ t('report.rubricPoor') }}</li></ul>
+            <p>{{ t('report.rubricNote') }}</p>
+          </div>
+          <div class="score-footnote"><el-icon><InfoFilled /></el-icon>{{ t('report.privacyFootnote') }}</div>
+        </div>
+        <div v-if="currentEvaluation?.improvementSuggestions?.length" class="suggestion-panel panel">
+          <div class="section-title">{{ t('report.suggestions') }}</div>
+          <ul class="suggestion-list"><li v-for="(tip, index) in currentEvaluation.improvementSuggestions" :key="index">{{ tip }}</li></ul>
+        </div>
+        <div v-if="currentEvaluation?.sampleAnswer" class="sample-panel panel">
+          <div class="section-title">{{ t('report.sampleTitle') }}</div>
+          <div class="sample-row">
+            <div class="sample-avatar"><DigitalHuman :speaking="sampleSpeaking" :amplitude="avatarAudio.amplitude" /></div>
+            <div class="sample-side">
+              <button class="sample-play" :class="{ playing: sampleSpeaking }" :disabled="sampleLoading" @click="speakSampleAnswer"><el-icon><VideoPause v-if="sampleSpeaking" /><Microphone v-else /></el-icon><span>{{ sampleSpeaking ? t('report.stop') : (sampleLoading ? t('report.preparing') : t('report.letAnswer')) }}</span></button>
+              <small v-if="!sampleSpeaking && !sampleLoading">{{ t('report.sampleTip') }}</small><small v-else-if="sampleSpeaking">{{ t('report.sampleSpeakingHint') }}</small>
+            </div>
+          </div>
+          <p v-if="visibleSampleText" class="sample-text" :class="{ speaking: sampleSpeaking }">{{ visibleSampleText }}</p>
+          <p v-else class="sample-text sample-hidden">{{ t('report.sampleHidden') }}</p>
+          <p v-if="sampleTruncated" class="sample-note">{{ t('report.sampleTruncated') }}</p>
+          <p v-if="avatarError" class="sample-note error">{{ avatarError }}</p>
+        </div>
+        <div class="evidence-panel panel">
+          <div class="section-title">{{ t('report.evidenceTitle') }} <small>{{ t('report.videoTimeline') }}</small></div>
+          <div v-if="evidenceList.length" class="evidence-list">
+            <div v-for="(item, index) in evidenceList" :key="index" class="evidence-row">
+              <button class="timeline-play" :aria-label="t('report.playEvidence', { number: index + 1 })" :title="t('report.playEvidenceAt', { time: formatDuration(item.startSeconds) })" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button>
+              <div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div>
+              <span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span>
+            </div>
+          </div>
+          <div v-else-if="currentAnswer" class="evidence-row">
+            <button class="timeline-play" :aria-label="t('report.playThisVideo')" :title="t('report.playThisVideo')" @click="playAt(0)"><el-icon><VideoPlay /></el-icon></button>
+            <div><strong>{{ t('report.answerClip') }}</strong><small>00:00 – {{ formatDuration(currentAnswer.durationSeconds) }}</small></div>
+            <span class="timeline-track"><i></i></span>
+          </div>
+          <p v-else class="no-evidence">{{ t('report.noEvidence') }}</p>
+        </div>
+      </aside>
     </div>
   </section>
 </template>

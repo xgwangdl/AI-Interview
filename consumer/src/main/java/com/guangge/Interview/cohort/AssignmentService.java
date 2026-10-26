@@ -16,7 +16,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -85,6 +87,53 @@ public class AssignmentService {
                 .filter(item -> item.getCohortId().equals(cohortId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "作业不存在"));
         return view(assignment, ownerId);
+    }
+
+    @Transactional
+    public AssignmentView update(String ownerId, UUID cohortId, UUID assignmentId, AssignmentRequest request) {
+        cohorts.requireCoach(cohortId, ownerId);
+        AssignmentEntity assignment = assignments.findById(assignmentId)
+                .filter(item -> item.getCohortId().equals(cohortId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "作业不存在"));
+
+        boolean structureChanged = assignment.getDays() != request.days()
+                || assignment.getItemsPerDay() != request.itemsPerDay()
+                || !java.util.Objects.equals(assignment.getDueAt(), request.dueAt());
+        if (structureChanged && hasLearningProgress(assignmentId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "已有学员开始或完成作业，不能修改天数、每天题目数或截止时间");
+        }
+
+        assignment.setTitle(request.title().strip());
+        assignment.setDescription(request.description() == null ? null : request.description().strip());
+        assignment.setDays(request.days());
+        assignment.setItemsPerDay(request.itemsPerDay());
+        assignment.setDueAt(request.dueAt());
+        assignments.save(assignment);
+
+        if (structureChanged) {
+            rebuild(assignment);
+        }
+        return view(assignment, ownerId);
+    }
+
+    private boolean hasLearningProgress(UUID assignmentId) {
+        return planItems.findAllByAssignmentId(assignmentId).stream()
+                .anyMatch(item -> "completed".equals(item.getStatus()));
+    }
+
+    /** 尚未开始作答时，作业结构可以安全重建；已有进度会被上面的校验阻止。 */
+    private void rebuild(AssignmentEntity assignment) {
+        List<StudyPlanItemEntity> existing = planItems.findAllByAssignmentId(assignment.getId());
+        Set<UUID> planIds = new LinkedHashSet<>();
+        existing.forEach(item -> planIds.add(item.getPlanId()));
+        if (!existing.isEmpty()) planItems.deleteAll(existing);
+        planIds.forEach(planId -> {
+            if (planItems.countByPlanId(planId) == 0) plans.deleteById(planId);
+        });
+        for (CohortMemberEntity member : members.findAllByCohortIdOrderByJoinedAtAsc(assignment.getCohortId())) {
+            if ("learner".equals(member.getRole())) materialize(assignment, member.getOwnerId());
+        }
     }
 
     private void materialize(AssignmentEntity assignment, String ownerId) {

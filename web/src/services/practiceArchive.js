@@ -16,6 +16,10 @@ export const DIMENSION_LABELS = {
   logic: '回答逻辑',
 };
 
+export const DIMENSION_LABEL_KEYS = Object.fromEntries(
+  Object.keys(DIMENSION_LABELS).map((key) => [key, `domain.dimensions.${key}`]),
+);
+
 /** 短板对应的可执行建议：只说"差"没用，得告诉他下次注意什么。 */
 const DIMENSION_ADVICE = {
   relevance: '回答前先复述问题里的关键点，确认自己没答偏',
@@ -24,6 +28,10 @@ const DIMENSION_ADVICE = {
   starStructure: '讲经历按 Situation → Task → Action → Result 走，尤其别漏 Result',
   logic: '先用一句话给结论，再分点展开，少用"然后…然后…"',
 };
+
+const DIMENSION_ADVICE_KEYS = Object.fromEntries(
+  Object.keys(DIMENSION_ADVICE).map((key) => [key, `domain.dimensionAdvice.${key}`]),
+);
 
 export function loadArchive(limit = 5) {
   return apiRequest(`/practice-archive?limit=${encodeURIComponent(limit)}`);
@@ -35,7 +43,7 @@ export function loadArchive(limit = 5) {
  * 后端故意只回数据（维度 key + 分数），标签与建议文案放前端，
  * 这样调整措辞不用重新部署后端；而 key 到中文的翻译只有这一处。
  */
-export function buildArchive(summary) {
+export function buildArchive(summary, t = null) {
   const trend = (summary?.trend || []).map((point) => ({
     sessionId: point.sessionId,
     role: point.role,
@@ -45,15 +53,17 @@ export function buildArchive(summary) {
   }));
   const dimensions = (summary?.dimensions || []).map((item) => ({
     key: item.key,
-    label: DIMENSION_LABELS[item.key] || item.key,
+    label: t && DIMENSION_LABEL_KEYS[item.key] ? t(DIMENSION_LABEL_KEYS[item.key]) : DIMENSION_LABELS[item.key] || item.key,
     average: round(item.average),
     samples: item.samples || 0,
   }));
   const weakest = (summary?.weakest || []).map((item) => ({
     key: item.key,
-    label: DIMENSION_LABELS[item.key] || item.key,
+    label: t && DIMENSION_LABEL_KEYS[item.key] ? t(DIMENSION_LABEL_KEYS[item.key]) : DIMENSION_LABELS[item.key] || item.key,
     average: round(item.average),
-    advice: DIMENSION_ADVICE[item.key] || '下次练习时留意这一点',
+    advice: t && DIMENSION_ADVICE_KEYS[item.key]
+      ? t(DIMENSION_ADVICE_KEYS[item.key])
+      : DIMENSION_ADVICE[item.key] || '下次练习时留意这一点',
   }));
 
   return {

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { completionPercent, createAssignment, dueLabel, joinCohort, roleLabel } from './cohorts';
+import {
+  completionPercent, createAssignment, dueLabel, joinCohort, roleLabel, updateAssignment,
+} from './cohorts';
 
 describe('小组辅助函数', () => {
   it('完成率按个人完成/总数计算', () => {
@@ -38,5 +40,18 @@ describe('小组接口', () => {
     await createAssignment('c-1', { title: '5 天训练', days: 5, itemsPerDay: 3, dueAt: null });
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/cohorts/c-1/assignments');
     expect(fetchMock.mock.calls[0][1].body).toContain('itemsPerDay');
+  });
+
+  it('编辑已有作业使用 PUT 和作业 ID', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, text: async () => '{}', json: async () => ({}),
+    });
+    globalThis.fetch = fetchMock;
+
+    await updateAssignment('c-1', 'a-1', { title: '更新', days: 2, itemsPerDay: 2, dueAt: null });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/cohorts/c-1/assignments/a-1');
+    expect(fetchMock.mock.calls[0][1].method).toBe('PUT');
+    expect(fetchMock.mock.calls[0][1].body).toContain('"days":2');
   });
 });

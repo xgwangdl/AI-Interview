@@ -5,16 +5,19 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   archiveCohort, completionPercent, createAssignment, dueLabel, getCohort, listAssignments, listHelp,
   listPeerReviewTasks, listReceivedPeerReviews, optInPeerReview, roleLabel, sendHelpFeedback,
-  setScoreSharing, submitPeerReview,
+  setScoreSharing, submitPeerReview, updateAssignment,
 } from '../services/cohorts';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t, locale } = useI18n();
 const cohort = ref(null);
 const assignments = ref([]);
 const loading = ref(true);
 const creating = ref(false);
 const showCreate = ref(false);
+const editingAssignmentId = ref('');
 const form = reactive({ title: '', description: '', days: 5, itemsPerDay: 3, dueAt: '' });
 const helpRequests = ref([]);
 const peerTasks = ref([]);
@@ -28,6 +31,9 @@ const userName = localStorage.getItem('userName') || localStorage.getItem('usern
 const isCoach = computed(() => cohort.value?.role === 'coach');
 const me = computed(() => cohort.value?.members?.find((member) => member.role === 'learner') || null);
 const shareScores = computed(() => cohort.value?.members?.find((member) => member.role === 'learner')?.shareScores || false);
+const editingAssignment = computed(() => (
+  assignments.value.find((item) => item.id === editingAssignmentId.value) || null
+));
 
 onMounted(load);
 
@@ -44,7 +50,7 @@ async function load() {
       peerTasks.value = peerEnabled.value ? await listPeerReviewTasks(route.params.id, 5) : [];
     }
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取学习小组');
+    ElMessage.error(error?.message || t('cohorts.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -53,9 +59,9 @@ async function load() {
 async function copyInvite() {
   try {
     await navigator.clipboard.writeText(cohort.value.inviteCode);
-    ElMessage.success('邀请码已复制');
+    ElMessage.success(t('cohorts.copySuccess'));
   } catch {
-    ElMessage.info(`邀请码：${cohort.value.inviteCode}`);
+    ElMessage.info(t('cohorts.inviteInfo', { code: cohort.value.inviteCode }));
   }
 }
 
@@ -63,55 +69,99 @@ async function toggleSharing(value) {
   try {
     await setScoreSharing(cohort.value.id, value);
     await load();
-    ElMessage.success(value ? '已向助教共享分数' : '已关闭分数共享');
+    ElMessage.success(value ? t('cohorts.shareOn') : t('cohorts.shareOff'));
   } catch (error) {
-    ElMessage.error(error?.message || '保存失败');
+    ElMessage.error(error?.message || t('cohorts.saveFailed'));
   }
 }
 
 async function submitAssignment() {
-  if (!form.title.trim()) return ElMessage.warning('请填写作业标题');
+  if (!form.title.trim()) return ElMessage.warning(t('cohorts.titleRequired'));
   creating.value = true;
   try {
-    await createAssignment(cohort.value.id, {
+    const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
       days: form.days,
       itemsPerDay: form.itemsPerDay,
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
-    });
+    };
+    const wasEditing = Boolean(editingAssignmentId.value);
+    if (wasEditing) {
+      await updateAssignment(cohort.value.id, editingAssignmentId.value, payload);
+    } else {
+      await createAssignment(cohort.value.id, payload);
+    }
     showCreate.value = false;
-    form.title = '';
-    form.description = '';
+    resetAssignmentForm();
     await load();
-    ElMessage.success('作业已布置');
+    ElMessage.success(t(wasEditing ? 'cohorts.updated' : 'cohorts.assigned'));
   } catch (error) {
-    ElMessage.error(error?.message || '布置作业失败');
+    ElMessage.error(error?.status === 409
+      ? t('cohorts.progressLocked')
+      : (error?.message || t('cohorts.assignFailed')));
   } finally {
     creating.value = false;
   }
+}
+
+function resetAssignmentForm() {
+  editingAssignmentId.value = '';
+  form.title = '';
+  form.description = '';
+  form.days = 5;
+  form.itemsPerDay = 3;
+  form.dueAt = '';
+}
+
+function openCreate() {
+  resetAssignmentForm();
+  showCreate.value = true;
+}
+
+function openEdit(assignment) {
+  editingAssignmentId.value = assignment.id;
+  form.title = assignment.title || '';
+  form.description = assignment.description || '';
+  form.days = assignment.days || 1;
+  form.itemsPerDay = assignment.itemsPerDay || 1;
+  form.dueAt = toLocalDateTime(assignment.dueAt);
+  showCreate.value = true;
+}
+
+function closeAssignmentForm() {
+  showCreate.value = false;
+  resetAssignmentForm();
+}
+
+function toLocalDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 async function togglePeerReview(value) {
   try {
     await optInPeerReview(cohort.value.id, value);
     await load();
-    ElMessage.success(value ? '已开启同伴互评' : '已关闭同伴互评');
+    ElMessage.success(value ? t('cohorts.peerOn') : t('cohorts.peerOff'));
   } catch (error) {
-    ElMessage.error(error?.message || '保存失败');
+    ElMessage.error(error?.message || t('cohorts.saveFailed'));
   }
 }
 
 async function sendFeedback(item) {
   const text = (feedbackDrafts[item.id] || '').trim();
-  if (!text) return ElMessage.warning('请先写一条反馈');
+  if (!text) return ElMessage.warning(t('cohorts.feedbackRequired'));
   try {
     await sendHelpFeedback(cohort.value.id, item.id, text);
     feedbackDrafts[item.id] = '';
     await load();
-    ElMessage.success('反馈已发送');
+    ElMessage.success(t('cohorts.feedbackSent'));
   } catch (error) {
-    ElMessage.error(error?.message || '发送失败');
+    ElMessage.error(error?.message || t('cohorts.submitFailed'));
   }
 }
 
@@ -124,7 +174,7 @@ function openReview(task) {
 }
 
 async function submitReview() {
-  if (!reviewTarget.value || !reviewForm.suggestion.trim()) return ElMessage.warning('请写一句具体建议');
+  if (!reviewTarget.value || !reviewForm.suggestion.trim()) return ElMessage.warning(t('cohorts.suggestionRequired'));
   try {
     await submitPeerReview(cohort.value.id, {
       answerId: reviewTarget.value.answerId,
@@ -135,26 +185,26 @@ async function submitReview() {
     });
     reviewTarget.value = null;
     await load();
-    ElMessage.success('互评已提交，对方会匿名看到');
+    ElMessage.success(t('cohorts.reviewSubmitted'));
   } catch (error) {
-    ElMessage.error(error?.message || '提交失败');
+    ElMessage.error(error?.message || t('cohorts.submitFailed'));
   }
 }
 
 async function archive() {
   try {
-    await ElMessageBox.confirm('归档后小组不再出现在你的列表，历史作业仍保留。', '归档小组？', {
-      confirmButtonText: '归档', cancelButtonText: '取消', type: 'warning',
+    await ElMessageBox.confirm(t('cohorts.archiveConfirmBody'), t('cohorts.archiveConfirmTitle'), {
+      confirmButtonText: t('cohorts.archive'), cancelButtonText: t('common.cancel'), type: 'warning',
     });
   } catch {
     return;
   }
   try {
     await archiveCohort(cohort.value.id);
-    ElMessage.success('小组已归档');
+    ElMessage.success(t('cohorts.archived'));
     router.replace('/cohorts');
   } catch (error) {
-    ElMessage.error(error?.message || '归档失败');
+    ElMessage.error(error?.message || t('cohorts.archiveFailed'));
   }
 }
 </script>
@@ -164,132 +214,147 @@ async function archive() {
     <template v-if="cohort">
       <div class="page-heading">
         <div>
-          <button class="back-link" @click="router.push('/cohorts')"><el-icon><ArrowLeft /></el-icon>学习小组</button>
+          <button class="back-link" @click="router.push('/cohorts')"><el-icon><ArrowLeft /></el-icon>{{ t('cohorts.back') }}</button>
           <h1>{{ cohort.name }}</h1>
-          <p>{{ cohort.memberCount }} 位成员 · {{ roleLabel(cohort.role) }} · 作业会自动进入学员的今日训练</p>
+          <p>{{ t('cohorts.summary', { members: cohort.memberCount, role: roleLabel(cohort.role, t) }) }}</p>
         </div>
         <div class="heading-actions">
-          <el-button v-if="isCoach" class="soft-button" @click="showCreate = !showCreate">
-            <el-icon><Plus /></el-icon>布置作业
+          <el-button v-if="isCoach" class="soft-button" @click="showCreate ? closeAssignmentForm() : openCreate()">
+            <el-icon><Plus /></el-icon>{{ t('cohorts.assign') }}
           </el-button>
           <el-button class="soft-button invite-button" @click="copyInvite"><el-icon><CopyDocument /></el-icon>{{ cohort.inviteCode }}</el-button>
-          <el-button v-if="isCoach" class="soft-button" @click="archive">归档</el-button>
+          <el-button v-if="isCoach" class="soft-button" @click="archive">{{ t('cohorts.archive') }}</el-button>
         </div>
       </div>
 
       <div v-if="!isCoach" class="panel sharing-card">
         <div>
-          <strong>向助教共享分数</strong>
-          <small>默认关闭。开启后助教能看到你的平均分，但看不到录像和转写。</small>
+          <strong>{{ t('cohorts.shareTitle') }}</strong>
+          <small>{{ t('cohorts.shareHint') }}</small>
         </div>
         <el-switch :model-value="shareScores" @change="toggleSharing" />
       </div>
       <div v-if="!isCoach" class="panel sharing-card peer-sharing">
         <div>
-          <strong>参与匿名同伴互评</strong>
-          <small>开启后，其他成员只能看到你的转写，不会看到录像；你也可以评价别人的转写。</small>
+          <strong>{{ t('cohorts.peerTitle') }}</strong>
+          <small>{{ t('cohorts.peerHint') }}</small>
         </div>
         <el-switch :model-value="peerEnabled" @change="togglePeerReview" />
       </div>
 
       <section v-if="isCoach && showCreate" class="panel assignment-form">
-        <div class="section-title"><span>布置新作业</span><small>会为每位学员生成每日训练项</small></div>
-        <div class="form-grid">
-          <el-form-item label="作业标题"><el-input v-model="form.title" maxlength="200" placeholder="例如：本周项目追问 5 天训练" /></el-form-item>
-          <el-form-item label="截止时间"><el-date-picker v-model="form.dueAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选填" /></el-form-item>
-          <el-form-item label="天数"><el-input-number v-model="form.days" :min="1" :max="14" /></el-form-item>
-          <el-form-item label="每天题目"><el-input-number v-model="form.itemsPerDay" :min="1" :max="5" /></el-form-item>
+        <div class="section-title">
+          <span>{{ editingAssignment ? t('cohorts.editAssignment') : t('cohorts.newAssignment') }}</span>
+          <small>{{ editingAssignment ? t('cohorts.editAssignmentHint') : t('cohorts.newAssignmentHint') }}</small>
         </div>
-        <el-form-item label="说明（选填）"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="2000" /></el-form-item>
-        <div class="form-actions"><el-button class="soft-button" @click="showCreate = false">取消</el-button><el-button class="primary-button" :loading="creating" @click="submitAssignment">布置作业</el-button></div>
+        <el-form class="assignment-fields" label-position="top" @submit.prevent="submitAssignment">
+          <div class="form-grid">
+            <el-form-item :label="t('cohorts.assignmentTitle')"><el-input v-model="form.title" maxlength="200" :placeholder="t('cohorts.assignmentPlaceholder')" /></el-form-item>
+            <el-form-item :label="t('cohorts.dueAt')"><el-date-picker v-model="form.dueAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" :placeholder="t('cohorts.optional')" /></el-form-item>
+            <el-form-item :label="t('cohorts.days')"><el-input-number v-model="form.days" :min="1" :max="14" :step="1" step-strictly /></el-form-item>
+            <el-form-item :label="t('cohorts.itemsPerDay')"><el-input-number v-model="form.itemsPerDay" :min="1" :max="5" :step="1" step-strictly /></el-form-item>
+          </div>
+          <el-form-item class="description-field" :label="t('cohorts.description')"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="2000" /></el-form-item>
+          <div class="form-actions">
+            <el-button class="soft-button" @click="closeAssignmentForm">{{ t('cohorts.cancel') }}</el-button>
+            <el-button class="primary-button" :loading="creating" @click="submitAssignment">
+              {{ editingAssignment ? t('cohorts.updateAssignment') : t('cohorts.assign') }}
+            </el-button>
+          </div>
+        </el-form>
       </section>
 
-      <div class="section-title"><span>作业</span><small>{{ assignments.length }} 个</small></div>
+      <div class="section-title"><span>{{ t('cohorts.assignments') }}</span><small>{{ t('cohorts.countAssignments', { count: assignments.length }) }}</small></div>
       <div v-if="assignments.length" class="assignment-list">
         <article v-for="assignment in assignments" :key="assignment.id" class="panel assignment-card">
           <div class="assignment-head">
-            <div><strong>{{ assignment.title }}</strong><small>截止 {{ dueLabel(assignment.dueAt) }}</small></div>
-            <el-tag v-if="!isCoach" size="small">{{ assignment.myCompleted }}/{{ assignment.myTotal }} 已完成</el-tag>
-            <el-tag v-else size="small">{{ assignment.completedMembers }}/{{ assignment.memberCount }} 人完成</el-tag>
+            <div><strong>{{ assignment.title }}</strong><small>{{ t('cohorts.due', { date: dueLabel(assignment.dueAt, t, locale) }) }}</small></div>
+            <div class="assignment-head-actions">
+              <el-tag v-if="!isCoach" size="small">{{ t('cohorts.myCompleted', { completed: assignment.myCompleted, total: assignment.myTotal }) }}</el-tag>
+              <el-tag v-else size="small">{{ t('cohorts.memberCompleted', { completed: assignment.completedMembers, total: assignment.memberCount }) }}</el-tag>
+              <el-button v-if="isCoach" class="soft-button edit-assignment-button" @click="openEdit(assignment)">
+                {{ t('common.edit') }}
+              </el-button>
+            </div>
           </div>
           <p v-if="assignment.description">{{ assignment.description }}</p>
           <div class="assignment-progress">
             <span><i :style="{ width: `${completionPercent(assignment)}%` }"></i></span>
-            <small>{{ assignment.completedMembers }}/{{ assignment.memberCount }} 位成员完成</small>
+            <small>{{ t('cohorts.membersCompleted', { completed: assignment.completedMembers, total: assignment.memberCount }) }}</small>
           </div>
           <div v-if="isCoach" class="member-progress">
             <div v-for="member in assignment.progress" :key="member.owner" class="member-row">
               <span class="member-name">{{ member.owner }}</span>
-              <span class="member-role">{{ roleLabel(member.role) }}</span>
+              <span class="member-role">{{ roleLabel(member.role, t) }}</span>
               <span class="member-bar"><i :style="{ width: `${member.percent}%` }"></i></span>
               <strong>{{ member.completed }}/{{ member.total }}</strong>
-              <small v-if="member.shareScores">{{ member.averageScore ?? '—' }} 分</small>
-              <small v-else class="muted">未共享分数</small>
+              <small v-if="member.shareScores">{{ t('cohorts.points', { score: member.averageScore ?? '—' }) }}</small>
+              <small v-else class="muted">{{ t('cohorts.notShared') }}</small>
             </div>
           </div>
           <div v-if="!isCoach" class="assignment-actions">
-            <el-button class="primary-button" @click="router.push('/today')">去今日训练</el-button>
+            <el-button class="primary-button" @click="router.push('/today')">{{ t('cohorts.goToday') }}</el-button>
           </div>
         </article>
       </div>
       <div v-else class="panel empty-assignment">
-        <strong>{{ isCoach ? '还没有布置作业' : '助教还没有布置作业' }}</strong>
-        <p>{{ isCoach ? '点右上角「布置作业」，生成 5 天 × 3 题之类的训练计划。' : '等助教布置后，作业会自动进入你的今日训练。' }}</p>
+        <strong>{{ isCoach ? t('cohorts.noAssignmentsCoach') : t('cohorts.noAssignmentsLearner') }}</strong>
+        <p>{{ isCoach ? t('cohorts.noAssignmentsCoachHint') : t('cohorts.noAssignmentsLearnerHint') }}</p>
       </div>
 
       <section v-if="isCoach" class="panel help-queue">
-        <div class="section-title"><span>待反馈求助</span><small>{{ helpRequests.length }} 条</small></div>
+        <div class="section-title"><span>{{ t('cohorts.helpQueue') }}</span><small>{{ t('cohorts.countItems', { count: helpRequests.length }) }}</small></div>
         <div v-if="helpRequests.length" class="help-list">
           <article v-for="item in helpRequests" :key="item.id" class="help-row">
-            <div class="help-head"><strong>{{ item.owner }} · 第 {{ item.questionIndex + 1 }} 题</strong><small>{{ dueLabel(item.createdAt) }}</small></div>
+            <div class="help-head"><strong>{{ t('cohorts.questionNth', { owner: item.owner, number: item.questionIndex + 1 }) }}</strong><small>{{ dueLabel(item.createdAt, t, locale) }}</small></div>
             <p class="help-question">{{ item.question }}</p>
             <p class="help-transcript">{{ item.transcript }}</p>
-            <p v-if="item.note" class="help-note">学员补充：{{ item.note }}</p>
+            <p v-if="item.note" class="help-note">{{ t('cohorts.learnerNote', { note: item.note }) }}</p>
             <div class="help-feedback">
-              <el-input v-model="feedbackDrafts[item.id]" type="textarea" :rows="2" maxlength="2000" placeholder="给学员一条具体、可执行的反馈" />
-              <el-button class="primary-button" @click="sendFeedback(item)">发送反馈</el-button>
+              <el-input v-model="feedbackDrafts[item.id]" type="textarea" :rows="2" maxlength="2000" :placeholder="t('cohorts.feedbackPlaceholder')" />
+              <el-button class="primary-button" @click="sendFeedback(item)">{{ t('cohorts.sendFeedback') }}</el-button>
             </div>
           </article>
         </div>
-        <p v-else class="muted-copy">目前没有学员求助。</p>
+        <p v-else class="muted-copy">{{ t('cohorts.noHelp') }}</p>
       </section>
 
       <section v-if="!isCoach && helpRequests.length" class="panel help-queue">
-        <div class="section-title"><span>我的求助</span><small>{{ helpRequests.length }} 条</small></div>
+        <div class="section-title"><span>{{ t('cohorts.myHelp') }}</span><small>{{ t('cohorts.countItems', { count: helpRequests.length }) }}</small></div>
         <div class="help-list">
           <article v-for="item in helpRequests" :key="item.id" class="help-row">
-            <div class="help-head"><strong>第 {{ item.questionIndex + 1 }} 题 · {{ item.status === 'answered' ? '已回复' : '等待助教' }}</strong><small>{{ dueLabel(item.createdAt) }}</small></div>
+            <div class="help-head"><strong>{{ t('coding.questionNth', { number: item.questionIndex + 1 }) }} · {{ item.status === 'answered' ? t('cohorts.answered') : t('cohorts.waitingCoach') }}</strong><small>{{ dueLabel(item.createdAt, t, locale) }}</small></div>
             <p class="help-question">{{ item.question }}</p>
-            <p v-if="item.feedback" class="help-feedback-text">助教反馈：{{ item.feedback }}</p>
+            <p v-if="item.feedback" class="help-feedback-text">{{ t('cohorts.coachFeedback', { text: item.feedback }) }}</p>
           </article>
         </div>
       </section>
 
       <section v-if="!isCoach && peerEnabled" class="panel peer-panel">
-        <div class="section-title"><span>待我互评</span><small>只显示转写，匿名</small></div>
+        <div class="section-title"><span>{{ t('cohorts.peerTasks') }}</span><small>{{ t('cohorts.anonymousTranscripts') }}</small></div>
         <div v-if="peerTasks.length" class="peer-task-list">
           <article v-for="task in peerTasks" :key="task.answerId" class="peer-task">
-            <div class="help-head"><strong>{{ task.alias }} · {{ task.question }}</strong><button class="text-action" @click="openReview(task)">评价这条</button></div>
+            <div class="help-head"><strong>{{ task.alias }} · {{ task.question }}</strong><button class="text-action" @click="openReview(task)">{{ t('cohorts.reviewThis') }}</button></div>
             <p>{{ task.transcript }}</p>
           </article>
         </div>
-        <p v-else class="muted-copy">暂时没有待评价的回答，等同伴完成练习后再来看看。</p>
+        <p v-else class="muted-copy">{{ t('cohorts.noPeerTasks') }}</p>
 
         <div v-if="reviewTarget" class="review-form">
           <div class="review-scores">
-            <label>表达清晰 <el-rate v-model="reviewForm.clarity" :max="5" /></label>
-            <label>切题程度 <el-rate v-model="reviewForm.relevance" :max="5" /></label>
-            <label>细节深度 <el-rate v-model="reviewForm.depth" :max="5" /></label>
+            <label>{{ t('cohorts.clarity') }} <el-rate v-model="reviewForm.clarity" :max="5" /></label>
+            <label>{{ t('cohorts.relevance') }} <el-rate v-model="reviewForm.relevance" :max="5" /></label>
+            <label>{{ t('cohorts.depth') }} <el-rate v-model="reviewForm.depth" :max="5" /></label>
           </div>
-          <el-input v-model="reviewForm.suggestion" type="textarea" :rows="2" maxlength="500" placeholder="写一句具体建议（匿名）" />
-          <div class="form-actions"><el-button class="soft-button" @click="reviewTarget = null">取消</el-button><el-button class="primary-button" @click="submitReview">提交互评</el-button></div>
+          <el-input v-model="reviewForm.suggestion" type="textarea" :rows="2" maxlength="500" :placeholder="t('cohorts.reviewPlaceholder')" />
+          <div class="form-actions"><el-button class="soft-button" @click="reviewTarget = null">{{ t('common.cancel') }}</el-button><el-button class="primary-button" @click="submitReview">{{ t('cohorts.submitReview') }}</el-button></div>
         </div>
       </section>
 
       <section v-if="!isCoach && receivedReviews.length" class="panel peer-panel">
-        <div class="section-title"><span>收到的互评</span><small>匿名</small></div>
+        <div class="section-title"><span>{{ t('cohorts.receivedReviews') }}</span><small>{{ t('cohorts.anonymous') }}</small></div>
         <article v-for="review in receivedReviews" :key="review.id" class="received-review">
-          <div class="help-head"><strong>{{ review.reviewerAlias }}</strong><small>清晰 {{ review.clarity }} · 切题 {{ review.relevance }} · 深度 {{ review.depth }}</small></div>
+          <div class="help-head"><strong>{{ review.reviewerAlias }}</strong><small>{{ t('cohorts.reviewScores', { clarity: review.clarity, relevance: review.relevance, depth: review.depth }) }}</small></div>
           <p>{{ review.suggestion }}</p>
         </article>
       </section>
@@ -305,11 +370,20 @@ async function archive() {
 .sharing-card strong { display: block; color: #46524c; font-size: 14px; }
 .sharing-card small { display: block; margin-top: 4px; color: #98a29d; font-size: 12px; }
 .assignment-form { display: grid; gap: 11px; padding: 17px 18px; margin-bottom: 18px; box-shadow: none; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr 100px 100px; gap: 10px; }
+.assignment-fields { display: grid; gap: 12px; }
+.form-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr) minmax(118px, .58fr) minmax(138px, .68fr); align-items: start; gap: 10px; }
+.assignment-fields :deep(.el-form-item) { min-width: 0; margin-bottom: 0; }
+.assignment-fields :deep(.el-form-item__label) { height: auto; margin-bottom: 7px; color: #59665f; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.assignment-fields :deep(.el-date-editor.el-input),
+.assignment-fields :deep(.el-input-number) { width: 100%; }
+.assignment-fields :deep(.el-input-number .el-input__inner) { text-align: center; }
+.description-field { margin-top: 2px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .assignment-list { display: grid; gap: 12px; }
 .assignment-card { display: grid; gap: 9px; padding: 15px 17px; box-shadow: none; }
 .assignment-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.assignment-head-actions { display: flex; align-items: center; gap: 8px; }
+.edit-assignment-button.el-button { height: 27px; padding: 0 10px; font-size: 12px; }
 .assignment-head strong { display: block; color: #34403a; font-size: 15px; }
 .assignment-head small { display: block; margin-top: 4px; color: #98a29d; font-size: 11px; }
 .assignment-card > p { margin: 0; color: #7d8982; font-size: 12px; line-height: 1.7; }
@@ -352,6 +426,8 @@ async function archive() {
 .received-review { padding: 9px 10px; border-bottom: 1px dashed #eef1ee; }
 .received-review:last-child { border-bottom: 0; }
 .received-review p { margin: 5px 0 0; color: #5d6a64; font-size: 12px; line-height: 1.7; }
-@media (max-width: 760px) { .form-grid { grid-template-columns: 1fr 1fr; }.member-row { grid-template-columns: 80px 40px 1fr 40px; }.member-row small { grid-column: 1 / -1; text-align: left; } }
+@media (max-width: 900px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .member-row { grid-template-columns: 80px 40px 1fr 40px; }.member-row small { grid-column: 1 / -1; text-align: left; } }
+@media (max-width: 520px) { .form-grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) { .help-feedback { align-items: stretch; flex-direction: column; }.help-feedback .el-button { align-self: flex-end; } }
 </style>

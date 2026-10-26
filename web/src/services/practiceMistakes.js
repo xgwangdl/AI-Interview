@@ -1,5 +1,5 @@
 import { apiRequest } from './api';
-import { DIMENSION_LABELS } from './practiceArchive';
+import { DIMENSION_LABEL_KEYS, DIMENSION_LABELS } from './practiceArchive';
 
 /**
  * 错题本。
@@ -17,6 +17,10 @@ export const DIFFICULTY_LABELS = {
   standard: '标准',
   advanced: '进阶',
 };
+
+export const DIFFICULTY_LABEL_KEYS = Object.fromEntries(
+  Object.keys(DIFFICULTY_LABELS).map((key) => [key, `domain.difficulty.${key}`]),
+);
 
 /** 错题页每页条数：与后端 `MistakeBookService.DEFAULT_LIMIT` 保持一致（改要一起改）。 */
 export const PAGE_SIZE = 20;
@@ -42,25 +46,33 @@ export function retryMistake(questionId) {
  *
  * 文案（"差 12 分"这种）放前端：改措辞不用重新部署后端。
  */
-export function buildMistakes(book) {
+export function buildMistakes(book, t = null) {
   const threshold = typeof book?.passThreshold === 'number' ? book.passThreshold : 75;
   const mistakes = (book?.mistakes || []).map((item) => {
     const best = round(item.bestScore);
     return {
       questionId: item.questionId,
-      text: item.text || '（这道题没有保存题干）',
-      category: item.category || '综合',
+      text: item.text || (t ? t('mistakes.missingQuestion') : '（这道题没有保存题干）'),
+      category: item.category || (t ? t('domain.general') : '综合'),
       role: item.role || '',
-      difficultyLabel: DIFFICULTY_LABELS[item.difficulty] || item.difficulty || '',
+      difficultyLabel: t && DIFFICULTY_LABEL_KEYS[item.difficulty]
+        ? t(DIFFICULTY_LABEL_KEYS[item.difficulty])
+        : DIFFICULTY_LABELS[item.difficulty] || item.difficulty || '',
       attempts: item.attempts || 0,
       bestScore: best,
       latestScore: round(item.latestScore),
       /** 还差多少分到线：比"52 分"更能说明重练的目标 */
       gap: best == null ? null : Math.max(0, round(threshold - best)),
       label: best == null ? '—' : String(best),
-      weakestLabel: item.weakestDimension ? (DIMENSION_LABELS[item.weakestDimension] || item.weakestDimension) : '',
+      weakestLabel: item.weakestDimension
+        ? (t && DIMENSION_LABEL_KEYS[item.weakestDimension]
+          ? t(DIMENSION_LABEL_KEYS[item.weakestDimension])
+          : DIMENSION_LABELS[item.weakestDimension] || item.weakestDimension)
+        : '',
       weakestScore: round(item.weakestScore),
-      attemptsLabel: item.attempts > 1 ? `已重练 ${item.attempts - 1} 次` : '还没重练过',
+      attemptsLabel: item.attempts > 1
+        ? (t ? t('mistakes.attempts', { count: item.attempts - 1 }) : `已重练 ${item.attempts - 1} 次`)
+        : (t ? t('mistakes.neverRetried') : '还没重练过'),
     };
   });
 

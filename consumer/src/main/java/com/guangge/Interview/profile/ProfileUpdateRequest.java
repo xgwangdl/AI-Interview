@@ -11,5 +11,6 @@ public record ProfileUpdateRequest(
         @NotBlank @Size(max = 64) String timezone,
         @NotBlank @Pattern(regexp = "standard|large|xlarge") String fontScale,
         boolean reduceMotion,
-        @NotBlank @Pattern(regexp = "green|blue|amber") String theme) {
+        @NotBlank @Pattern(regexp = "green|blue|amber") String theme,
+        @Pattern(regexp = "zh-CN|en-US|ja-JP") String language) {
 }

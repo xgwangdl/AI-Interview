@@ -60,6 +60,9 @@ public class Candidates {
     @Column(name = "reduce_motion", nullable = false)
     private boolean reduceMotion;
 
+    @Column(name = "language", nullable = false, length = 16)
+    private String language;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -167,6 +170,14 @@ public class Candidates {
         this.reduceMotion = reduceMotion;
     }
 
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -185,6 +196,9 @@ public class Candidates {
         }
         if (fontScale == null || fontScale.isBlank()) {
             fontScale = "standard";
+        }
+        if (language == null || language.isBlank()) {
+            language = "zh-CN";
         }
         if (createdAt == null) {
             createdAt = Instant.now();

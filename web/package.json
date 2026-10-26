@@ -17,6 +17,7 @@
     "monaco-editor": "^0.52.2",
     "pinia": "2.3.1",
     "vue": "3.5.41",
+    "vue-i18n": "^11.4.16",
     "vue-router": "4.6.4"
   },
   "devDependencies": {

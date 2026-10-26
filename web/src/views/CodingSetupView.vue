@@ -3,8 +3,10 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { createCodingSession, deleteCodingSession, getCodingCapabilities, listCodingSessions } from '../services/coding';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const busy = ref(false);
 const elapsed = ref(0);
 let elapsedTimer;
@@ -26,14 +28,7 @@ const form = reactive({
 
 const languageOptions = computed(() => (capabilities.value.languages || []).map((item) => item.id));
 const languageLabels = { java: 'Java', python: 'Python', cpp: 'C++', javascript: 'JavaScript', go: 'Go' };
-const typeLabels = { coding: '上机编程', sql: '数据库题', fill_blank: '编程填空', choice: '选择题', short_answer: '简答题' };
-const typeHints = {
-  coding: '写完整程序，跑测试用例判分',
-  sql: '写 SQL 查询并比对结果集',
-  fill_blank: '补全代码中的空位',
-  choice: '选择正确选项（可多选）',
-  short_answer: '简答，由模型按要点评分',
-};
+const typeKeys = ['coding', 'sql', 'fill_blank', 'choice', 'short_answer'];
 
 onMounted(load);
 
@@ -44,7 +39,7 @@ async function load() {
     sessions.value = list || [];
     capabilities.value = caps || capabilities.value;
   } catch (error) {
-    ElMessage.error(error.message || '无法加载笔试列表');
+    ElMessage.error(error.message || t('coding.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -61,11 +56,11 @@ function removeQuestion(index) {
 
 async function create() {
   if (!form.role.trim()) {
-    ElMessage.warning('先填写目标岗位');
+    ElMessage.warning(t('coding.roleRequired'));
     return;
   }
   if (!form.questions.length) {
-    ElMessage.warning('至少添加一道题');
+    ElMessage.warning(t('coding.questionRequired'));
     return;
   }
   busy.value = true;
@@ -79,10 +74,10 @@ async function create() {
       difficulty: form.difficulty,
       questions: form.questions.map((item) => ({ type: item.type, language: item.language || undefined })),
     });
-    ElMessage.success('题目已生成');
+    ElMessage.success(t('coding.generated'));
     router.push(`/coding/${session.id}`);
   } catch (error) {
-    ElMessage.error(error.message || '出题失败，请稍后重试');
+    ElMessage.error(error.message || t('coding.generateFailed'));
   } finally {
     busy.value = false;
     window.clearInterval(elapsedTimer);
@@ -90,12 +85,12 @@ async function create() {
 }
 
 async function remove(session) {
-  await ElMessageBox.confirm('删除后题目与作答记录都会消失。', '删除这次笔试', { type: 'warning' });
+  await ElMessageBox.confirm(t('coding.deleteConfirmBody'), t('coding.deleteConfirmTitle'), { type: 'warning' });
   try {
     await deleteCodingSession(session.id);
     sessions.value = sessions.value.filter((item) => item.id !== session.id);
   } catch (error) {
-    ElMessage.error(error.message || '删除失败');
+    ElMessage.error(error.message || t('coding.deleteFailed'));
   }
 }
 </script>
@@ -104,45 +99,45 @@ async function remove(session) {
   <section v-loading="loading" class="coding-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">CODING ASSESSMENT</div>
-        <h1>笔试练习</h1>
-        <p>AI 出题（参考解自检通过才会出给你），支持上机编程、数据库、填空、选择与简答。</p>
+        <div class="eyebrow">{{ t('coding.eyebrow') }}</div>
+        <h1>{{ t('coding.setupTitle') }}</h1>
+        <p>{{ t('coding.setupSubtitle') }}</p>
       </div>
       <el-tag :class="capabilities.codeRunnerEnabled ? 'tag-ready' : 'tag-muted'">
-        {{ capabilities.codeRunnerEnabled ? '代码沙箱已启用' : '代码沙箱未启用（只能出题不能运行）' }}
+        {{ capabilities.codeRunnerEnabled ? t('coding.sandboxReady') : t('coding.sandboxDisabled') }}
       </el-tag>
     </div>
 
     <div class="setup-grid">
       <section class="panel setup-panel">
-        <div class="panel-title">出题条件</div>
+        <div class="panel-title">{{ t('coding.conditions') }}</div>
         <el-form label-position="top">
-          <el-form-item label="目标岗位">
-            <el-input v-model="form.role" maxlength="80" placeholder="例如：Java 后端工程师" />
+          <el-form-item :label="t('coding.role')">
+            <el-input v-model="form.role" maxlength="80" :placeholder="t('coding.rolePlaceholder')" />
           </el-form-item>
           <div class="field-grid">
-            <el-form-item label="目标公司（选填）">
-              <el-input v-model="form.company" maxlength="80" placeholder="例如：某互联网公司" />
+            <el-form-item :label="t('coding.company')">
+              <el-input v-model="form.company" maxlength="80" :placeholder="t('coding.companyPlaceholder')" />
             </el-form-item>
-            <el-form-item label="难度">
+            <el-form-item :label="t('coding.difficulty')">
               <el-select v-model="form.difficulty">
-                <el-option label="基础" value="foundation" />
-                <el-option label="标准" value="standard" />
-                <el-option label="进阶" value="advanced" />
+                <el-option :label="t('domain.difficulty.foundation')" value="foundation" />
+                <el-option :label="t('domain.difficulty.standard')" value="standard" />
+                <el-option :label="t('domain.difficulty.advanced')" value="advanced" />
               </el-select>
             </el-form-item>
           </div>
-          <el-form-item label="岗位描述 / JD（选填，填了题目会更贴）">
-            <el-input v-model="form.jobDescription" type="textarea" :rows="4" maxlength="3000" show-word-limit placeholder="粘贴岗位职责与技能要求" />
+          <el-form-item :label="t('coding.jobDescription')">
+            <el-input v-model="form.jobDescription" type="textarea" :rows="4" maxlength="3000" show-word-limit :placeholder="t('coding.jobDescriptionPlaceholder')" />
           </el-form-item>
         </el-form>
       </section>
 
       <section class="panel setup-panel">
-        <div class="panel-title">题目组合（{{ form.questions.length }} 题）</div>
+        <div class="panel-title">{{ t('coding.questionMix', { count: form.questions.length }) }}</div>
         <div class="add-buttons">
-          <el-button v-for="(label, type) in typeLabels" :key="type" class="soft-button" @click="addQuestion(type)">
-            <el-icon><Plus /></el-icon>{{ label }}
+          <el-button v-for="type in typeKeys" :key="type" class="soft-button" @click="addQuestion(type)">
+            <el-icon><Plus /></el-icon>{{ t(`domain.codingType.${type}`) }}
           </el-button>
         </div>
         <div class="question-rows">
@@ -150,38 +145,37 @@ async function remove(session) {
             <span class="row-index">{{ questionIndex + 1 }}</span>
             <div class="row-body">
               <select v-model="question.type" class="row-select">
-                <option v-for="(label, type) in typeLabels" :key="type" :value="type">{{ label }}</option>
+                <option v-for="type in typeKeys" :key="type" :value="type">{{ t(`domain.codingType.${type}`) }}</option>
               </select>
               <select v-if="question.type === 'coding'" v-model="question.language" class="row-select">
                 <option v-for="language in languageOptions" :key="language" :value="language">{{ languageLabels[language] || language }}</option>
               </select>
-              <small>{{ typeHints[question.type] }}</small>
+              <small>{{ t(`coding.hints.${question.type}`) }}</small>
             </div>
-            <button class="row-remove" type="button" aria-label="移除" @click="removeQuestion(questionIndex)">×</button>
+            <button class="row-remove" type="button" :aria-label="t('coding.remove')" @click="removeQuestion(questionIndex)">×</button>
           </div>
         </div>
         <el-button class="primary-button create-button" :loading="busy" @click="create">
-          {{ busy ? `生成中… 已等待 ${elapsed} 秒` : '生成题目并开始' }} <el-icon v-if="!busy"><ArrowRight /></el-icon>
+          {{ busy ? t('coding.generating', { seconds: elapsed }) : t('coding.generate') }} <el-icon v-if="!busy"><ArrowRight /></el-icon>
         </el-button>
         <p class="runner-note">
-          出题时会用模型给的参考解在沙箱里跑一遍用例，全部通过才会发给你；没通过会换一批重试（最多 3 次），
-          所以可能要等 20 秒到 2 分钟。左侧按钮上的秒数是真实等待时间，不是卡住了。
+          {{ t('coding.runnerNote') }}
         </p>
       </section>
     </div>
 
     <section class="panel history-panel">
-      <div class="panel-title">历史笔试</div>
-      <el-empty v-if="!sessions.length" description="还没有笔试记录" />
+      <div class="panel-title">{{ t('coding.history') }}</div>
+      <el-empty v-if="!sessions.length" :description="t('coding.noHistory')" />
       <div v-for="session in sessions" :key="session.id" class="history-row">
         <div>
           <strong>{{ session.role }}</strong>
-          <small>{{ session.questions.length }} 题 · {{ String(session.createdAt).slice(0, 10) }} · 保留至 {{ String(session.retentionUntil).slice(0, 10) }}</small>
+          <small>{{ t('coding.historyMeta', { count: session.questions.length, created: String(session.createdAt).slice(0, 10), retention: String(session.retentionUntil).slice(0, 10) }) }}</small>
         </div>
         <div class="history-actions">
-          <el-button class="soft-button" @click="router.push(`/coding/${session.id}`)">继续作答</el-button>
-          <el-button class="soft-button" @click="router.push(`/coding/${session.id}/report`)">查看报告</el-button>
-          <el-button class="soft-button danger" @click="remove(session)">删除</el-button>
+          <el-button class="soft-button" @click="router.push(`/coding/${session.id}`)">{{ t('coding.continue') }}</el-button>
+          <el-button class="soft-button" @click="router.push(`/coding/${session.id}/report`)">{{ t('coding.viewReport') }}</el-button>
+          <el-button class="soft-button danger" @click="remove(session)">{{ t('coding.delete') }}</el-button>
         </div>
       </div>
     </section>

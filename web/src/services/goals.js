@@ -15,6 +15,10 @@ export const STAGE_LABELS = {
   final: '终面',
 };
 
+export const STAGE_LABEL_KEYS = Object.fromEntries(
+  Object.keys(STAGE_LABELS).map((key) => [key, `domain.stages.${key}`]),
+);
+
 export const GOAL_STATUS_LABELS = {
   preparing: '准备中',
   applied: '已投递',
@@ -23,6 +27,10 @@ export const GOAL_STATUS_LABELS = {
   archived: '已归档',
 };
 
+export const GOAL_STATUS_LABEL_KEYS = Object.fromEntries(
+  Object.keys(GOAL_STATUS_LABELS).map((key) => [key, `domain.goalStatus.${key}`]),
+);
+
 export const PLAN_KIND_LABELS = {
   weak_dimension: '薄弱项',
   frequent: '岗位高频',
@@ -30,6 +38,10 @@ export const PLAN_KIND_LABELS = {
   english: '英语',
   assignment: '作业',
 };
+
+export const PLAN_KIND_LABEL_KEYS = Object.fromEntries(
+  Object.keys(PLAN_KIND_LABELS).map((key) => [key, `domain.planKind.${key}`]),
+);
 
 export function listGoals() {
   return apiRequest('/goals');
@@ -80,11 +92,13 @@ export function getStreak() {
 }
 
 /** "距面试 3 天" / "今天面试" / "已过 2 天" / "未设日期"。 */
-export function interviewLabel(daysUntil) {
-  if (daysUntil == null) return '未设面试日期';
-  if (daysUntil === 0) return '今天面试';
-  if (daysUntil > 0) return `距面试 ${daysUntil} 天`;
-  return `已过 ${Math.abs(daysUntil)} 天`;
+export function interviewLabel(daysUntil, t = null) {
+  if (daysUntil == null) return t ? t('domain.interview.unscheduled') : '未设面试日期';
+  if (daysUntil === 0) return t ? t('domain.interview.today') : '今天面试';
+  if (daysUntil > 0) {
+    return t ? t('domain.interview.upcoming', { days: daysUntil }) : `距面试 ${daysUntil} 天`;
+  }
+  return t ? t('domain.interview.past', { days: Math.abs(daysUntil) }) : `已过 ${Math.abs(daysUntil)} 天`;
 }
 
 /** 目标卡上的进度：已完成题目 / 计划题目；没有计划时显示 0%。 */

@@ -3,8 +3,10 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { createCohort, joinCohort, listCohorts, roleLabel } from '../services/cohorts';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const cohorts = ref([]);
 const loading = ref(true);
 const creating = ref(false);
@@ -19,14 +21,14 @@ async function load() {
   try {
     cohorts.value = await listCohorts();
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取学习小组');
+    ElMessage.error(error?.message || t('cohorts.loadFailed'));
   } finally {
     loading.value = false;
   }
 }
 
 async function create() {
-  if (!name.value.trim()) return ElMessage.warning('先给小组取个名字');
+  if (!name.value.trim()) return ElMessage.warning(t('cohorts.nameRequired'));
   creating.value = true;
   try {
     const cohort = await createCohort(name.value.trim());
@@ -34,14 +36,14 @@ async function create() {
     await load();
     router.push(`/cohorts/${cohort.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '创建失败');
+    ElMessage.error(error?.message || t('cohorts.createFailed'));
   } finally {
     creating.value = false;
   }
 }
 
 async function join() {
-  if (!inviteCode.value.trim()) return ElMessage.warning('请输入邀请码');
+  if (!inviteCode.value.trim()) return ElMessage.warning(t('cohorts.codeRequired'));
   joining.value = true;
   try {
     const cohort = await joinCohort(inviteCode.value.trim());
@@ -49,7 +51,7 @@ async function join() {
     await load();
     router.push(`/cohorts/${cohort.id}`);
   } catch (error) {
-    ElMessage.error(error?.message || '加入失败，请检查邀请码');
+    ElMessage.error(error?.message || t('cohorts.joinFailed'));
   } finally {
     joining.value = false;
   }
@@ -60,43 +62,43 @@ async function join() {
   <section v-loading="loading" class="cohort-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">LEARNING GROUPS</div>
-        <h1>学习小组</h1>
-        <p>助教布置作业，学员完成训练；默认只共享完成状态，分数由你自己决定是否共享。</p>
+        <div class="eyebrow">{{ t('cohorts.eyebrow') }}</div>
+        <h1>{{ t('cohorts.title') }}</h1>
+        <p>{{ t('cohorts.subtitle') }}</p>
       </div>
     </div>
 
     <div class="entry-grid">
       <section class="panel entry-card">
-        <strong>创建小组</strong>
-        <p>你是助教：生成邀请码、布置作业、查看完成情况。</p>
+        <strong>{{ t('cohorts.createTitle') }}</strong>
+        <p>{{ t('cohorts.createHint') }}</p>
         <div class="entry-row">
-          <el-input v-model="name" maxlength="120" placeholder="例如：2026 秋招 Java 训练营" @keyup.enter="create" />
-          <el-button class="primary-button" :loading="creating" @click="create">创建</el-button>
+          <el-input v-model="name" maxlength="120" :placeholder="t('cohorts.namePlaceholder')" @keyup.enter="create" />
+          <el-button class="primary-button" :loading="creating" @click="create">{{ t('cohorts.create') }}</el-button>
         </div>
       </section>
       <section class="panel entry-card">
-        <strong>加入小组</strong>
-        <p>输入助教给你的邀请码，作业会自动进入你的今日训练。</p>
+        <strong>{{ t('cohorts.joinTitle') }}</strong>
+        <p>{{ t('cohorts.joinHint') }}</p>
         <div class="entry-row">
-          <el-input v-model="inviteCode" maxlength="16" placeholder="例如：AB3K9QZX" @keyup.enter="join" />
-          <el-button class="soft-button" :loading="joining" @click="join">加入</el-button>
+          <el-input v-model="inviteCode" maxlength="16" :placeholder="t('cohorts.invitePlaceholder')" @keyup.enter="join" />
+          <el-button class="soft-button" :loading="joining" @click="join">{{ t('cohorts.join') }}</el-button>
         </div>
       </section>
     </div>
 
-    <div class="section-title"><span>我的小组</span><small>{{ cohorts.length }} 个</small></div>
+    <div class="section-title"><span>{{ t('cohorts.myGroups') }}</span><small>{{ t('cohorts.countGroups', { count: cohorts.length }) }}</small></div>
     <div v-if="cohorts.length" class="cohort-grid">
       <button v-for="cohort in cohorts" :key="cohort.id" class="cohort-card panel" @click="router.push(`/cohorts/${cohort.id}`)">
-        <div class="cohort-head"><strong>{{ cohort.name }}</strong><el-tag size="small">{{ roleLabel(cohort.role) }}</el-tag></div>
-        <p>{{ cohort.memberCount }} 位成员</p>
-        <span>{{ cohort.role === 'coach' ? `邀请码 ${cohort.inviteCode}` : '点击查看作业与进度' }}</span>
+        <div class="cohort-head"><strong>{{ cohort.name }}</strong><el-tag size="small">{{ roleLabel(cohort.role, t) }}</el-tag></div>
+        <p>{{ t('cohorts.memberCount', { count: cohort.memberCount }) }}</p>
+        <span>{{ cohort.role === 'coach' ? t('cohorts.inviteCode', { code: cohort.inviteCode }) : t('cohorts.clickProgress') }}</span>
       </button>
     </div>
     <div v-else class="panel empty-cohort">
       <el-icon><UserFilled /></el-icon>
-      <strong>还没有加入小组</strong>
-      <p>如果助教给了你邀请码，在上方输入即可；也可以自己创建一个小组。</p>
+      <strong>{{ t('cohorts.emptyTitle') }}</strong>
+      <p>{{ t('cohorts.emptyHint') }}</p>
     </div>
   </section>
 </template>

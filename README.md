@@ -16,15 +16,19 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 
 适合准备校招、社招、转岗和技术晋升面试的开发者。
 
+> **在线体验：[http://5aicv.cn:8080](http://5aicv.cn:8080)**
+>
+> 无需安装即可打开。当前演示入口使用 HTTP；涉及麦克风和摄像头的录制功能需要在 HTTPS 环境运行。
+
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
 [![Backend tests](https://img.shields.io/badge/backend_tests-312-brightgreen.svg)](#工程质量)
-[![Frontend tests](https://img.shields.io/badge/frontend_tests-145-brightgreen.svg)](#工程质量)
+[![Frontend tests](https://img.shields.io/badge/frontend_tests-149-brightgreen.svg)](#工程质量)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring AI](https://img.shields.io/badge/Spring_AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-[快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
+[在线体验](http://5aicv.cn:8080) · [快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
 
 <p align="center">
   <img src="docs/images/08-session-avatar-speaking.png" alt="Light-Interview 模拟面试界面" width="92%" />
@@ -71,6 +75,7 @@ flowchart LR
 
 ### 面试训练
 
+- 界面支持简体中文、English、日本語；语言跟随账号保存在个人设置中，退出登录会清理本地语言状态。
 - AI 根据目标岗位、JD 和简历生成题目，支持技术面、行为面、不同难度与面试官风格。
 - 真人形象数字人播报问题，支持提问、聆听、录制、追问等状态；嘴型由音量驱动，不冒充音素级同步。
 - 浏览器逐题录制，也可使用连续面试模式；每题可暂停、重录和回放。

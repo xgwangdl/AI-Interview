@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { buildWeekly, loadWeeklyReport, shareText, weekLabel } from '../services/progress';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
+const { t, locale } = useI18n();
 const report = ref(null);
 const loading = ref(true);
 const week = ref(typeof route.query.week === 'string' ? route.query.week : '');
@@ -14,7 +16,7 @@ onMounted(load);
 
 const range = computed(() => {
   if (!report.value) return '';
-  return `${weekLabel(report.value.weekStart)} – ${weekLabel(report.value.weekEnd)}`;
+  return `${weekLabel(report.value.weekStart, locale.value)} – ${weekLabel(report.value.weekEnd, locale.value)}`;
 });
 const maxDimension = computed(() => {
   const values = report.value?.dimensions?.map((item) => item.value || 0) || [];
@@ -24,9 +26,9 @@ const maxDimension = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    report.value = buildWeekly(await loadWeeklyReport(week.value));
+    report.value = buildWeekly(await loadWeeklyReport(week.value), t);
   } catch (error) {
-    ElMessage.error(error?.message || '无法读取周报');
+    ElMessage.error(error?.message || t('weekly.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -42,10 +44,10 @@ function shiftWeek(days) {
 }
 
 async function copyShare() {
-  const text = shareText(report.value);
+  const text = shareText(report.value, t);
   try {
     await navigator.clipboard.writeText(text);
-    ElMessage.success('分享文案已复制');
+    ElMessage.success(t('weekly.copied'));
   } catch {
     ElMessage.info(text);
   }
@@ -56,28 +58,28 @@ async function copyShare() {
   <section v-loading="loading" class="weekly-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">WEEKLY REVIEW</div>
-        <h1>本周训练报告</h1>
-        <p v-if="report">{{ range }} · 只统计这一周的计划、练习与分数</p>
+        <div class="eyebrow">{{ t('weekly.eyebrow') }}</div>
+        <h1>{{ t('weekly.title') }}</h1>
+        <p v-if="report">{{ t('weekly.subtitle', { range }) }}</p>
       </div>
       <div class="week-actions">
-        <el-button class="soft-button" @click="shiftWeek(-7)"><el-icon><ArrowLeft /></el-icon>上一周</el-button>
-        <el-button class="soft-button" @click="shiftWeek(7)">下一周<el-icon><ArrowRight /></el-icon></el-button>
-        <el-button class="soft-button" @click="copyShare"><el-icon><CopyDocument /></el-icon>复制分享文案</el-button>
+        <el-button class="soft-button" @click="shiftWeek(-7)"><el-icon><ArrowLeft /></el-icon>{{ t('weekly.prev') }}</el-button>
+        <el-button class="soft-button" @click="shiftWeek(7)">{{ t('weekly.next') }}<el-icon><ArrowRight /></el-icon></el-button>
+        <el-button class="soft-button" @click="copyShare"><el-icon><CopyDocument /></el-icon>{{ t('weekly.copy') }}</el-button>
       </div>
     </div>
 
     <template v-if="report">
       <div class="metric-grid">
-        <article class="metric panel"><span>计划完成</span><strong>{{ report.planCompleted }}<small> / {{ report.planTotal }}</small></strong><i><b :style="{ width: `${report.completionRate}%` }"></b></i></article>
-        <article class="metric panel"><span>练习场次</span><strong>{{ report.sessions }}</strong><small>{{ report.answers }} 个回答</small></article>
-        <article class="metric panel"><span>综合平均</span><strong>{{ report.averageScore ?? '—' }}</strong><small>较上周 {{ report.deltaLabel }}</small></article>
-        <article class="metric panel"><span>有效训练</span><strong>{{ report.planCompleted >= 2 ? '达标' : '继续' }}</strong><small>每天 2 题算达标</small></article>
+        <article class="metric panel"><span>{{ t('weekly.planCompleted') }}</span><strong>{{ report.planCompleted }}<small> / {{ report.planTotal }}</small></strong><i><b :style="{ width: `${report.completionRate}%` }"></b></i></article>
+        <article class="metric panel"><span>{{ t('weekly.sessions') }}</span><strong>{{ report.sessions }}</strong><small>{{ t('weekly.answers', { count: report.answers }) }}</small></article>
+        <article class="metric panel"><span>{{ t('weekly.average') }}</span><strong>{{ report.averageScore ?? '—' }}</strong><small>{{ t('weekly.versusLast', { delta: report.deltaLabel }) }}</small></article>
+        <article class="metric panel"><span>{{ t('weekly.effective') }}</span><strong>{{ report.planCompleted >= 2 ? t('weekly.passed') : t('weekly.keepGoing') }}</strong><small>{{ t('weekly.twoDaily') }}</small></article>
       </div>
 
       <div class="weekly-grid">
         <section class="panel dimension-panel">
-          <div class="section-title"><span>维度变化</span><small>低于 75 的会进入下周建议</small></div>
+          <div class="section-title"><span>{{ t('weekly.dimensionChanges') }}</span><small>{{ t('weekly.under75') }}</small></div>
           <div class="dimension-list">
             <div v-for="item in report.dimensions" :key="item.key" class="dimension-row">
               <span>{{ item.label }}</span>
@@ -88,23 +90,23 @@ async function copyShare() {
         </section>
 
         <section class="panel suggestion-panel">
-          <div class="section-title"><span>下周怎么练</span><small>最多 3 条</small></div>
+          <div class="section-title"><span>{{ t('weekly.nextWeek') }}</span><small>{{ t('weekly.maxThree') }}</small></div>
           <ul>
             <li v-for="(item, index) in report.suggestions" :key="index">{{ item }}</li>
           </ul>
-          <el-button class="primary-button" @click="router.push('/today')">开始今天训练</el-button>
+          <el-button class="primary-button" @click="router.push('/today')">{{ t('weekly.startToday') }}</el-button>
         </section>
       </div>
 
       <section v-if="report.bestImprovement" class="panel best-panel">
-        <div class="section-title"><span>本周进步最大</span><small>{{ report.bestImprovement.delta > 0 ? '+' : '' }}{{ report.bestImprovement.delta }} 分</small></div>
-        <h2>{{ report.bestImprovement.questionText || `第 ${report.bestImprovement.questionIndex + 1} 题` }}</h2>
+        <div class="section-title"><span>{{ t('weekly.bestProgress') }}</span><small>{{ report.bestImprovement.delta > 0 ? '+' : '' }}{{ t('weekly.scoreDelta', { delta: report.bestImprovement.delta }) }}</small></div>
+        <h2>{{ report.bestImprovement.questionText || t('weekly.questionNth', { number: report.bestImprovement.questionIndex + 1 }) }}</h2>
         <div class="best-grid">
-          <div><span>第 1 次 · {{ report.bestImprovement.beforeScore }}</span><p>{{ report.bestImprovement.beforeTranscript }}</p></div>
-          <div class="after"><span>当前 · {{ report.bestImprovement.afterScore }}</span><p>{{ report.bestImprovement.afterTranscript }}</p></div>
+          <div><span>{{ t('weekly.firstTime', { score: report.bestImprovement.beforeScore }) }}</span><p>{{ report.bestImprovement.beforeTranscript }}</p></div>
+          <div class="after"><span>{{ t('weekly.current', { score: report.bestImprovement.afterScore }) }}</span><p>{{ report.bestImprovement.afterTranscript }}</p></div>
         </div>
       </section>
-      <p v-else class="weekly-empty">本周还没有同一道题的两次回答，先完成一次重练就能看到 before/after。</p>
+      <p v-else class="weekly-empty">{{ t('weekly.noComparison') }}</p>
     </template>
   </section>
 </template>

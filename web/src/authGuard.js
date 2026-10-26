@@ -1,3 +1,5 @@
+import { clearLocalSession } from './services/authSession';
+
 export function installAuthGuard(router) {
   let verifiedToken;
   router.beforeEach((to) => {
@@ -14,7 +16,7 @@ export function installAuthGuard(router) {
           return true;
         })
         .catch(() => {
-          ['token', 'userId', 'userName', 'username', 'light-interview-display-name'].forEach((key) => localStorage.removeItem(key));
+          clearLocalSession();
           verifiedToken = undefined;
           return { name: 'login', query: { redirect: to.fullPath } };
         });

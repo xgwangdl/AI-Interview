@@ -3,8 +3,10 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t, locale } = useI18n();
 const practice = usePracticeStore();
 const keyword = ref('');
 const status = ref('all');
@@ -20,35 +22,43 @@ function open(session) {
 
 async function remove(session) {
   try {
-    await ElMessageBox.confirm(`“${session.role}”的录像和练习记录将永久删除。此操作无法撤销。`, '删除练习记录？', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' });
+    await ElMessageBox.confirm(
+      t('history.deleteConfirmBody', { role: session.role }),
+      t('history.deleteConfirmTitle'),
+      { confirmButtonText: t('history.deleteAction'), cancelButtonText: t('common.cancel'), type: 'warning' },
+    );
   } catch { return; }
   try {
     await practice.remove(session.id);
-    ElMessage.success('练习记录与录像已删除');
+    ElMessage.success(t('history.deleted'));
   } catch (error) {
-    ElMessage.error(error.message || '删除失败，请检查连接后重试。');
+    ElMessage.error(error.message || t('history.deleteFailed'));
   }
 }
 
 function dateLabel(date) {
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(date));
+  return new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(date));
+}
+
+function retentionLabel(date) {
+  return new Intl.DateTimeFormat(locale.value, { month: 'numeric', day: 'numeric' }).format(new Date(date));
 }
 </script>
 
 <template>
   <section class="history-page">
-    <div class="page-heading"><div><div class="eyebrow">PRACTICE LIBRARY</div><h1>练习记录</h1><p>查看每轮练习状态、回答片段与保留期限。</p></div><el-button class="primary-button" @click="router.push('/practice/setup')"><el-icon><Plus /></el-icon> 创建练习</el-button></div>
-    <div class="history-toolbar panel"><el-input v-model="keyword" clearable placeholder="搜索岗位或公司" class="search-input"><template #prefix><el-icon><Search /></el-icon></template></el-input><el-radio-group v-model="status" class="status-filter"><el-radio-button value="all">全部 {{ practice.sessions.length }}</el-radio-button><el-radio-button value="completed">已完成 {{ practice.completed.length }}</el-radio-button><el-radio-button value="in_progress">进行中 {{ practice.inProgress.length }}</el-radio-button></el-radio-group></div>
+    <div class="page-heading"><div><div class="eyebrow">{{ t('history.eyebrow') }}</div><h1>{{ t('history.title') }}</h1><p>{{ t('history.subtitle') }}</p></div><el-button class="primary-button" @click="router.push('/practice/setup')"><el-icon><Plus /></el-icon> {{ t('history.createPractice') }}</el-button></div>
+    <div class="history-toolbar panel"><el-input v-model="keyword" clearable :placeholder="t('history.searchPlaceholder')" class="search-input"><template #prefix><el-icon><Search /></el-icon></template></el-input><el-radio-group v-model="status" class="status-filter"><el-radio-button value="all">{{ t('history.all', { count: practice.sessions.length }) }}</el-radio-button><el-radio-button value="completed">{{ t('history.completedFilter', { count: practice.completed.length }) }}</el-radio-button><el-radio-button value="in_progress">{{ t('history.inProgressFilter', { count: practice.inProgress.length }) }}</el-radio-button></el-radio-group></div>
     <div v-if="visibleSessions.length" class="history-list">
       <article v-for="session in visibleSessions" :key="session.id" class="history-row panel">
         <div class="history-icon" :class="session.status"><el-icon><VideoCamera /></el-icon></div>
-        <div class="history-main"><div class="history-title-line"><strong>{{ session.role }}</strong><el-tag v-if="session.status === 'completed'" class="status-done" size="small">已完成</el-tag><el-tag v-else class="status-progress" size="small">进行中</el-tag></div><div class="history-subline"><span>{{ session.company || '自主练习' }}</span><i></i><span>{{ { behavioral: '综合行为', technical: '技术能力', manager: '管理岗位' }[session.interviewType] || '模拟面试' }}</span><i></i><span>{{ session.answers.length }}/{{ session.questionCount }} 道回答</span></div></div>
-        <div class="history-details"><strong>{{ dateLabel(session.completedAt || session.createdAt) }}</strong><small>保留至 {{ new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(session.retentionUntil)) }}</small></div>
-        <button class="icon-action" aria-label="删除练习记录" title="删除练习记录" @click="remove(session)"><el-icon><Delete /></el-icon></button><el-button class="soft-button open-button" @click="open(session)">{{ session.status === 'completed' ? '查看报告' : '继续练习' }} <el-icon><ArrowRight /></el-icon></el-button>
+        <div class="history-main"><div class="history-title-line"><strong>{{ session.role }}</strong><el-tag v-if="session.status === 'completed'" class="status-done" size="small">{{ t('history.completed') }}</el-tag><el-tag v-else class="status-progress" size="small">{{ t('history.inProgress') }}</el-tag></div><div class="history-subline"><span>{{ session.company || t('history.selfPractice') }}</span><i></i><span>{{ t(`setup.${session.interviewType}`) || t('report.mockInterview') }}</span><i></i><span>{{ t('history.answers', { answered: session.answers.length, total: session.questionCount }) }}</span></div></div>
+        <div class="history-details"><strong>{{ dateLabel(session.completedAt || session.createdAt) }}</strong><small>{{ t('history.retainedUntil', { date: retentionLabel(session.retentionUntil) }) }}</small></div>
+        <button class="icon-action" :aria-label="t('history.deleteAria')" :title="t('history.deleteAria')" @click="remove(session)"><el-icon><Delete /></el-icon></button><el-button class="soft-button open-button" @click="open(session)">{{ session.status === 'completed' ? t('history.viewReport') : t('history.continuePractice') }} <el-icon><ArrowRight /></el-icon></el-button>
       </article>
     </div>
-    <div v-else class="history-empty panel"><div class="empty-state-icon"><el-icon><FolderOpened /></el-icon></div><strong>{{ practice.sessions.length ? '没有符合条件的练习' : '练习记录会显示在这里' }}</strong><p>{{ practice.sessions.length ? '换一个关键词或筛选条件试试。' : '录制回答后，可以从这里回看每题视频并查看分析状态。' }}</p><el-button v-if="!practice.sessions.length" class="soft-button" @click="router.push('/practice/setup')">创建第一轮练习</el-button></div>
-    <div v-if="practice.sessions.length" class="retention-footnote"><el-icon><Lock /></el-icon>录像与练习记录默认在创建后 7 天自动从服务器清理，也可随时手动删除。</div>
+    <div v-else class="history-empty panel"><div class="empty-state-icon"><el-icon><FolderOpened /></el-icon></div><strong>{{ practice.sessions.length ? t('history.noMatches') : t('history.emptyTitle') }}</strong><p>{{ practice.sessions.length ? t('history.noMatchesHint') : t('history.emptyHint') }}</p><el-button v-if="!practice.sessions.length" class="soft-button" @click="router.push('/practice/setup')">{{ t('history.firstPractice') }}</el-button></div>
+    <div v-if="practice.sessions.length" class="retention-footnote"><el-icon><Lock /></el-icon>{{ t('history.retention') }}</div>
   </section>
 </template>
 

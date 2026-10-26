@@ -478,7 +478,7 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 | 类 | 职责 |
 | --- | --- |
 | `ProfileController` | `GET/PUT /api/v1/me/profile`；`PUT /api/v1/me/password` |
-| `ProfileService` | 读取和更新昵称、邮箱、时区、字号、减弱动效、主题色 |
+| `ProfileService` | 读取和更新昵称、邮箱、时区、界面语言、字号、减弱动效、主题色 |
 | `ProfileView` / `ProfileUpdateRequest` | 个人资料响应与带校验的更新请求 |
 | `PasswordChangeRequest` | 新密码请求；已登录令牌负责授权，BCrypt 写入由 `CandidatesService` 完成 |
 
@@ -486,6 +486,8 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 修改展示名称只写 `display_name`。时区使用 `ZoneId.of` 验证；主题色白名单与前端
 `web/src/services/theme.js` 保持一致。字号支持 `standard` / `large` / `xlarge`，
 前端通过根节点缩放保持文字与控件比例一致；减弱动效通过 `data-reduce-motion` 关闭非必要动画。
+界面语言支持 `zh-CN` / `en-US` / `ja-JP`，写入 `candidates.language`；前端由
+`web/src/i18n/` 的 `vue-i18n` 字典驱动，Element Plus 组件语言、页面标题和日期格式同步切换。
 
 偏好仍以 `candidates` 表为主：主题色继续兼容原来的 `/api/v1/me/preferences`，
 个人设置接口返回同一份主题值，避免侧栏快捷色点与设置页状态分叉。
@@ -572,6 +574,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V17__learning_cohorts_and_assignments.sql` | `cohorts` / `cohort_members` / `assignments` + `study_plan_items.assignment_id` | 学习小组、邀请码、作业与完成看板 |
 | `V18__cohort_feedback_and_peer_reviews.sql` | `cohort_help_requests` / `peer_reviews` + `cohort_members.peer_review_enabled` | 学员求助、助教反馈、匿名同伴互评 |
 | `V19__profile_settings.sql` | `candidates` 的 `display_name` / `timezone` / `font_scale` / `reduce_motion` / `created_at` | 个人资料、外观偏好与加入时间 |
+| `V20__profile_language.sql` | `candidates.language` | 账号级界面语言偏好；旧账号默认 `zh-CN`，旧客户端不传语言时不会清空已有设置 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。

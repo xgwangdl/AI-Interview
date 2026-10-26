@@ -38,3 +38,9 @@ export function buildQuestions(role, count, interviewType = 'behavioral') {
 
 export const styleLabels = { balanced: '专业平和', direct: '直接追问', supportive: '循序引导' };
 export const typeLabels = { behavioral: '综合行为面试', technical: '技术能力面试', manager: '管理岗位面试' };
+export const STYLE_LABEL_KEYS = Object.fromEntries(
+  Object.keys(styleLabels).map((key) => [key, `setup.${key}`]),
+);
+export const TYPE_LABEL_KEYS = Object.fromEntries(
+  Object.keys(typeLabels).map((key) => [key, `setup.${key}`]),
+);

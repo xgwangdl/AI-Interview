@@ -1,11 +1,13 @@
 <script setup>
 import { computed, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { tryLogin, tryRegister } from '../services/api';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const mode = ref('login');
 const form = reactive({ name: '', code: '', confirm: '', email: '' });
 const busy = ref(false);
@@ -23,16 +25,16 @@ function switchMode(next) {
 async function submit() {
   const name = form.name.trim();
   if (!name || !form.code) {
-    ElMessage.warning(isRegister.value ? '请填写用户名和密码。' : '请输入用户名和密码。');
+    ElMessage.warning(t('login.missingCredentials'));
     return;
   }
   if (isRegister.value) {
     if (form.code.length < 6) {
-      ElMessage.warning('密码至少 6 位。');
+      ElMessage.warning(t('login.shortPassword'));
       return;
     }
     if (form.code !== form.confirm) {
-      ElMessage.warning('两次输入的密码不一致。');
+      ElMessage.warning(t('login.mismatchPassword'));
       return;
     }
   }
@@ -46,7 +48,7 @@ async function submit() {
     localStorage.setItem('userName', data.userName || name);
     await router.replace(String(route.query.redirect || '/'));
   } catch (error) {
-    ElMessage.error(error.message || '无法连接服务，请确认后端正在运行。');
+    ElMessage.error(error.message || t('login.connectionError'));
   } finally {
     busy.value = false;
   }
@@ -55,26 +57,26 @@ async function submit() {
 
 <template>
   <div class="login-page">
-    <div class="login-brand"><span class="login-mark"><span></span><span></span><span></span></span><div><strong>面试练习室</strong><small>INTERVIEW STUDIO</small></div></div>
+    <div class="login-brand"><span class="login-mark"><span></span><span></span><span></span></span><div><strong>{{ t('app.name') }}</strong><small>{{ t('app.subtitle') }}</small></div></div>
     <div class="login-layout">
-      <div class="login-intro"><div class="login-overline">PREPARE WITH PURPOSE</div><h1>把每一次回答<br />练习得更从容</h1><p>为目标岗位准备，完成视频模拟面试，在真实的表达中发现可以改进的细节。</p><div class="login-benefits"><span><el-icon><VideoCamera /></el-icon>逐题视频练习</span><span><el-icon><ChatLineRound /></el-icon>结构化复盘</span><span><el-icon><Lock /></el-icon>可随时删除数据</span></div><div class="login-visual"><div class="login-visual-window"><div class="visual-toolbar"><i></i><i></i><i></i><span>练习现场 · 预览</span></div><div class="visual-scene"><div class="visual-person"><i class="visual-hair"></i><i class="visual-face"></i><i class="visual-jacket"></i><i class="visual-shirt"></i></div><div class="visual-question"><small>QUESTION 01</small><span>请介绍一个<br />你引以为傲的项目</span><i>录制准备中</i></div><div class="visual-wave"><i v-for="n in 18" :key="n" :style="{ height: `${8 + (n * 19 % 28)}px` }"></i></div></div></div><div class="visual-note"><span class="visual-note-icon"><el-icon><CircleCheck /></el-icon></span><span>每一道问题，都可以慢慢准备<small>练习 · 录制 · 回看</small></span></div></div><div class="login-footer">© INTERVIEW STUDIO <span>你的练习由你掌控</span></div></div>
+      <div class="login-intro"><div class="login-overline">PREPARE WITH PURPOSE</div><h1 v-html="t('login.introTitle')"></h1><p>{{ t('login.introText') }}</p><div class="login-benefits"><span><el-icon><VideoCamera /></el-icon>{{ t('login.benefitVideo') }}</span><span><el-icon><ChatLineRound /></el-icon>{{ t('login.benefitReview') }}</span><span><el-icon><Lock /></el-icon>{{ t('login.benefitDelete') }}</span></div><div class="login-visual"><div class="login-visual-window"><div class="visual-toolbar"><i></i><i></i><i></i><span>{{ t('login.previewTitle') }}</span></div><div class="visual-scene"><div class="visual-person"><i class="visual-hair"></i><i class="visual-face"></i><i class="visual-jacket"></i><i class="visual-shirt"></i></div><div class="visual-question"><small>QUESTION 01</small><span v-html="t('login.previewQuestion')"></span><i>{{ t('login.previewRecording') }}</i></div><div class="visual-wave"><i v-for="n in 18" :key="n" :style="{ height: `${8 + (n * 19 % 28)}px` }"></i></div></div></div><div class="visual-note"><span class="visual-note-icon"><el-icon><CircleCheck /></el-icon></span><span>{{ t('login.previewNote') }}<small>{{ t('login.previewNoteHint') }}</small></span></div></div><div class="login-footer">© INTERVIEW STUDIO <span>{{ t('login.privacy') }}</span></div></div>
       <section class="login-form-side">
-        <div class="login-form-header"><div class="eyebrow">{{ isRegister ? 'CREATE ACCOUNT' : 'WELCOME BACK' }}</div><h2>{{ isRegister ? '创建你的练习账号' : '登录你的练习空间' }}</h2><p>{{ isRegister ? '设置用户名与密码，立即开始第一次模拟面试。' : '使用你的用户名与密码继续。' }}</p></div>
+        <div class="login-form-header"><div class="eyebrow">{{ isRegister ? 'CREATE ACCOUNT' : 'WELCOME BACK' }}</div><h2>{{ isRegister ? t('login.createAccount') : t('login.loginTitle') }}</h2><p>{{ isRegister ? t('login.createHint') : t('login.loginHint') }}</p></div>
         <div class="auth-switch" role="tablist">
-          <button type="button" role="tab" :aria-selected="!isRegister" :class="{ active: !isRegister }" @click="switchMode('login')">登录</button>
-          <button type="button" role="tab" :aria-selected="isRegister" :class="{ active: isRegister }" @click="switchMode('register')">注册</button>
+          <button type="button" role="tab" :aria-selected="!isRegister" :class="{ active: !isRegister }" @click="switchMode('login')">{{ t('login.loginTab') }}</button>
+          <button type="button" role="tab" :aria-selected="isRegister" :class="{ active: isRegister }" @click="switchMode('register')">{{ t('login.registerTab') }}</button>
         </div>
         <!-- 固定 label 宽度：否则「用户名」和「密码 / 邀请码」宽度不同，输入框左边缘参差不齐 -->
         <el-form class="login-form" label-position="left" label-width="88px" @submit.prevent="submit">
-          <el-form-item label="用户名"><el-input v-model="form.name" size="large" maxlength="80" autocomplete="username" placeholder="2-80 位，支持中文" @keyup.enter="submit"><template #prefix><el-icon><User /></el-icon></template></el-input></el-form-item>
-          <el-form-item :label="isRegister ? '设置密码' : '密码 / 邀请码'"><el-input v-model="form.code" size="large" type="password" maxlength="100" show-password :autocomplete="isRegister ? 'new-password' : 'current-password'" :placeholder="isRegister ? '至少 6 位' : '输入密码'" @keyup.enter="submit"><template #prefix><el-icon><Key /></el-icon></template></el-input></el-form-item>
+          <el-form-item :label="t('login.username')"><el-input v-model="form.name" size="large" maxlength="80" autocomplete="username" :placeholder="t('login.usernamePlaceholder')" @keyup.enter="submit"><template #prefix><el-icon><User /></el-icon></template></el-input></el-form-item>
+          <el-form-item :label="isRegister ? t('login.setPassword') : t('login.password')"><el-input v-model="form.code" size="large" type="password" maxlength="100" show-password :autocomplete="isRegister ? 'new-password' : 'current-password'" :placeholder="isRegister ? t('login.passwordMinPlaceholder') : t('login.passwordPlaceholder')" @keyup.enter="submit"><template #prefix><el-icon><Key /></el-icon></template></el-input></el-form-item>
           <template v-if="isRegister">
-            <el-form-item label="确认密码"><el-input v-model="form.confirm" size="large" type="password" maxlength="100" show-password autocomplete="new-password" placeholder="再输入一次" @keyup.enter="submit"><template #prefix><el-icon><Key /></el-icon></template></el-input></el-form-item>
-            <el-form-item label="邮箱（可选）"><el-input v-model="form.email" size="large" maxlength="255" placeholder="用于后续通知，可留空" @keyup.enter="submit"><template #prefix><el-icon><Message /></el-icon></template></el-input></el-form-item>
+            <el-form-item :label="t('login.confirmPassword')"><el-input v-model="form.confirm" size="large" type="password" maxlength="100" show-password autocomplete="new-password" :placeholder="t('login.confirmPlaceholder')" @keyup.enter="submit"><template #prefix><el-icon><Key /></el-icon></template></el-input></el-form-item>
+            <el-form-item :label="t('login.email')"><el-input v-model="form.email" size="large" maxlength="255" :placeholder="t('login.emailPlaceholder')" @keyup.enter="submit"><template #prefix><el-icon><Message /></el-icon></template></el-input></el-form-item>
           </template>
-          <el-button class="primary-button login-submit" :loading="busy" @click="submit">{{ isRegister ? '创建账号并进入' : '安全登录' }} <el-icon><ArrowRight /></el-icon></el-button>
+          <el-button class="primary-button login-submit" :loading="busy" @click="submit">{{ isRegister ? t('login.createSubmit') : t('login.loginSubmit') }} <el-icon><ArrowRight /></el-icon></el-button>
         </el-form>
-        <div class="login-help"><el-icon><InfoFilled /></el-icon><span>{{ isRegister ? '密码以 BCrypt 哈希保存，管理员也看不到原文。' : '忘记密码请联系管理员重置；请勿在公共设备上保存登录信息。' }}</span></div>
+        <div class="login-help"><el-icon><InfoFilled /></el-icon><span>{{ isRegister ? t('login.createSecurity') : t('login.loginSecurity') }}</span></div>
       </section>
     </div>
   </div>

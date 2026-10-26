@@ -41,6 +41,7 @@ And it **actually runs the code you write** — if your program fails the test c
 | 🧠 **Questions are self-checked** | Every generated question is first run against its **own reference solution** in the sandbox; only questions whose reference passes every case are handed to you. You will never get a question whose model answer does not even compile |
 | 🧩 **Five question types** | Hands-on coding, database questions (executed against a temporary SQLite), fill-in-the-blank, multiple choice, short answer |
 | 🎨 **Pick your palette** | Three themes — pine green, navy, ochre — saved per account |
+| 🌐 **Three interface languages** | Simplified Chinese, English and Japanese can be selected in Personal settings; the choice follows the account and stays consistent across devices |
 | 📊 **Operable, not just runnable** | Prometheus metrics, exponential back-off retries and a dead-letter queue for the analysis pipeline; resumable chunked uploads for recordings |
 
 ## 🚀 Core features
@@ -48,6 +49,7 @@ And it **actually runs the code you write** — if your program fails the test c
 | Area | What it does |
 | --- | --- |
 | Practice setup | Target role, company, job description, résumé, interview type / interviewer style / difficulty / question count and duration |
+| Interface language | Simplified Chinese, English and Japanese; navigation, forms, reports, coding, résumé, goals and study groups are covered. AI-generated business content still follows the model output |
 | Device check | Camera and microphone permission with live preview; you cannot enter the interview until the volume check passes |
 | AI question planning | Parses an uploaded PDF / Word résumé together with the role and JD; falls back to a built-in catalogue when the model is unavailable. Résumé text is used for planning only and is never stored |
 | Mock interview | An animated interviewer reads the question aloud (with a text-only fallback), one recording per question, pausable and re-recordable |
