@@ -159,11 +159,21 @@ public class CodeRunnerService {
     }
 
     /** 编译与运行都写文件，超时或崩溃时仍能读到已经产生的输出。 */
-    private String script(CodeLanguage language) {
+    String script(CodeLanguage language) {
         StringBuilder script = new StringBuilder();
         script.append("cd /work\n");
         script.append("export HOME=/tmp\n");          // 有些工具需要可写的 HOME
-        script.append("export GOCACHE=/tmp/go-cache\n"); // Go 需要可写的构建缓存
+        if (language == CodeLanguage.GO) {
+            // Go 首次编译标准库时并行包编译很容易超过 256MB。串行编译并降低 GC
+            // 目标后，hello world 也能在单核低内存沙箱里完成。
+            script.append("export GOCACHE=/work/.gocache\n");
+            script.append("export GOTMPDIR=/work/.gotmp\n");
+            script.append("export GOMAXPROCS=1\n");
+            script.append("export GOFLAGS=-p=1\n");
+            script.append("export GOGC=20\n");
+            script.append("export GOMEMLIMIT=180MiB\n");
+            script.append("mkdir -p \"$GOCACHE\" \"$GOTMPDIR\"\n");
+        }
         // Go 工具链需要写较大的临时包文件；其他语言仍保持 2MB 单文件上限。
         script.append("ulimit -f ").append(language == CodeLanguage.GO ? "65536" : "4096").append('\n');
         String compileLimit = String.valueOf(compileTimeout.toSeconds());

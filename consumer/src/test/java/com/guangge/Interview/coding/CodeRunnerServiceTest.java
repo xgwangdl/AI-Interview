@@ -65,6 +65,17 @@ class CodeRunnerServiceTest {
     }
 
     @Test
+    void configuresGoForLowMemoryCompilation() {
+        String script = runner(5, 60).script(CodeLanguage.GO);
+
+        assertTrue(script.contains("export GOCACHE=/work/.gocache"));
+        assertTrue(script.contains("export GOMAXPROCS=1"));
+        assertTrue(script.contains("export GOFLAGS=-p=1"));
+        assertTrue(script.contains("export GOGC=20"));
+        assertTrue(script.contains("export GOMEMLIMIT=180MiB"));
+    }
+
+    @Test
     @EnabledIfSystemProperty(named = "code.runner.integration", matches = "true")
     void runsPythonAndFeedsStdin() {
         String source = """
