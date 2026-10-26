@@ -173,6 +173,17 @@ PRACTICE_ASR_PROVIDER=stub
 PRACTICE_EVALUATION_PROVIDER=stub
 ```
 
+### Docker 镜像
+
+正式版本会把前后端镜像发布到 GitHub Packages。以 `v0.2.0-beta.1` 为例：
+
+```bash
+docker pull ghcr.io/xgwangdl/light-interview-backend:0.2.0-beta.1
+docker pull ghcr.io/xgwangdl/light-interview-web:0.2.0-beta.1
+```
+
+镜像页面：[GitHub Packages](https://github.com/xgwangdl?tab=packages) · [版本发布](https://github.com/xgwangdl/AI-Interview/releases)
+
 ## 为什么不是套壳 Demo
 
 ### 题目先自检，再交给用户

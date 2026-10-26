@@ -1,6 +1,6 @@
 # Light-Interview 前端镜像：静态站 + nginx 反代后端（/api、/login…）
 
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /web
 COPY package.json package-lock.json ./
 RUN npm ci
