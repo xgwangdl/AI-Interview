@@ -2,9 +2,10 @@
 """Split the supplied English-coach reference sheet into aligned avatar frames.
 
 The source sheet is a 6-column contact sheet with blue labels under every
-portrait. The labels are intentionally excluded from every output frame. All
-frames use the same source rectangle height and scale, so changing mouths does
-not resize or vertically jump the character.
+portrait. The source rows use slightly different camera scales, so a fixed crop
+still makes faces jump when mouths switch. This script detects each face,
+normalizes face width and head-top position, and keeps the full cell height
+above the blue label so the neck and shoulders remain visible.
 
 Usage:
     python scripts/split-english-coach-sheet.py
@@ -17,6 +18,8 @@ import argparse
 import json
 from pathlib import Path
 
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -36,18 +39,24 @@ COLUMNS = [
     (1102, 1304),
 ]
 ROW_TOPS = [45, 297, 560, 802]
+CELL_BOTTOMS = [262, 521, 755, 978]
 
-# A fixed crop height is the key alignment rule. Rows 3 and 4 have less image
-# space before their labels, but the face and shoulders still fit in 176px.
-CROP_HEIGHT = 176
-CANVAS = (340, 260)
+# Face width and head-top are the stable anchors between frames. The taller
+# canvas leaves room for the neck and upper shoulders instead of a floating
+# head crop.
+CANVAS = (340, 300)
+TARGET_FACE_WIDTH = 150
+HEAD_TOP = 10
 
 
 FRAMES = {
     # name: (row, column)
     "mouth-closed": (0, 0),
-    "mouth-smile": (0, 1),
-    "mouth-normal": (0, 2),
+    # Every speaking frame comes from the same source row. This keeps the
+    # lighting, background, shoulder width and camera angle identical while
+    # only the mouth changes.
+    "mouth-smile": (2, 5),
+    "mouth-normal": (2, 2),
     "mouth-e": (2, 1),
     "mouth-a": (2, 0),
     "mouth-o": (2, 3),
@@ -55,31 +64,81 @@ FRAMES = {
     "eyes-closed": (1, 4),
     "head-nod": (1, 0),
     "portrait": (0, 0),
-    "state-asking": (0, 2),
+    "state-asking": (2, 2),
     "state-listening": (0, 0),
     "state-recording": (0, 0),
-    "state-followup": (0, 1),
+    "state-followup": (2, 5),
 }
 
 
-def crop_frame(source: Image.Image, row: int, column: int) -> Image.Image:
+def detect_face(source_bgr: np.ndarray, row: int, column: int, name: str) -> tuple[int, int, int, int]:
     x0, x1 = COLUMNS[column]
-    y0 = ROW_TOPS[row]
-    portrait = source.crop((x0, y0, x1, y0 + CROP_HEIGHT)).convert("RGBA")
+    y0, y1 = ROW_TOPS[row], CELL_BOTTOMS[row]
+    roi = cv2.equalizeHist(cv2.cvtColor(source_bgr[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY))
+    cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+    faces = cascade.detectMultiScale(
+        roi,
+        scaleFactor=1.05,
+        minNeighbors=5,
+        minSize=(45, 45),
+        maxSize=(150, 150),
+    )
+    if len(faces) == 0:
+        raise ValueError(f"{name}: no face detected in row {row + 1}, column {column + 1}")
 
-    scale = CANVAS[1] / portrait.height
+    # Prefer the largest detection if a background poster happens to trigger.
+    x, y, w, h = max(faces, key=lambda box: int(box[2]) * int(box[3]))
+    return x0 + int(x), y0 + int(y), int(w), int(h)
+
+
+def fade_bottom(image: Image.Image, fade_px: int = 18) -> Image.Image:
+    """Soften the source-cell cutoff without hiding the neck."""
+    alpha = image.getchannel("A")
+    mask = Image.new("L", image.size, 255)
+    fade = Image.new("L", (image.width, fade_px), 255)
+    pixels = fade.load()
+    for y in range(fade_px):
+        value = round(255 * (1 - y / max(1, fade_px - 1)))
+        for x in range(fade.width):
+            pixels[x, y] = value
+    mask.paste(fade, (0, image.height - fade_px))
+    image.putalpha(Image.composite(alpha, Image.new("L", image.size, 0), mask))
+    return image
+
+
+def crop_frame(source: Image.Image, source_bgr: np.ndarray, row: int, column: int,
+               name: str) -> Image.Image:
+    x0, x1 = COLUMNS[column]
+    y0, y1 = ROW_TOPS[row], CELL_BOTTOMS[row]
+    face_x, face_y, face_w, face_h = detect_face(source_bgr, row, column, name)
+    portrait = source.crop((x0, y0, x1, y1)).convert("RGBA")
+
+    # Rows differ in source scale. Normalizing by face width removes the
+    # visible size pop when switching from a row-1 frame to a row-3 frame.
+    scale = TARGET_FACE_WIDTH / face_w
     fitted = portrait.resize(
-        (round(portrait.width * scale), CANVAS[1]),
+        (round(portrait.width * scale), round(portrait.height * scale)),
         Image.Resampling.LANCZOS,
     )
+
+    face_center_x = face_x + face_w / 2
+    # Haar's face box starts near the forehead; the hairline is above it.
+    estimated_head_top = face_y - face_h * 0.35
+    x = round(CANVAS[0] / 2 - (face_center_x - x0) * scale)
+    y = round(HEAD_TOP - (estimated_head_top - y0) * scale)
+
     canvas = Image.new("RGBA", CANVAS, (0, 0, 0, 0))
-    canvas.alpha_composite(fitted, ((CANVAS[0] - fitted.width) // 2, 0))
+    layer = Image.new("RGBA", CANVAS, (0, 0, 0, 0))
+    layer.paste(fitted, (x, y))
+    canvas.alpha_composite(fade_bottom(layer))
     return canvas
 
 
 def write_preview(frames: dict[str, Image.Image]) -> None:
     PREVIEW.parent.mkdir(parents=True, exist_ok=True)
-    thumb_size = (170, 130)
+    thumb_size = (170, 150)
     label_height = 24
     columns = 4
     rows = (len(frames) + columns - 1) // columns
@@ -115,8 +174,11 @@ def main() -> None:
         raise SystemExit(f"Missing source sheet: {SOURCE}")
 
     source = Image.open(SOURCE).convert("RGB")
+    source_bgr = cv2.imread(str(SOURCE))
+    if source_bgr is None:
+        raise SystemExit(f"OpenCV could not read source sheet: {SOURCE}")
     frames = {
-        name: crop_frame(source, row, column)
+        name: crop_frame(source, source_bgr, row, column, name)
         for name, (row, column) in FRAMES.items()
     }
     write_preview(frames)
@@ -131,8 +193,9 @@ def main() -> None:
     manifest = {
         "source": str(SOURCE.relative_to(REPO)).replace("\\", "/"),
         "canvas": list(CANVAS),
-        "cropHeight": CROP_HEIGHT,
-        "note": "Same scale and anchor for every frame; blue labels are excluded.",
+        "targetFaceWidth": TARGET_FACE_WIDTH,
+        "headTop": HEAD_TOP,
+        "note": "Face-width normalized, head-top aligned, neck and shoulders retained; blue labels excluded.",
         "frames": {
             name: {"row": row + 1, "column": column + 1}
             for name, (row, column) in FRAMES.items()
