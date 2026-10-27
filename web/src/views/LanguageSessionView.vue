@@ -437,7 +437,7 @@ function backToList() {
       <div v-if="!finished" class="session-layout">
         <section class="interviewer-panel panel">
           <div class="interviewer-screen">
-            <DigitalHuman :speaking="speaking" :amplitude="() => amplitude" />
+            <DigitalHuman avatar-variant="english-coach" :use-idle-video="false" :speaking="speaking" :amplitude="() => amplitude" />
             <div class="interviewer-info">
               <div class="interviewer-role">{{ t('languageSession.aiPartner', { language: session.languageName }) }}</div>
               <p v-if="liveReply" class="ai-line live">{{ liveReply }}</p>
@@ -539,6 +539,7 @@ function backToList() {
 .session-layout { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 18px; }
 .interviewer-panel { padding: 16px 16px 14px; box-shadow: none; align-self: start; }
 .interviewer-screen { display: grid; gap: 12px; }
+.interviewer-screen :deep(.dh-stage) { aspect-ratio: 340 / 260; }
 .interviewer-role { color: var(--green); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
 .ai-line { margin: 8px 0 0; color: #2f3c35; font-size: 16px; font-weight: 600; line-height: 1.6; }
 .ai-line.status { color: #7d8982; font-size: 14px; font-weight: 500; }

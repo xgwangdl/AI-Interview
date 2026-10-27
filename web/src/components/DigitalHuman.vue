@@ -29,6 +29,8 @@ const props = defineProps({
   idleVideoUrl: { type: String, default: IDLE_VIDEO },
   /** 关掉就还是纯切帧（C 方案可回退） */
   useIdleVideo: { type: Boolean, default: true },
+  /** 同一套动画可以换人物素材，例如外语页使用女性外教 */
+  avatarVariant: { type: String, default: 'interviewer' },
 });
 
 const emit = defineEmits(['speaking-end']);
@@ -136,7 +138,7 @@ function tick(now) {
   rafId = requestAnimationFrame(tick);
 }
 
-const source = computed(() => frameSrc(frame.value));
+const source = computed(() => frameSrc(frame.value, props.avatarVariant));
 const showAsSpeaking = computed(() => props.speaking);
 /**
  * 待机循环视频（C 方案）：视频可用且当前不在说话时播视频，说话时切回切帧。
@@ -174,7 +176,7 @@ watch(() => props.speaking, (speaking) => {
 });
 
 onMounted(async () => {
-  const results = await preloadFrames();
+  const results = await preloadFrames(undefined, props.avatarVariant);
   loadFailed.value = results.filter((item) => !item.ok).length > 0;
   ready.value = true;
   rafId = requestAnimationFrame(tick);

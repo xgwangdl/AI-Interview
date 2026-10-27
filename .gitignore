@@ -52,3 +52,5 @@ dist/
 ### 本地前端开发服务器日志 ###
 /web-dev.log
 /web-dev.err.log
+/web/vite-local.out.log
+/web/vite-local.err.log

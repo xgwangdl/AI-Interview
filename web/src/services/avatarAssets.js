@@ -7,6 +7,17 @@
 
 const BASE = '/assets/avatar';
 
+/** 不同业务场景可以共用同一套动画逻辑，但人物素材彼此独立。 */
+export const AVATAR_VARIANTS = Object.freeze({
+  INTERVIEWER: 'interviewer',
+  ENGLISH_COACH: 'english-coach',
+});
+
+const BASE_BY_VARIANT = {
+  [AVATAR_VARIANTS.INTERVIEWER]: BASE,
+  [AVATAR_VARIANTS.ENGLISH_COACH]: `${BASE}/english-coach`,
+};
+
 /**
  * 待机循环视频（可选）。
  *
@@ -51,8 +62,12 @@ export const ALL_FRAMES = [
   'eyes-closed', 'head-nod', 'portrait',
 ];
 
-export function frameSrc(name) {
-  return `${BASE}/${name}.png`;
+export function avatarBase(variant = AVATAR_VARIANTS.INTERVIEWER) {
+  return BASE_BY_VARIANT[variant] || BASE_BY_VARIANT[AVATAR_VARIANTS.INTERVIEWER];
+}
+
+export function frameSrc(name, variant = AVATAR_VARIANTS.INTERVIEWER) {
+  return `${avatarBase(variant)}/${name}.png`;
 }
 
 /**
@@ -61,12 +76,12 @@ export function frameSrc(name) {
  * 说话时每秒要切好几次图，现取会闪白，所以先全部解码进内存。
  * 返回 Promise，等全部就绪再开始动画；失败的帧不会阻断其它帧。
  */
-export function preloadFrames(names = ALL_FRAMES) {
+export function preloadFrames(names = ALL_FRAMES, variant = AVATAR_VARIANTS.INTERVIEWER) {
   if (typeof Image === 'undefined') return Promise.resolve([]);
   return Promise.all(names.map((name) => new Promise((resolve) => {
     const image = new Image();
     image.onload = () => resolve({ name, ok: true });
     image.onerror = () => resolve({ name, ok: false });
-    image.src = frameSrc(name);
+    image.src = frameSrc(name, variant);
   })));
 }

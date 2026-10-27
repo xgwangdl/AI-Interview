@@ -1,0 +1,67 @@
+{
+  "source": "scripts/assets/english-coach-expression-sheet.png",
+  "canvas": [
+    340,
+    260
+  ],
+  "cropHeight": 176,
+  "note": "Same scale and anchor for every frame; blue labels are excluded.",
+  "frames": {
+    "mouth-closed": {
+      "row": 1,
+      "column": 1
+    },
+    "mouth-smile": {
+      "row": 1,
+      "column": 2
+    },
+    "mouth-normal": {
+      "row": 1,
+      "column": 3
+    },
+    "mouth-e": {
+      "row": 3,
+      "column": 2
+    },
+    "mouth-a": {
+      "row": 3,
+      "column": 1
+    },
+    "mouth-o": {
+      "row": 3,
+      "column": 4
+    },
+    "mouth-m": {
+      "row": 3,
+      "column": 5
+    },
+    "eyes-closed": {
+      "row": 2,
+      "column": 5
+    },
+    "head-nod": {
+      "row": 2,
+      "column": 1
+    },
+    "portrait": {
+      "row": 1,
+      "column": 1
+    },
+    "state-asking": {
+      "row": 1,
+      "column": 3
+    },
+    "state-listening": {
+      "row": 1,
+      "column": 1
+    },
+    "state-recording": {
+      "row": 1,
+      "column": 1
+    },
+    "state-followup": {
+      "row": 1,
+      "column": 2
+    }
+  }
+}

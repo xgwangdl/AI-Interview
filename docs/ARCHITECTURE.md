@@ -317,17 +317,20 @@ docker run --rm -i
 
 ### 5.8 数字人（真人素材版）
 
-面试官头像从"矢量小人"换成了**同一张真人照片切出来的多帧素材**。
+数字人从"矢量小人"换成了**同一张真人照片切出来的多帧素材**。面试场景使用男性面试官，
+外语口语场景使用与英语服务端音色匹配的女性外教；两组素材共用状态机、音量分析和切帧组件。
 
 | 类 / 文件 | 职责 |
 | --- | --- |
 | `scripts/split-avatar-sheet.py` | **素材处理脚本**：从组合图里定位 12 张卡片，去掉半透明卡片底，抠出人物，按人脸对齐后输出统一尺寸的帧 |
+| `scripts/split-english-coach-sheet.py` | 女性外教素材脚本：固定裁剪同行人物，排除蓝色说明条，统一为 340x260 透明画布 |
 | `web/public/assets/avatar/*.png` | 切好的 14 张帧（12 个表情/状态 + 1 张合成闭眼 + 1 张大图），340x260 透明 PNG |
-| `web/src/services/avatarAssets.js` | 帧清单、说话循环表、预加载 |
+| `web/public/assets/avatar/english-coach/*.png` | 女性外教口型与状态帧，只在外语口语页面启用 |
+| `web/src/services/avatarAssets.js` | 按 `interviewer` / `english-coach` 选择素材集，负责帧清单、说话循环表和预加载 |
 | `web/src/services/avatarState.js` | **状态的唯一来源**：7 个状态 + 状态→静止帧的映射 + 错误/自动播放被拦的标记 |
 | `web/src/services/avatarAudio.js` | 配音播放器：单例 `HTMLAudioElement` + 一次性创建的 Web Audio 分析器 |
 | `web/src/services/mouthAnimation.js` | 音量→嘴型档位的纯函数（可单测） |
-| `web/src/components/DigitalHuman.vue` | 渲染帧并按音量切嘴型；只读状态，不写状态 |
+| `web/src/components/DigitalHuman.vue` | 通过 `avatarVariant` 选择人物素材，渲染帧并按音量切嘴型；只读状态，不写状态 |
 
 **动画的自然度处理**（都在 `mouthAnimation.js` + 组件里，纯函数部分有单测）：
 
