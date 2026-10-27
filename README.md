@@ -16,9 +16,9 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 
 适合准备校招、社招、转岗和技术晋升面试的开发者。
 
-> **在线体验：[http://5aicv.cn:8080](http://5aicv.cn:8080)**
+> **在线体验：[https://5aicv.cn](https://5aicv.cn)**
 >
-> 无需安装即可打开。当前演示入口使用 HTTP；涉及麦克风和摄像头的录制功能需要在 HTTPS 环境运行。
+> 无需安装即可打开。已启用 HTTPS，可直接使用麦克风和摄像头进行录制练习。
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
 [![Backend tests](https://img.shields.io/badge/backend_tests-312-brightgreen.svg)](#工程质量)
@@ -28,7 +28,7 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-[在线体验](http://5aicv.cn:8080) · [快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
+[在线体验](https://5aicv.cn) · [快速开始](#快速开始) · [先看演示](#先看演示) · [训练闭环](#一套完整的训练闭环) · [核心能力](#核心能力) · [技术拆解](#为什么不是套壳-demo) · [使用手册](docs/USER-GUIDE.md) · [项目架构](docs/ARCHITECTURE.md) · [安全策略](SECURITY.md) · [English](docs/README.md)
 
 <p align="center">
   <img src="docs/images/08-session-avatar-speaking.png" alt="Light-Interview 模拟面试界面" width="92%" />

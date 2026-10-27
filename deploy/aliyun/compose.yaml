@@ -115,7 +115,27 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 96m
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   postgres-data:
   redis-data:
   app-media:
+  caddy-data:
+  caddy-config:

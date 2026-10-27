@@ -1,0 +1,10 @@
+{
+	email admin@5aicv.cn
+}
+
+5aicv.cn {
+	encode zstd gzip
+	reverse_proxy web:80 {
+		header_up X-Real-IP {remote_host}
+	}
+}
