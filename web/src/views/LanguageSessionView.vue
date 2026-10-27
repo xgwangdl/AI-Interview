@@ -7,8 +7,8 @@ import { AudioRecorder } from '../services/audioRecorder';
 import { LanguageStream } from '../services/languageStream';
 import { PcmCapture, PcmPlayer } from '../services/pcmStream';
 import {
-  fetchAudio, finishSession, getSession, latencyLabel, pickVoice, reportRows, sessionSubtitle,
-  submitAudioTurn, submitTextTurn,
+  fetchAudio, finishSession, getSession, latencyLabel, openingSpeechUrl, pickVoice, reportRows,
+  resolveSpeechMode, sessionSubtitle, submitAudioTurn, submitTextTurn,
 } from '../services/language';
 import { useI18n } from 'vue-i18n';
 
@@ -57,16 +57,18 @@ const statusLine = computed(() => (speaking.value
 const full = computed(() => Boolean(session.value && session.value.turnCount >= session.value.maxTurns));
 const finished = computed(() => session.value?.status === 'finished');
 const rows = computed(() => reportRows(session.value?.report, t));
-const canSpeak = computed(() => Boolean(session.value?.serverVoice) || voices.value.length > 0);
+const canSpeak = computed(() => Boolean(
+  session.value?.serverVoice || pickVoice(voices.value, session.value?.browserVoice),
+));
 
 onMounted(async () => {
   await load();
-  if (liveMode.value) void connectStream();
   refreshVoices();
+  if (liveMode.value) void connectStream();
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.addEventListener?.('voiceschanged', refreshVoices);
   }
-  if (session.value && !finished.value) void speak(session.value.opening);
+  if (session.value && !finished.value) void speakOpeningWhenReady();
 });
 
 onBeforeUnmount(() => {
@@ -303,29 +305,73 @@ async function finish() {
 async function speak(text, turn = null) {
   stopSpeaking();
   if (!text) return;
-  const mode = localStorage.getItem('language-voice-mode') || 'browser';
+  const preferred = localStorage.getItem('language-voice-mode') || 'server';
   const voice = pickVoice(voices.value, session.value?.browserVoice);
-  // 默认走系统语音：文字一到就开口，不用等服务端那 2 秒；
-  // 选了"服务端音色"（或本机没有对应语音）时再取服务端音频。
-  if (mode === 'browser' && voice) {
+  const mode = resolveSpeechMode(preferred, Boolean(voice), Boolean(session.value?.serverVoice));
+  const serverUrl = turn ? turn.replyAudioUrl : openingSpeechUrl(session.value.id);
+  // 本机有对应语言的系统语音时才优先用浏览器；没有英文音色就自动使用服务端音色。
+  if (mode === 'browser') {
     speakBrowser(text, voice);
     return;
   }
-  if (turn?.replyAudioUrl) {
+  if (mode === 'server' && serverUrl) {
     try {
-      const blob = await fetchAudio(turn.replyAudioUrl);
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      audioUrl = URL.createObjectURL(blob);
-      audio = new Audio(audioUrl);
-      audio.onended = stopSpeaking;
-      speaking.value = true;
-      audio.play().catch(() => speakBrowser(text, voice));
+      await playServerAudio(serverUrl, text, voice);
       return;
     } catch {
       // 服务端音频取不到就退回浏览器语音，不让用户干等
     }
   }
   speakBrowser(text, voice);
+}
+
+/** 等待浏览器语音列表加载；超时后仍然继续，speak() 会自动回退到服务端音色。 */
+async function speakOpeningWhenReady() {
+  const preferred = localStorage.getItem('language-voice-mode') || 'server';
+  if (preferred !== 'server') await waitForVoices(1200);
+  if (session.value && !finished.value) await speak(session.value.opening);
+}
+
+function waitForVoices(timeoutMs) {
+  if (voices.value.length || typeof window === 'undefined' || !window.speechSynthesis) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.speechSynthesis.removeEventListener?.('voiceschanged', done);
+      refreshVoices();
+      resolve();
+    };
+    timer = setTimeout(done, timeoutMs);
+    window.speechSynthesis.addEventListener?.('voiceschanged', done);
+    refreshVoices();
+    if (voices.value.length) done();
+  });
+}
+
+async function playServerAudio(url, text, fallbackVoice) {
+  const blob = await fetchAudio(url);
+  if (audioUrl) URL.revokeObjectURL(audioUrl);
+  audioUrl = URL.createObjectURL(blob);
+  audio = new Audio(audioUrl);
+  audio.onended = stopSpeaking;
+  audio.onerror = stopSpeaking;
+  speaking.value = true;
+  try {
+    await audio.play();
+  } catch {
+    stopSpeaking();
+    if (fallbackVoice) {
+      speakBrowser(text, fallbackVoice);
+      return;
+    }
+    ElMessage.warning(t('languageSession.audioBlocked'));
+  }
 }
 
 function speakBrowser(text, picked = null) {

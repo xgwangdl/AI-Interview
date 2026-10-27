@@ -314,12 +314,38 @@ public class LanguageSessionService {
         return new MediaFile(resource, "audio/wav");
     }
 
+    /** 开场白没有独立的对话轮次，也需要一个可按需合成、可复用的服务端音色地址。 */
+    @Transactional
+    public MediaFile openingSpeech(String ownerId, UUID id) throws IOException {
+        LanguageSessionEntity session = requireOwned(ownerId, id);
+        LanguageSpec spec = spec(session);
+        if (!spec.serverVoice()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "这门语言没有服务端音色");
+        }
+        String key = openingAudioKey(id);
+        if (mediaStorage.find(key).isEmpty()) {
+            LanguageScenario scenario = scenario(session);
+            byte[] audio = speech.synthesize(scenario.opening(), spec)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "语音合成暂不可用，先看文字"));
+            mediaStorage.store(key, new java.io.ByteArrayInputStream(audio), audio.length);
+        }
+        Resource resource = mediaStorage.find(key)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "音频已被清理"));
+        return new MediaFile(resource, "audio/wav");
+    }
+
     private void deleteWithMedia(LanguageSessionEntity session) throws IOException {
+        String openingKey = openingAudioKey(session.getId());
+        if (mediaStorage.find(openingKey).isPresent()) mediaStorage.delete(openingKey);
         for (LanguageTurnEntity turn : turns.findAllBySessionIdOrderByTurnIndexAsc(session.getId())) {
             if (turn.getAudioKey() != null) mediaStorage.delete(turn.getAudioKey());
             if (turn.getReplyAudioKey() != null) mediaStorage.delete(turn.getReplyAudioKey());
         }
         sessions.delete(session);
+    }
+
+    private static String openingAudioKey(UUID id) {
+        return "lang-" + id + "-opening";
     }
 
     private ModelLease reserve(String ownerId) {

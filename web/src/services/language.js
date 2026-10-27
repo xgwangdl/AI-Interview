@@ -72,6 +72,11 @@ export function submitAudioTurn(id, blob, durationMs) {
   return apiRequest(`/language-sessions/${encodeURIComponent(id)}/turns`, { method: 'POST', body: form });
 }
 
+/** 开场白没有轮次，后端为它单独提供同一个按需合成接口。 */
+export function openingSpeechUrl(id) {
+  return `/api/v1/language-sessions/${encodeURIComponent(id)}/opening/speech`;
+}
+
 /** 回放音频要带 token：audio 标签自己发请求不会带 Authorization（与面试官配音同一个坑）。 */
 export async function fetchAudio(url) {
   const token = localStorage.getItem('token');
@@ -94,6 +99,18 @@ export function pickVoice(voices, lang) {
     || list.find((voice) => (voice.lang || '').toLowerCase().startsWith(`${base}-`))
     || list.find((voice) => (voice.lang || '').toLowerCase() === base)
     || null;
+}
+
+/**
+ * 选择真正能出声的来源。
+ *
+ * 用户选系统语音，但本机没有对应语言音色时，只要服务端有音色就自动回退；
+ * 反之，服务端音色不可用时再尝试浏览器语音。这样不会再出现“选了浏览器但完全没声音”。
+ */
+export function resolveSpeechMode(preferred, voiceAvailable, serverVoice) {
+  if (preferred === 'browser' && voiceAvailable) return 'browser';
+  if (serverVoice) return 'server';
+  return voiceAvailable ? 'browser' : 'none';
 }
 
 /** 报告 → 页面用的 4 行分数（缺分显示 —，不拿 0 分冒充）。 */

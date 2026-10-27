@@ -848,6 +848,7 @@ export default {
     reviewFailed: 'Unable to generate review',
     noSpeechSynthesis: 'This device has no speech synthesis. Read the text for now.',
     noLanguageVoice: 'This device has no voice for this language. Read the text for now.',
+    audioBlocked: 'The browser blocked autoplay. Select Play again and allow audio for this site.',
     latencyAsr: 'ASR {time}',
     latencyFirstToken: 'First token {time}',
     latencyAudio: 'Audio {time}',

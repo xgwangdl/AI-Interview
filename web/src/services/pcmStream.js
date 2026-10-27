@@ -69,6 +69,7 @@ export class PcmPlayer {
     const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 2));
     if (!samples.length) return;
     const context = this.ensureContext();
+    if (context.state === 'suspended') void context.resume();
     const buffer = context.createBuffer(1, samples.length, this.sampleRate);
     const channel = buffer.getChannelData(0);
     for (let index = 0; index < samples.length; index++) channel[index] = samples[index] / 0x8000;

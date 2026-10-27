@@ -24,7 +24,7 @@ const level = ref('intermediate');
 const maxTurns = ref(8);
 const voiceHint = ref('');
 // 声音偏好：系统语音（浏览器，快）默认；服务端音色更统一，但要多等约 2 秒。
-const voiceMode = ref(localStorage.getItem('language-voice-mode') || 'browser');
+const voiceMode = ref(localStorage.getItem('language-voice-mode') || 'server');
 
 onMounted(load);
 

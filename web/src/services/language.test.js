@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  latencyLabel, pickVoice, reportRows, sessionSubtitle, submitAudioTurn, submitTextTurn,
+  latencyLabel, openingSpeechUrl, pickVoice, reportRows, resolveSpeechMode, sessionSubtitle,
+  submitAudioTurn, submitTextTurn,
 } from './language';
 import { encodeWav } from './audioRecorder';
 
@@ -51,6 +52,26 @@ describe('pickVoice（浏览器语音）', () => {
     expect(pickVoice(voices, 'ko-KR')).toBeNull();
     expect(pickVoice([], 'ja-JP')).toBeNull();
     expect(pickVoice(undefined, 'ja-JP')).toBeNull();
+  });
+});
+
+describe('resolveSpeechMode（没有英文系统语音时自动用服务端音色）', () => {
+  it('首选浏览器且本机有对应音色时用浏览器', () => {
+    expect(resolveSpeechMode('browser', true, true)).toBe('browser');
+  });
+
+  it('首选浏览器但本机无对应音色时回退服务端', () => {
+    expect(resolveSpeechMode('browser', false, true)).toBe('server');
+  });
+
+  it('首选服务端或完全不可用时给出正确来源', () => {
+    expect(resolveSpeechMode('server', true, true)).toBe('server');
+    expect(resolveSpeechMode('server', true, false)).toBe('browser');
+    expect(resolveSpeechMode('browser', false, false)).toBe('none');
+  });
+
+  it('开场白地址与会话接口一致', () => {
+    expect(openingSpeechUrl('s 1')).toBe('/api/v1/language-sessions/s%201/opening/speech');
   });
 });
 

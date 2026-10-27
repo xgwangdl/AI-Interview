@@ -124,6 +124,14 @@ public class LanguageController {
         return respond(sessions.media(owners.requireOwner(authorization), id, turnIndex, side));
     }
 
+    /** 场景开场白的服务端配音；首次请求合成，之后复用同一份媒体。 */
+    @GetMapping("/language-sessions/{id}/opening/speech")
+    public ResponseEntity<Resource> openingSpeech(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID id) throws IOException {
+        return respond(sessions.openingSpeech(owners.requireOwner(authorization), id));
+    }
+
     /** AI 回复的语音：第一次请求时合成并落库，之后直接复用（见 LanguageSessionService.speech）。 */
     @GetMapping("/language-sessions/{id}/turns/{turnIndex}/speech")
     public ResponseEntity<Resource> speech(

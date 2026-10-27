@@ -848,6 +848,7 @@ export default {
     reviewFailed: '振り返りの生成に失敗しました',
     noSpeechSynthesis: 'この端末は音声合成に対応していません。文字を確認してください。',
     noLanguageVoice: 'この言語の音声が端末にありません。文字を確認してください。',
+    audioBlocked: 'ブラウザが自動再生を止めました。「もう一度聞く」を押し、このサイトの音声再生を許可してください。',
     latencyAsr: '文字起こし {time}',
     latencyFirstToken: '最初の文字 {time}',
     latencyAudio: '音声開始 {time}',

@@ -848,6 +848,7 @@ export default {
     reviewFailed: '生成复盘失败',
     noSpeechSynthesis: '这台设备没有语音合成，先看文字。',
     noLanguageVoice: '本机没有这门语言的语音，先看文字。',
+    audioBlocked: '浏览器拦截了自动播放，请点“再听一遍”允许本站播放声音。',
     latencyAsr: '听写 {time}',
     latencyFirstToken: '首字 {time}',
     latencyAudio: '出声 {time}',
