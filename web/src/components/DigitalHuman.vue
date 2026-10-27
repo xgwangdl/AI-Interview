@@ -31,6 +31,10 @@ const props = defineProps({
   useIdleVideo: { type: Boolean, default: true },
   /** 同一套动画可以换人物素材，例如外语页使用女性外教 */
   avatarVariant: { type: String, default: 'interviewer' },
+  /** 是否给整张人像添加呼吸和轻微摆动；素材机位不一致时应关闭 */
+  ambientMotion: { type: Boolean, default: true },
+  /** 是否允许自动眨眼；不同素材无法共用闭眼帧时应关闭 */
+  enableBlink: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['speaking-end']);
@@ -77,11 +81,11 @@ function pickFrame(now) {
     }
     closingUntil = 0;
     // 眨眼只在静止状态做（闭眼帧的嘴也是闭的，说话时用会露馅）
-    if (now >= blinkAt && now >= blinkUntil) {
+    if (props.enableBlink && now >= blinkAt && now >= blinkUntil) {
       blinkUntil = now + BLINK_DURATION_MS;
       blinkAt = now + BLINK_MIN_MS + Math.random() * (BLINK_MAX_MS - BLINK_MIN_MS);
     }
-    if (now < blinkUntil) {
+    if (props.enableBlink && now < blinkUntil) {
       if (frame.value !== 'eyes-closed') frame.value = 'eyes-closed';
       return;
     }
@@ -175,6 +179,13 @@ watch(() => props.speaking, (speaking) => {
   }
 });
 
+watch(() => props.enableBlink, (enabled) => {
+  if (!enabled) {
+    blinkUntil = 0;
+    if (!props.speaking && frame.value === 'eyes-closed') frame.value = restFrame.value;
+  }
+});
+
 onMounted(async () => {
   const results = await preloadFrames(undefined, props.avatarVariant);
   loadFailed.value = results.filter((item) => !item.ok).length > 0;
@@ -190,7 +201,10 @@ defineExpose({ frame, ready, loadFailed });
 </script>
 
 <template>
-  <div class="digital-human" :class="[state.toLowerCase(), { speaking: showAsSpeaking }]">
+  <div
+    class="digital-human"
+    :class="[state.toLowerCase(), { speaking: showAsSpeaking, 'ambient-motion-off': !ambientMotion }]"
+  >
     <div class="dh-stage">
       <!-- 素材加载完成前显示占位，避免出现白屏/黑屏 -->
       <div v-if="!ready" class="dh-placeholder"></div>
@@ -231,6 +245,7 @@ defineExpose({ frame, ready, loadFailed });
    免得和响应式里的缩放打架，也不会被误当成"说话动作" */
 .dh-frame { animation: dh-float 4.2s ease-in-out infinite, dh-sway 7.3s ease-in-out infinite; }
 .digital-human.speaking .dh-frame { animation-duration: 2.6s, 7.3s; }
+.digital-human.ambient-motion-off .dh-frame { animation: none; }
 @keyframes dh-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
 
 /* 头部微摆动：只转 0.6 度、绕脖子附近转，看着像在轻微调整姿态。

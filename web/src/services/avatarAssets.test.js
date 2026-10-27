@@ -9,7 +9,7 @@ describe('avatarAssets', () => {
 
   it('英语口语使用独立的女性外教素材集', () => {
     expect(frameSrc('mouth-a', AVATAR_VARIANTS.ENGLISH_COACH))
-      .toBe('/assets/avatar/english-coach/mouth-a.png');
+      .toBe('/assets/avatar/english-coach/mouth-a.png?v=20261027b');
   });
 
   it('未知素材集安全回退到面试官，不拼出任意路径', () => {

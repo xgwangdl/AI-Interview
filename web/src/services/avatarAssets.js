@@ -18,6 +18,11 @@ const BASE_BY_VARIANT = {
   [AVATAR_VARIANTS.ENGLISH_COACH]: `${BASE}/english-coach`,
 };
 
+// 素材重切后更新版本号，确保浏览器不会继续显示旧的错误机位帧。
+const REVISION_BY_VARIANT = {
+  [AVATAR_VARIANTS.ENGLISH_COACH]: '20261027b',
+};
+
 /**
  * 待机循环视频（可选）。
  *
@@ -67,7 +72,10 @@ export function avatarBase(variant = AVATAR_VARIANTS.INTERVIEWER) {
 }
 
 export function frameSrc(name, variant = AVATAR_VARIANTS.INTERVIEWER) {
-  return `${avatarBase(variant)}/${name}.png`;
+  const resolvedVariant = BASE_BY_VARIANT[variant] ? variant : AVATAR_VARIANTS.INTERVIEWER;
+  const revision = REVISION_BY_VARIANT[resolvedVariant];
+  const query = revision ? `?v=${revision}` : '';
+  return `${avatarBase(resolvedVariant)}/${name}.png${query}`;
 }
 
 /**

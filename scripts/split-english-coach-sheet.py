@@ -51,7 +51,10 @@ HEAD_TOP = 10
 
 FRAMES = {
     # name: (row, column)
-    "mouth-closed": (0, 0),
+    # Row 3 is the only source row used for the English coach's visible
+    # states. Mixing its smaller camera with row 1 makes the person appear to
+    # shrink as soon as speech starts, even after face-width normalization.
+    "mouth-closed": (2, 5),
     # Every speaking frame comes from the same source row. This keeps the
     # lighting, background, shoulder width and camera angle identical while
     # only the mouth changes.
@@ -63,10 +66,10 @@ FRAMES = {
     "mouth-m": (2, 4),
     "eyes-closed": (1, 4),
     "head-nod": (1, 0),
-    "portrait": (0, 0),
+    "portrait": (2, 5),
     "state-asking": (2, 2),
-    "state-listening": (0, 0),
-    "state-recording": (0, 0),
+    "state-listening": (2, 5),
+    "state-recording": (2, 5),
     "state-followup": (2, 5),
 }
 
@@ -192,6 +195,7 @@ def main() -> None:
 
     manifest = {
         "source": str(SOURCE.relative_to(REPO)).replace("\\", "/"),
+        "revision": "20261027b",
         "canvas": list(CANVAS),
         "targetFaceWidth": TARGET_FACE_WIDTH,
         "headTop": HEAD_TOP,

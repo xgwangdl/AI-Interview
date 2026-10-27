@@ -437,7 +437,14 @@ function backToList() {
       <div v-if="!finished" class="session-layout">
         <section class="interviewer-panel panel">
           <div class="interviewer-screen">
-            <DigitalHuman avatar-variant="english-coach" :use-idle-video="false" :speaking="speaking" :amplitude="() => amplitude" />
+            <DigitalHuman
+              avatar-variant="english-coach"
+              :use-idle-video="false"
+              :ambient-motion="false"
+              :enable-blink="false"
+              :speaking="speaking"
+              :amplitude="() => amplitude"
+            />
             <div class="interviewer-info">
               <div class="interviewer-role">{{ t('languageSession.aiPartner', { language: session.languageName }) }}</div>
               <p v-if="liveReply" class="ai-line live">{{ liveReply }}</p>
