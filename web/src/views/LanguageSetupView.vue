@@ -245,3 +245,42 @@ function scenarioTitle(session) {
   .start-button { justify-self: stretch; }
 }
 </style>
+
+<style scoped>
+.language-page { max-width: none; }
+.setup-panel { gap: 0; overflow: hidden; padding: 0; border-radius: 14px; background: var(--paper); box-shadow: none; }
+.field-row { gap: 20px; padding: 21px 24px; border-bottom: 1px solid var(--line); }
+.field-row:last-of-type { border-bottom: 0; }
+.field-row.compact { gap: 12px; padding-top: 17px; padding-bottom: 17px; background: #f6f4ee; }
+.field-label { width: 54px; padding-top: 10px; color: #65716b; font-size: 12px; font-weight: 600; }
+.field-label.second { margin-left: 14px; }
+.language-tabs :deep(.el-radio-button__inner) { min-width: 112px; padding: 10px 18px; border-color: #d7d8d1 !important; border-radius: 9px !important; background: #fffefa; box-shadow: none; }
+.language-tabs :deep(.el-radio-button:first-child .el-radio-button__inner),
+.language-tabs :deep(.el-radio-button:last-child .el-radio-button__inner) { border-left: 1px solid #d7d8d1; border-radius: 9px; }
+.language-tabs :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { border-color: var(--green) !important; background: var(--green-soft); color: var(--green-dark); box-shadow: inset 0 0 0 1px var(--green) !important; }
+.scenario-grid { gap: 12px; }
+.scenario-card { min-height: 116px; align-content: start; padding: 15px 16px; border-color: #d9d8d1; border-radius: 10px; background: #fffefa; }
+.scenario-card strong { color: #2f3c35; font-size: 15px; }
+.scenario-card span { color: #717b75; font-size: 13px; line-height: 1.65; }
+.scenario-card.active { border-color: var(--green); background: var(--green-soft); box-shadow: inset 0 0 0 1px var(--green); }
+.goal-line { margin: 0 24px 18px; padding: 12px 14px; border-radius: 9px; background: #f2efe7; color: #5d6862; font-size: 13px; }
+.voice-hint { margin: -4px 24px 18px; font-size: 12px; }
+.start-button { min-width: 152px; height: 44px; margin: 0 24px 23px; }
+.history-section { margin-top: 31px; }
+.history-list { border-radius: 12px; background: var(--paper); box-shadow: none; }
+.history-row { min-height: 65px; background: transparent; }
+.history-row:hover { background: rgba(230,238,233,.48); }
+.history-lang { color: var(--green-dark); }
+.history-main strong { color: #303d36; font-size: 14px; }
+.history-main small, .history-date { color: #77817b; font-size: 12px; }
+.history-empty { padding: 36px; border-style: dashed; background: rgba(251,250,246,.58); box-shadow: none; }
+@media (max-width: 760px) {
+  .field-row { gap: 12px; padding: 18px 16px; }
+  .field-row.compact { flex-wrap: wrap; }
+  .field-label { width: 100%; padding-top: 0; }
+  .field-label.second { width: auto; margin-left: 0; }
+  .scenario-card { min-height: 0; }
+  .goal-line, .voice-hint { margin-right: 16px; margin-left: 16px; }
+  .start-button { width: calc(100% - 32px); margin-right: 16px; margin-left: 16px; }
+}
+</style>

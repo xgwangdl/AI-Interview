@@ -10,18 +10,18 @@ const STORAGE_KEY = 'light-interview-theme';
 export const THEMES = {
   green: {
     label: '松绿',
-    swatch: '#287b63',
-    vars: { '--green': '#287b63', '--green-dark': '#1f5f4d', '--green-soft': '#e9f4ef' },
+    swatch: '#286956',
+    vars: { '--green': '#286956', '--green-dark': '#183f34', '--green-soft': '#e6eee9' },
   },
   blue: {
     label: '藏青',
-    swatch: '#2f6b9a',
-    vars: { '--green': '#2f6b9a', '--green-dark': '#245578', '--green-soft': '#e8f0f7' },
+    swatch: '#476f86',
+    vars: { '--green': '#476f86', '--green-dark': '#2e5266', '--green-soft': '#e6eef2' },
   },
   amber: {
     label: '赭橙',
-    swatch: '#b4622a',
-    vars: { '--green': '#b4622a', '--green-dark': '#8f4c1f', '--green-soft': '#fbeee4' },
+    swatch: '#a75c2b',
+    vars: { '--green': '#a75c2b', '--green-dark': '#7e431f', '--green-soft': '#f6ebe1' },
   },
 };
 

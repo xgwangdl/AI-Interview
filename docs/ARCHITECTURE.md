@@ -495,7 +495,29 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 偏好仍以 `candidates` 表为主：主题色继续兼容原来的 `/api/v1/me/preferences`，
 个人设置接口返回同一份主题值，避免侧栏快捷色点与设置页状态分叉。
 
-### 5.16 `system` —— 服务自描述
+### 5.16 `jobradar` —— 求职雷达与面试回填
+
+| 类 | 职责 |
+| --- | --- |
+| `SkillProfileService` / `SkillProfileController` | 用户可编辑的技能画像；简历提取只做规则化预览，`PUT` 确认后才进入评分 |
+| `JobLeadService` / `JobLeadController` / `JobLeadStatusMachine` | 岗位台账、状态机、所有者隔离与 JD 去重 |
+| `MatchScorer` / `RuleBasedSkillExtractor` | Java 内完成确定性提取兜底、技能/年限/薪资/地点/新鲜度评分 |
+| `JobEvaluationRunner` | 模型只负责 JD 结构抽取与解释；失败时降级到规则评分，不把最终分数交给模型 |
+| `DebriefService` / `DebriefRunner` / `DebriefParserValidator` | 真实面试回填、隐私确认、问题抽取与原话校验 |
+| `WeakPointService` | 把明确没答好的问题转为训练短板；后续同维度达到 75 分自动关闭 |
+| `JobAgentRunService` / `JobRadarWorker` | PostgreSQL 租约、心跳续租、过期回收、幂等、退避和额度顺延 |
+| `AgentReportService` / `AgentReportController` | 数字员工周报与最近任务，只读取当前所有者数据 |
+
+几个不可混淆的边界：
+
+- 表名是 `job_agent_runs`，为将来的通用 Agent 平台保留更短的 `agent_runs` 名称；
+- 岗位去重键是 `owner + normalized company + normalized role + JD hash`，不同用户可以使用相同键；
+- AI 只能抽取或解释，最终匹配分由 `MatchScorer` 计算；
+- 简历画像预览不落库，用户确认编辑后通过 `PUT` 保存；
+- 回填原文只存在 `interview_debriefs.raw_text`，不复制进 Agent `input_json` 或日志；删除回填是物理删除，关联短板由外键级联删除；
+- 参考部署为 2 vCPU / 2 GB，默认 `practice.agent.max-concurrency=1`，worker 每 30 秒续租，避免长模型调用被误回收。
+
+### 5.17 `system` —— 服务自描述
 
 `ServiceInfoController` 在 `/` 返回服务名、版本、健康检查地址、API 前缀和 ffmpeg 可用性。
 该接口只暴露运行状态，不包含密钥、数据库地址或用户数据，便于部署探活和快速排障。
@@ -578,6 +600,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V18__cohort_feedback_and_peer_reviews.sql` | `cohort_help_requests` / `peer_reviews` + `cohort_members.peer_review_enabled` | 学员求助、助教反馈、匿名同伴互评 |
 | `V19__profile_settings.sql` | `candidates` 的 `display_name` / `timezone` / `font_scale` / `reduce_motion` / `created_at` | 个人资料、外观偏好与加入时间 |
 | `V20__profile_language.sql` | `candidates.language` | 账号级界面语言偏好；旧账号默认 `zh-CN`，旧客户端不传语言时不会清空已有设置 |
+| `V21__job_radar_and_debrief.sql` | `job_leads` / `job_evaluations` / `interview_debriefs` / `training_weak_points` / `job_agent_runs` + `candidates.skill_profile_json` | 岗位台账、确定性评估、面试回填、训练短板和带租约的异步任务；原文可物理删除，JSON 使用 JSONB |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -606,8 +629,10 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 笔试 | `practice.coding.retention-days` / `practice.coding.plan-max-attempts` | 7 / 3 |
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
-| AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 20 / 3 / Asia/Shanghai |
+| AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 120 / 3 / Asia/Shanghai |
 | 外语口语 | `LANGUAGE_RETENTION_DAYS` | 7 |
+| Agent 调度 | `PRACTICE_AGENT_ENABLED` / `PRACTICE_AGENT_MAX_CONCURRENCY` / `PRACTICE_AGENT_LEASE_SECONDS` / `PRACTICE_AGENT_HEARTBEAT_INTERVAL_MS` / `PRACTICE_AGENT_MAX_ATTEMPTS` | true / 1 / 120 / 30000 / 3 |
+| 求职雷达 | `JOB_RADAR_DAILY_LIMIT` / `JOB_RADAR_PROMPT_VERSION` / `JOB_RADAR_ZONE` / `JOB_RADAR_MINUTES_*` | 5 / v1 / Asia/Shanghai / 15,10,20 |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
 | 模型 | `spring.ai.dashscope.*`（chat `qwen-max`、embedding `text-embedding-v2`、speech / transcription） | 统一读 `Ali_API_KEY` |
 
@@ -621,7 +646,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 文件 | 职责 |
 | --- | --- |
 | `main.js` / `App.vue` | 应用入口与整体布局 |
-| `router.js` | 路由：`/login`、`/`（工作台）、`/today`、`/goals`、`/goals/new`、`/goals/:id`、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`、`/language`、`/language/:id` |
+| `router.js` | 路由：`/login`、`/`（工作台）、`/today`、`/goals`、`/goals/new`、`/goals/:id`、`/practice/setup`、`/practice/device-check`、`/practice/:id/session`、`/practice/:id/report`、`/history`、`/mistakes`、`/language`、`/language/:id`、`/jobs`、`/jobs/profile`、`/jobs/:id`、`/debrief`、`/debrief/new`、`/debrief/:id` |
 | `authGuard.js` | 路由守卫：未登录跳登录页 |
 | `views/` | 练习主线页面：`LoginView`、`DashboardView`、`SetupView`、`DeviceCheckView`、`SessionView`、`ReportView`、`HistoryView`、`MistakeBookView`（简历与笔试的页面见下两行） |
 | `views/Coding*` | 笔试三个页面：`CodingSetupView`（出题配置 + 历史）、`CodingExamView`（答题，含五种题型渲染与运行/提交）、`CodingReportView`（报告）。路由 `/coding`、`/coding/:id`、`/coding/:id/report` |
@@ -633,6 +658,8 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `services/mediaCapture.js` | `MediaRecorder` 封装：权限、开始/停止、分片、时长 |
 | `services/mediaStore.js` | 上传失败的本地缓存 |
 | `data/questions.js` | 内置题库（无 Key 时的回退题目） |
+| `views/Job*` + `views/SkillProfileView.vue` + `services/jobRadar.js` | 岗位列表/详情、技能画像预览与编辑、评估轮询、一键生成针对 JD 的练习 |
+| `views/Debrief*` | 面试回填、隐私确认、解析状态轮询、手动纠题、短板关闭和物理删除 |
 
 前端通过 `VITE_API_BASE_URL` 指向后端；开发态由 `web/vite.config.js` 代理到 8088。
 
@@ -713,6 +740,8 @@ curl http://localhost:8088/actuator/prometheus | Select-String analysis_
 12. **SQL 方言是 SQLite**：数据库题在内存 SQLite 上执行（复用 Python 镜像，不引入额外镜像），
     需要真 Postgres/MySQL 语义时要另接执行环境。
 13. **数字人不是音素级口型同步**：嘴型由音量分档驱动，识别不了具体发音；
+14. **求职雷达不抓取招聘网站**：当前只接受用户手动粘贴 JD，不提供爬虫、自动登录或自动投递；
+15. **技能画像是规则预填**：当前 `/skill-profile/extract` 使用技能别名和年限规则，不宣称模型语义抽取；模型仅用于 JD 与面试回填。
     音量为 0 时回到闭唇帧，音量分析不可用时降级为定时轮换。详见 5.8。
 14. **数字人素材依赖那张组合图**：`web/public/assets/avatar/avatar-expression-sheet.png`
     既是运行素材也是切图脚本的输入（约 2.4MB）。换人物时必须重新跑脚本，

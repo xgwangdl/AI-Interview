@@ -59,9 +59,31 @@ async function submit() {
   <div class="login-page">
     <div class="login-brand"><span class="login-mark"><span></span><span></span><span></span></span><div><strong>{{ t('app.name') }}</strong><small>{{ t('app.subtitle') }}</small></div></div>
     <div class="login-layout">
-      <div class="login-intro"><div class="login-overline">PREPARE WITH PURPOSE</div><h1 v-html="t('login.introTitle')"></h1><p>{{ t('login.introText') }}</p><div class="login-benefits"><span><el-icon><VideoCamera /></el-icon>{{ t('login.benefitVideo') }}</span><span><el-icon><ChatLineRound /></el-icon>{{ t('login.benefitReview') }}</span><span><el-icon><Lock /></el-icon>{{ t('login.benefitDelete') }}</span></div><div class="login-visual"><div class="login-visual-window"><div class="visual-toolbar"><i></i><i></i><i></i><span>{{ t('login.previewTitle') }}</span></div><div class="visual-scene"><div class="visual-person"><i class="visual-hair"></i><i class="visual-face"></i><i class="visual-jacket"></i><i class="visual-shirt"></i></div><div class="visual-question"><small>QUESTION 01</small><span v-html="t('login.previewQuestion')"></span><i>{{ t('login.previewRecording') }}</i></div><div class="visual-wave"><i v-for="n in 18" :key="n" :style="{ height: `${8 + (n * 19 % 28)}px` }"></i></div></div></div><div class="visual-note"><span class="visual-note-icon"><el-icon><CircleCheck /></el-icon></span><span>{{ t('login.previewNote') }}<small>{{ t('login.previewNoteHint') }}</small></span></div></div><div class="login-footer">© INTERVIEW STUDIO <span>{{ t('login.privacy') }}</span></div></div>
+      <div class="login-intro">
+        <div class="intro-rule" aria-hidden="true"></div>
+        <h1 v-html="t('login.introTitle')"></h1>
+        <p>{{ t('login.introText') }}</p>
+        <div class="login-benefits">
+          <span><el-icon><VideoCamera /></el-icon>{{ t('login.benefitVideo') }}</span>
+          <span><el-icon><ChatLineRound /></el-icon>{{ t('login.benefitReview') }}</span>
+          <span><el-icon><Lock /></el-icon>{{ t('login.benefitDelete') }}</span>
+        </div>
+        <div class="login-preview" aria-hidden="true">
+          <div class="preview-head"><span>{{ t('login.previewTitle') }}</span><i>{{ t('login.previewRecording') }}</i></div>
+          <div class="preview-body">
+            <div class="preview-question">
+              <small>QUESTION 01</small>
+              <strong v-html="t('login.previewQuestion')"></strong>
+              <div class="preview-wave"><i v-for="n in 18" :key="n" :style="{ height: `${7 + (n * 19 % 24)}px` }"></i></div>
+            </div>
+            <img class="preview-portrait" src="/assets/avatar/portrait.png" alt="" />
+          </div>
+          <div class="preview-note"><el-icon><CircleCheck /></el-icon><span>{{ t('login.previewNote') }}<small>{{ t('login.previewNoteHint') }}</small></span></div>
+        </div>
+        <div class="login-footer">© INTERVIEW STUDIO <span>{{ t('login.privacy') }}</span></div>
+      </div>
       <section class="login-form-side">
-        <div class="login-form-header"><div class="eyebrow">{{ isRegister ? 'CREATE ACCOUNT' : 'WELCOME BACK' }}</div><h2>{{ isRegister ? t('login.createAccount') : t('login.loginTitle') }}</h2><p>{{ isRegister ? t('login.createHint') : t('login.loginHint') }}</p></div>
+        <div class="login-form-header"><h2>{{ isRegister ? t('login.createAccount') : t('login.loginTitle') }}</h2><p>{{ isRegister ? t('login.createHint') : t('login.loginHint') }}</p></div>
         <div class="auth-switch" role="tablist">
           <button type="button" role="tab" :aria-selected="!isRegister" :class="{ active: !isRegister }" @click="switchMode('login')">{{ t('login.loginTab') }}</button>
           <button type="button" role="tab" :aria-selected="isRegister" :class="{ active: isRegister }" @click="switchMode('register')">{{ t('login.registerTab') }}</button>
@@ -95,4 +117,72 @@ async function submit() {
    否则「用户名」「密码 / 邀请码」「邮箱（可选）」宽度不同，下面几个输入框的左边缘会参差不齐。 */
 .login-form :deep(.el-form-item__label) { justify-content: flex-start; padding-right: 10px; color: #68756d; font-size: 14px; line-height: 1.4; }
 @media(max-width: 760px) { .login-form :deep(.el-form-item__label) { font-size: 14px; } }
+</style>
+
+<style scoped>
+/* 登录页改为“面试练习台”而非左右宣传卡：左侧保留真实教练与问题，右侧只承担进入产品。 */
+.login-page { min-height: 100svh; padding: 22px clamp(24px, 5vw, 72px) 28px; background: var(--canvas); color: var(--ink); }
+.login-brand { width: min(1280px, 100%); margin: 0 auto; color: var(--ink); }
+.login-brand strong { font-size: 17px; }
+.login-brand small { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
+.login-mark { width: 38px; height: 38px; border-radius: 50%; background: var(--green); }
+.login-layout { display: grid; width: min(1280px, 100%); min-height: calc(100svh - 98px); grid-template-columns: minmax(0, 1.45fr) minmax(370px, .75fr); align-items: stretch; gap: clamp(46px, 7vw, 100px); margin: 34px auto 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+.login-intro { display: flex; min-width: 0; flex-direction: column; padding: 34px 0 10px; background: transparent; color: var(--ink); }
+.intro-rule { width: 58px; height: 2px; margin-bottom: 29px; background: var(--coral); }
+.login-intro h1 { max-width: 12ch; margin: 0; color: var(--ink); font-size: clamp(38px, 4.4vw, 62px); font-weight: 700; line-height: 1.2; }
+.login-intro h1 :deep(strong) { color: var(--green-dark); font-weight: inherit; }
+.login-intro > p { max-width: 62ch; margin: 18px 0 0; color: var(--muted); font-size: 16px; line-height: 1.8; }
+.login-benefits { display: flex; flex-wrap: wrap; gap: 12px 26px; margin-top: 28px; padding: 17px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: #4f5c56; font-size: 13px; }
+.login-benefits span { display: inline-flex; align-items: center; gap: 7px; }
+.login-benefits .el-icon { color: var(--green); font-size: 16px; }
+.login-preview { width: min(720px, 100%); margin-top: 30px; overflow: hidden; border: 1px solid #cfd9d1; border-radius: 16px; background: #e5ece6; }
+.preview-head { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid #cbd7cf; color: #52605a; font-size: 12px; }
+.preview-head i { display: inline-flex; align-items: center; gap: 6px; color: var(--green-dark); font-style: normal; }
+.preview-head i::before { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); content: ''; }
+.preview-body { display: grid; min-height: 178px; grid-template-columns: minmax(0, 1fr) 190px; align-items: end; gap: 16px; padding: 24px 20px 0 24px; }
+.preview-question { display: grid; align-self: center; gap: 10px; padding-bottom: 16px; }
+.preview-question small { color: #6b7c73; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
+.preview-question strong { max-width: 25ch; color: #273a31; font-size: 21px; font-weight: 650; line-height: 1.5; }
+.preview-wave { display: flex; height: 31px; align-items: center; gap: 3px; margin-top: 4px; }
+.preview-wave i { width: 3px; border-radius: 99px; background: var(--green); opacity: .46; }
+.preview-portrait { align-self: end; width: 190px; height: 165px; object-fit: contain; object-position: center bottom; mix-blend-mode: multiply; filter: saturate(.82) contrast(1.04); }
+.preview-note { display: flex; align-items: center; gap: 9px; margin: 0 18px 16px; padding: 11px 12px; border: 1px solid #ced9d1; border-radius: 10px; background: rgba(251,250,246,.8); color: #43534b; font-size: 12px; }
+.preview-note > .el-icon { flex: none; color: var(--green); font-size: 17px; }
+.preview-note small { display: block; margin-top: 3px; color: #7b877f; font-size: 11px; }
+.login-footer { margin-top: auto; padding-top: 19px; color: #818b85; font-size: 11px; }
+.login-form-side { align-self: center; padding: clamp(34px, 4.5vw, 54px) clamp(28px, 4vw, 46px); border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: none; }
+.login-form-header h2 { margin: 0 0 8px; color: var(--ink); font-size: clamp(24px, 2.2vw, 30px); font-weight: 680; line-height: 1.35; }
+.login-form-header p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+.auth-switch { display: flex; gap: 24px; margin-top: 26px; padding: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.auth-switch button { position: relative; min-width: 0; height: 40px; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: #7a837e; font-size: 14px; font-weight: 600; box-shadow: none; }
+.auth-switch button.active { background: transparent; color: var(--green-dark); box-shadow: none; }
+.auth-switch button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--green); content: ''; }
+.login-form { margin-top: 25px; }
+.login-form :deep(.el-form-item) { margin-bottom: 18px; }
+.login-form :deep(.el-form-item__label) { color: #53615a; font-size: 14px; font-weight: 600; }
+.login-form :deep(.el-input__wrapper) { min-height: 45px; }
+.login-form :deep(.el-input__inner) { font-size: 14px; }
+.login-submit { height: 44px; margin-top: 12px; }
+.login-help { margin-top: 22px; padding-top: 0; color: #79847e; font-size: 12px; }
+@media(max-width: 980px) {
+  .login-layout { gap: 38px; grid-template-columns: minmax(0, 1fr) minmax(340px, .9fr); }
+  .preview-body { grid-template-columns: minmax(0, 1fr) 150px; }
+  .preview-portrait { width: 150px; height: 154px; }
+  .preview-question strong { font-size: 18px; }
+}
+@media(max-width: 760px) {
+  .login-page { padding: 16px 14px 24px; }
+  .login-layout { min-height: auto; grid-template-columns: 1fr; gap: 30px; margin-top: 22px; }
+  .login-form-side { order: -1; align-self: stretch; padding: 28px 20px; }
+  .login-intro { padding: 12px 4px 0; }
+  .intro-rule { margin-bottom: 20px; }
+  .login-intro h1 { max-width: 15ch; font-size: 32px; }
+  .login-intro > p { margin-top: 12px; font-size: 14px; }
+  .login-benefits, .login-preview, .login-footer { display: none; }
+}
+@media(max-width: 460px) {
+  .login-form-side { padding: 22px 0 0; border: 0; background: transparent; }
+  .login-form-header h2 { font-size: 25px; }
+  .login-form { margin-top: 20px; }
+}
 </style>

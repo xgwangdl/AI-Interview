@@ -122,6 +122,13 @@ MEDIA_S3_PATH_STYLE=true
 | `PRACTICE_EVALUATION_PROVIDER` | `spring-ai` | 评分供应商：`spring-ai` / `stub` |
 | `PRACTICE_AVATAR_TTS_ENABLED` | `true` | 关闭后退化为「头像 + 文字」 |
 | `FFMPEG_PATH` | `ffmpeg`（从 PATH 查找） | ASR 前抽取音轨；自定义安装位置时填绝对路径 |
+| `PRACTICE_AGENT_ENABLED` | `true` | 是否启动求职雷达异步 worker |
+| `PRACTICE_AGENT_MAX_CONCURRENCY` | `1` | 单轮最多处理任务数；2 vCPU / 2 GB 部署保持 1 |
+| `PRACTICE_AGENT_LEASE_SECONDS` | `120` | 任务租约；进程异常后过期任务会被重新领取 |
+| `PRACTICE_AGENT_HEARTBEAT_INTERVAL_MS` | `30000` | 长模型调用期间的续租间隔 |
+| `PRACTICE_AGENT_MAX_ATTEMPTS` | `3` | 普通失败最大尝试次数；额度不足使用 deferred，不消耗次数 |
+| `JOB_RADAR_DAILY_LIMIT` | `5` | 每个账号每天发起岗位评估的上限 |
+| `JOB_RADAR_PROMPT_VERSION` | `v1` | 进入评估去重键的提示词版本 |
 
 ### 可观测性与死信队列
 
@@ -171,6 +178,20 @@ compose 里带了 Redis，`spring-boot-starter-data-redis` 也在依赖里，但
 
 PLAN 里写的是「Redis 用于分析任务队列和状态通知」。如果确实需要 Redis 参与队列或做状态推送，
 可以在此基础上替换实现；否则建议把 Redis 从 compose 与依赖中移除，避免一个空转的容器。
+
+### 求职雷达与 Agent 任务
+
+求职雷达使用 PostgreSQL 的 `job_agent_runs` 表保存异步任务，不依赖外部 Agent 运行时：
+
+- 领取任务使用 `FOR UPDATE SKIP LOCKED`，同一任务不会被多个实例同时取得；
+- 运行期间 worker 默认每 30 秒写心跳并延长租约；进程宕机后，过期租约会被回收为 `pending`；
+- 失败按指数退避重试到 `PRACTICE_AGENT_MAX_ATTEMPTS`；模型额度不足进入 `deferred`，不消耗尝试次数；
+- 终态失败会恢复岗位原状态，不把岗位永久卡在 `evaluating`；如果用户同时归档，则不覆盖用户决定；
+- 默认并发是 `1`，推荐部署规格是 2 vCPU / 2 GB；不要为了“跑得快”随意抬高。
+
+数据边界：岗位去重按 `owner + 公司 + 岗位 + JD hash`；技能画像提取仅生成预览，用户确认后才保存；
+面试回填必须显式勾选隐私确认。原文不会写入 Agent 任务输入或应用日志，删除回填时数据库会物理删除
+原文、解析题目和关联训练短板，无法恢复。
 
 ## 外部依赖
 

@@ -233,3 +233,58 @@ async function resolveQuestions() {
    改成覆盖整个标签的透明输入：鼠标、键盘（Tab 后回车）与自动化都能触发。 */
 .upload-label input { display: block; position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 </style>
+
+<style scoped>
+/* 表单不再排成同权重白卡，而是一条清晰的准备流程；右侧摘要承担唯一的深色锚点。 */
+.setup-grid { grid-template-columns: minmax(0, 1fr) 286px; gap: 28px; }
+.setup-main { gap: 0; }
+.form-section { padding: 4px 2px 30px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; }
+.form-section + .form-section { padding-top: 30px; }
+.form-section:last-child { border-bottom: 0; }
+.form-section-title { align-items: baseline; gap: 13px; margin-bottom: 22px; }
+.form-section-title strong { color: var(--ink); font-size: 18px; font-weight: 660; }
+.form-section-title small { color: var(--muted); font-size: 13px; }
+.number-badge { width: auto; height: auto; place-items: baseline; border-radius: 0; background: transparent; color: var(--coral); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.setup-page :deep(.el-form-item__label) { color: #4d5a53; font-size: 14px; font-weight: 600; }
+.setup-page :deep(.el-input__wrapper) { min-height: 42px; }
+.setup-page :deep(.el-textarea__inner) { min-height: 116px !important; padding: 12px; }
+.resume-upload-row { margin-top: 4px; padding: 14px 15px; border-color: #d5d8d1; border-radius: 10px; background: #f7f5ef; }
+.resume-copy strong { color: #35423b; font-size: 14px; }
+.resume-copy small { color: #7c8680; font-size: 12px; }
+.resume-icon { border-radius: 50%; background: var(--blue-soft); }
+.upload-label { color: var(--green-dark); font-size: 13px; }
+.choice-grid { gap: 10px; }
+.choice-grid :deep(.el-radio-button__inner) { min-height: 86px; padding: 13px 14px; border-color: #d8d8d1 !important; border-radius: 10px !important; background: #fffefa; }
+.choice-grid :deep(.el-radio-button:first-child .el-radio-button__inner),
+.choice-grid :deep(.el-radio-button:last-child .el-radio-button__inner) { border-left: 1px solid #d8d8d1; border-radius: 10px; }
+.choice-grid :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { border-color: var(--green) !important; background: var(--green-soft); color: var(--green-dark); box-shadow: inset 0 0 0 1px var(--green) !important; }
+.choice-title { color: #29362f; font-size: 14px; font-weight: 650; }
+.choice-subtitle { color: #65716b; font-size: 13px; line-height: 1.58; }
+.setup-aside { top: 80px; }
+.summary-card { padding: 22px 20px; border-color: #26322c; border-radius: 14px; background: #26322c; box-shadow: none; }
+.summary-card .section-title { color: #f5f1e9; }
+.summary-role { color: #fff; font-size: 21px; font-weight: 660; }
+.summary-company { color: #aeb9b2; font-size: 12px; }
+.summary-divider { border-color: rgba(255,255,255,.12); }
+.summary-row { color: #aeb9b2; font-size: 12px; }
+.summary-row strong { color: #f0ede6; font-size: 12px; }
+.privacy-card { margin: 14px 0; padding: 14px; border-color: #d5e1d9; border-radius: 10px; background: #e8f0eb; }
+.privacy-card strong { color: #314c40; font-size: 13px; }
+.privacy-card p { color: #66776d; font-size: 12px; }
+.continue-button { height: 44px; }
+.focus-banner { border-color: #e4d4bd; border-radius: 10px; background: #f6eee2; box-shadow: none; }
+@media(max-width: 900px) { .setup-grid { grid-template-columns: minmax(0, 1fr) 250px; gap: 20px; } }
+@media(max-width: 720px) {
+  .setup-grid { grid-template-columns: 1fr; }
+  .setup-aside { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .summary-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 18px; }
+  .summary-card .section-title, .summary-company, .summary-divider, .summary-row { grid-column: 1 / -1; }
+  .continue-button { width: 100%; }
+}
+@media(max-width: 460px) {
+  .form-section { padding-bottom: 25px; }
+  .form-section + .form-section { padding-top: 25px; }
+  .choice-grid :deep(.el-radio-button__inner) { min-height: 0; padding: 11px 12px; }
+  .summary-card { display: block; }
+}
+</style>

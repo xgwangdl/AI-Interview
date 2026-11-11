@@ -161,7 +161,10 @@ function accountCommand(command) {
         <button :class="{ active: route.name === 'setup' }" @click="navigate('/practice/setup')"><el-icon><CirclePlus /></el-icon><span>{{ t('nav.newPractice') }}</span></button>
         <button :class="{ active: route.name === 'coding-setup' }" @click="navigate('/coding')"><el-icon><EditPen /></el-icon><span>{{ t('nav.coding') }}</span></button>
         <button :class="{ active: route.name === 'language' || route.name === 'language-session' }" @click="navigate('/language')"><el-icon><ChatDotRound /></el-icon><span>{{ t('nav.language') }}</span></button>
+        <div class="nav-separator" aria-hidden="true"></div>
         <button :class="{ active: route.name === 'resume-list' || route.name === 'resume-detail' || route.name === 'resume-new' }" @click="navigate('/resumes')"><el-icon><Document /></el-icon><span>{{ t('nav.resumes') }}</span></button>
+        <button :class="{ active: ['jobs', 'job-detail', 'job-profile'].includes(route.name) }" @click="navigate('/jobs')"><el-icon><Opportunity /></el-icon><span>{{ t('nav.jobs') }}</span></button>
+        <button :class="{ active: ['debrief-list', 'debrief-new', 'debrief-detail'].includes(route.name) }" @click="navigate('/debrief')"><el-icon><Notebook /></el-icon><span>{{ t('nav.debrief') }}</span></button>
         <button :class="{ active: activeKey === 'history' }" @click="navigate('/history')"><el-icon><Clock /></el-icon><span>{{ t('nav.history') }}</span></button>
       </nav>
       <div class="sidebar-bottom">
@@ -174,13 +177,21 @@ function accountCommand(command) {
     <main class="main-area">
       <header class="topbar">
         <button class="mobile-menu" :aria-label="t('app.openNavigation')" @click="menuOpen = true"><el-icon><Menu /></el-icon></button>
-        <div class="breadcrumb"><span>{{ t('app.workspace') }}</span><el-icon><ArrowRight /></el-icon><strong>{{ pageTitle }}</strong></div>
+        <nav class="breadcrumb" :aria-label="t('app.breadcrumb')">
+          <button v-if="route.name !== 'dashboard'" type="button" class="breadcrumb-home"
+                  :aria-label="t('app.backToWorkspace')" @click="navigate('/')">
+            {{ t('app.workspace') }}
+          </button>
+          <span v-else>{{ t('app.workspace') }}</span>
+          <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+          <strong aria-current="page">{{ pageTitle }}</strong>
+        </nav>
         <div class="topbar-actions">
-          <span v-if="usage.enabled" class="quota-chip" :class="{ tight: usage.tight, empty: usage.exhausted }"
+          <span v-if="usage.enabled" class="quota-status" :class="{ tight: usage.tight, empty: usage.exhausted }"
+                role="status"
                 :title="`${usage.note}${usage.resetLabel ? ' ' + usage.resetLabel : ''}`">
             <el-icon><Lightning /></el-icon><span class="quota-text">{{ usage.label }}</span><small v-if="usage.resetLabel">{{ usage.resetLabel }}</small>
           </span>
-          <span class="privacy-status"><i></i>{{ t('app.personalPractice') }}</span><button class="help-button" :aria-label="t('app.privacyHelp')" :title="t('app.privacyHelp')"><el-icon><QuestionFilled /></el-icon></button>
         </div>
       </header>
       <div class="page-content"><RouterView /></div>

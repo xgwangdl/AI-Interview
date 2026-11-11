@@ -1,9 +1,12 @@
 package com.guangge.Interview.data;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.sql.Date;
 import java.time.Instant;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Entity
 @Table(name = "candidates")
@@ -62,6 +65,11 @@ public class Candidates {
 
     @Column(name = "language", nullable = false, length = 16)
     private String language;
+
+    /** User-confirmed skill profile used by the deterministic job matcher. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "skill_profile_json", columnDefinition = "jsonb")
+    private JsonNode skillProfileJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -176,6 +184,14 @@ public class Candidates {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public JsonNode getSkillProfileJson() {
+        return skillProfileJson;
+    }
+
+    public void setSkillProfileJson(JsonNode skillProfileJson) {
+        this.skillProfileJson = skillProfileJson;
     }
 
     public Instant getCreatedAt() {
