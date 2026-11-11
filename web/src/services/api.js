@@ -1,4 +1,5 @@
 import { clearLocalSession } from './authSession';
+import { notifyModelUsageChanged } from './modelUsageEvents';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -18,11 +19,17 @@ export function handleUnauthorized() {
 }
 
 export async function apiRequest(path, options = {}) {
+  const { usageRefresh = true, ...requestOptions } = options;
   const token = localStorage.getItem('token');
   const response = await fetch(`${apiBase}/api/v1${path}`, {
-    ...options,
-    headers: { ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+    ...requestOptions,
+    headers: { ...(requestOptions.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...requestOptions.headers },
   });
+  const method = String(requestOptions.method || 'GET').toUpperCase();
+  const notifyUsage = () => {
+    // 只有会改变后端状态的请求才需要刷新额度；额度查询本身不能递归触发查询。
+    if (usageRefresh && method !== 'GET') notifyModelUsageChanged();
+  };
   if (!response.ok) {
     const body = await response.text();
     // 后端统一返回 {code, message, data}：取出 message，避免把整段 JSON 当作错误消息显示给用户。
@@ -36,17 +43,24 @@ export async function apiRequest(path, options = {}) {
     const error = new Error(message || `请求失败 (${response.status})`);
     error.status = response.status;
     if (response.status === 401) handleUnauthorized();
+    notifyUsage();
     throw error;
   }
-  if (response.status === 204) return null;
+  if (response.status === 204) {
+    notifyUsage();
+    return null;
+  }
   // 201/202 也经常没有 body（例如“提交成功”）；先读文本，避免把空响应当成 JSON 解析错误。
   const body = await response.text();
   if (!body) return null;
+  let result;
   try {
-    return JSON.parse(body);
+    result = JSON.parse(body);
   } catch {
-    return body;
+    result = body;
   }
+  notifyUsage();
+  return result;
 }
 
 export function trySyncSession(session) {
@@ -276,10 +290,12 @@ export async function getNarrationAudio(sessionId, questionIndex) {
   );
   if (!response.ok) {
     if (response.status === 401) handleUnauthorized();
+    notifyModelUsageChanged();
     const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取面试官语音（${response.status}）`);
     error.status = response.status;
     throw error;
   }
+  notifyModelUsageChanged();
   return response.blob();
 }
 
@@ -301,10 +317,12 @@ export async function getSampleAnswerAudio(sessionId, questionIndex) {
   );
   if (!response.ok) {
     if (response.status === 401) handleUnauthorized();
+    notifyModelUsageChanged();
     const error = new Error(response.status === 503 ? '语音合成暂不可用' : `无法获取示范回答语音（${response.status}）`);
     error.status = response.status;
     throw error;
   }
+  notifyModelUsageChanged();
   return response.blob();
 }
 

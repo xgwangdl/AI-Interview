@@ -54,7 +54,7 @@ public class ModelCallGuard {
     public ModelCallGuard(
             RedisTemplate<String, Object> redisTemplate,
             @Value("${quota.model.enabled:true}") boolean enabled,
-            @Value("${quota.model.daily-limit:120}") int dailyLimit,
+            @Value("${quota.model.daily-limit:20}") int dailyLimit,
             @Value("${quota.model.max-concurrent:3}") int concurrentLimit,
             @Value("${quota.model.zone:Asia/Shanghai}") String zone) {
         this(redisTemplate == null ? null : new RedisCounterStore(redisTemplate),

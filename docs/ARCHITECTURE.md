@@ -606,7 +606,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 笔试 | `practice.coding.retention-days` / `practice.coding.plan-max-attempts` | 7 / 3 |
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
-| AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 120 / 3 / Asia/Shanghai |
+| AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 20 / 3 / Asia/Shanghai |
 | 外语口语 | `LANGUAGE_RETENTION_DAYS` | 7 |
 | 跨域 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` 等 |
 | 模型 | `spring.ai.dashscope.*`（chat `qwen-max`、embedding `text-embedding-v2`、speech / transcription） | 统一读 `Ali_API_KEY` |

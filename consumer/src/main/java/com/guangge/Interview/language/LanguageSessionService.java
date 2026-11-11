@@ -325,8 +325,9 @@ public class LanguageSessionService {
         String key = openingAudioKey(id);
         if (mediaStorage.find(key).isEmpty()) {
             LanguageScenario scenario = scenario(session);
-            byte[] audio = speech.synthesize(scenario.opening(), spec)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "语音合成暂不可用，先看文字"));
+            // 开场白同样会调用云端 TTS，且可能被用户反复请求；只有真正合成时计一次额度，命中缓存不重复扣。
+            byte[] audio = modelCalls.call(ownerId, "外语开场语音", () -> speech.synthesize(scenario.opening(), spec)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "语音合成暂不可用，先看文字")));
             mediaStorage.store(key, new java.io.ByteArrayInputStream(audio), audio.length);
         }
         Resource resource = mediaStorage.find(key)

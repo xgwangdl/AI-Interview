@@ -13,6 +13,7 @@ import {
 } from './services/profile';
 import { normalizeLocale, setLocale } from './i18n';
 import { clearLocalSession } from './services/authSession';
+import { MODEL_USAGE_CHANGED_EVENT } from './services/modelUsageEvents';
 
 const route = useRoute();
 const router = useRouter();
@@ -24,6 +25,8 @@ const profileName = ref(readCachedDisplayName());
 const usageData = ref(null);
 const usage = computed(() => buildUsage(usageData.value, t));
 const elementLocale = computed(() => locale.value === 'en-US' ? en : locale.value === 'ja-JP' ? ja : zhCn);
+let usageRefreshTimer = null;
+let usagePollTimer = null;
 
 async function loadAccountProfile() {
   if (!localStorage.getItem('token')) return;
@@ -60,8 +63,20 @@ watch([pageTitle, locale], () => {
 watch(() => route.fullPath, () => {
   menuOpen.value = false;
   // 每次换页顺手刷一次：一场练习里追问与配音都在扣额度，数字要跟得上
-  void refreshUsage();
+  scheduleUsageRefresh();
 });
+
+function scheduleUsageRefresh() {
+  if (usageRefreshTimer) window.clearTimeout(usageRefreshTimer);
+  usageRefreshTimer = window.setTimeout(() => {
+    usageRefreshTimer = null;
+    void refreshUsage();
+  }, 220);
+}
+
+function refreshUsageWhenVisible() {
+  if (!document.hidden) void refreshUsage();
+}
 
 async function refreshUsage() {
   if (!localStorage.getItem('token')) {
@@ -90,6 +105,10 @@ async function refreshPractice() {
 
 onMounted(() => {
   window.addEventListener('light-interview-profile-updated', syncProfileName);
+  window.addEventListener(MODEL_USAGE_CHANGED_EVENT, scheduleUsageRefresh);
+  window.addEventListener('focus', refreshUsageWhenVisible);
+  // 转写和评分在后台异步执行，轮询一次轻量额度接口即可看到最新扣减。
+  usagePollTimer = window.setInterval(refreshUsageWhenVisible, 30000);
   if (route.name !== 'login') {
     void refreshPractice();
     void refreshUsage();
@@ -99,6 +118,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('light-interview-profile-updated', syncProfileName);
+  window.removeEventListener(MODEL_USAGE_CHANGED_EVENT, scheduleUsageRefresh);
+  window.removeEventListener('focus', refreshUsageWhenVisible);
+  if (usageRefreshTimer) window.clearTimeout(usageRefreshTimer);
+  if (usagePollTimer) window.clearInterval(usagePollTimer);
 });
 
 function navigate(path) {

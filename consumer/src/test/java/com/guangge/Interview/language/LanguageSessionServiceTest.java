@@ -124,6 +124,27 @@ class LanguageSessionServiceTest {
     }
 
     @Test
+    @DisplayName("开场白真实合成才扣 AI 额度，缓存命中不重复扣")
+    void openingSpeechCountsOnlyWhenSynthesized() throws Exception {
+        byte[] audio = new byte[]{1, 2, 3};
+        String key = "lang-" + session.getId() + "-opening";
+        ByteArrayResource resource = new ByteArrayResource(audio);
+        when(speech.synthesize(any(), any())).thenReturn(Optional.of(audio));
+        when(mediaStorage.find(key)).thenReturn(
+                Optional.empty(), Optional.of(resource), Optional.empty(), Optional.of(resource));
+
+        LanguageSessionService limited = new LanguageSessionService(sessions, turns, catalog, coach, speech,
+                mediaStorage, ModelCallGuard.inMemory(true, 1, 3), objectMapper, 7);
+
+        assertThat(limited.openingSpeech("smoke", session.getId()).resource()).isSameAs(resource);
+        assertThatThrownBy(() -> limited.openingSpeech("smoke", session.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        verify(speech, times(1)).synthesize(any(), any());
+    }
+
+    @Test
     @DisplayName("额度用完：这一轮直接 429，不调用模型")
     void respectsTheQuota() throws Exception {
         LanguageSessionService limited = new LanguageSessionService(sessions, turns, catalog, coach, speech,

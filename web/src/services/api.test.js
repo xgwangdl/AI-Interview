@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   apiRequest, createAnswerAttempt, generateAnswerRewrite, getAnswerMedia, reEvaluateAnswer,
   saveAnswerRewrite, tryLogin, tryPauseSession, tryRegister, trySyncSession, updateAnswerTranscript,
@@ -18,6 +18,10 @@ describe('apiRequest', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete globalThis.window;
   });
 
   it('取出后端统一错误体里的 message，而不是把整段 JSON 当错误消息', async () => {
@@ -65,6 +69,17 @@ describe('apiRequest', () => {
     await apiRequest('/x', { method: 'POST', body: new FormData() });
 
     expect(fetchMock.mock.calls[0][1].headers['Content-Type']).toBeUndefined();
+  });
+
+  it('会消耗 AI 额度的写请求完成后通知顶栏刷新', async () => {
+    const dispatchEvent = vi.fn();
+    globalThis.window = { dispatchEvent };
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, '{}'));
+
+    await apiRequest('/practice-sessions/question-plan', { method: 'POST' });
+
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent.mock.calls[0][0].type).toBe('light-interview-model-usage-changed');
   });
 });
 

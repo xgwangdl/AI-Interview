@@ -9,7 +9,7 @@ import { apiRequest } from './api';
  */
 
 export function loadModelUsage() {
-  return apiRequest('/me/model-usage');
+  return apiRequest('/me/model-usage', { usageRefresh: false });
 }
 
 export function buildUsage(usage, t = null) {

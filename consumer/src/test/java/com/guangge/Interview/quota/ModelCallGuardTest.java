@@ -92,4 +92,17 @@ class ModelCallGuardTest {
         assertThat(guard.usage("smoke").used()).isEqualTo(1);
         assertThat(guard.usage("smoke").inFlight()).isZero();
     }
+
+    @Test
+    @DisplayName("默认体验额度是每天 20 次，第 21 次被拦住")
+    void supportsTwentyCallsPerDay() {
+        ModelCallGuard guard = ModelCallGuard.inMemory(true, 20, 3);
+
+        for (int index = 1; index <= 20; index++) {
+            assertThat(guard.call("smoke", "面试出题", () -> "ok")).isEqualTo("ok");
+        }
+        assertThat(guard.usage("smoke").remaining()).isZero();
+        assertThatThrownBy(() -> guard.call("smoke", "面试出题", () -> "ok"))
+                .isInstanceOf(ModelQuotaExceededException.class);
+    }
 }

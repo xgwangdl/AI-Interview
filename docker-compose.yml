@@ -70,6 +70,10 @@ services:
       # 没配 Key 也能起来：出题回退内置题库、语音降级为字幕（见 README 的演示模式）
       Ali_API_KEY: ${Ali_API_KEY:-}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-change-this-in-docker}
+      QUOTA_MODEL_ENABLED: ${QUOTA_MODEL_ENABLED:-true}
+      QUOTA_MODEL_DAILY_LIMIT: ${QUOTA_MODEL_DAILY_LIMIT:-20}
+      QUOTA_MODEL_MAX_CONCURRENT: ${QUOTA_MODEL_MAX_CONCURRENT:-3}
+      QUOTA_MODEL_ZONE: ${QUOTA_MODEL_ZONE:-Asia/Shanghai}
       TRUST_FORWARDED_FOR: "true"
       APP_ENV: ${APP_ENV:-local}
       # 代码沙箱要在容器里再起容器，默认关；本机开发仍由 .env 单独打开
