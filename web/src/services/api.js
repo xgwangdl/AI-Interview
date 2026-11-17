@@ -132,6 +132,41 @@ export function getModelUsage() {
   return apiRequest('/me/model-usage');
 }
 
+export function getRecordingConsent() {
+  return apiRequest('/me/consents/recording');
+}
+
+export function acceptRecordingConsent(version) {
+  return apiRequest('/me/consents/recording', {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  });
+}
+
+export async function exportAccountData() {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${apiBase}/api/v1/me/data-export`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    if (response.status === 401) handleUnauthorized();
+    throw Object.assign(new Error(body || '导出账号数据失败'), { status: response.status });
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const filename = encoded ? decodeURIComponent(encoded) : (plain || 'light-interview-export.json');
+  return { blob: await response.blob(), filename };
+}
+
+export function deleteAccount(confirmation) {
+  return apiRequest('/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
 /** 错题本：最好一次也没过线的题（详见 services/practiceMistakes.js）。 */
 export function getMistakes(limit = 5) {
   return apiRequest(`/practice-archive/mistakes?limit=${encodeURIComponent(limit)}`);

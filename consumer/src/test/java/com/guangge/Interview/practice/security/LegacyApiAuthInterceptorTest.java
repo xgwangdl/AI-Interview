@@ -1,6 +1,7 @@
 package com.guangge.Interview.practice.security;
 
 import com.guangge.Interview.auth.Sign;
+import com.guangge.Interview.repository.CandidatesRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -9,12 +10,21 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class LegacyApiAuthInterceptorTest {
 
     private static final String SECRET = "test-secret";
 
-    private final LegacyApiAuthInterceptor interceptor = new LegacyApiAuthInterceptor(new OwnerResolver(SECRET));
+    private final CandidatesRepository candidates = mock(CandidatesRepository.class);
+    private final LegacyApiAuthInterceptor interceptor =
+            new LegacyApiAuthInterceptor(new OwnerResolver(SECRET, candidates));
+
+    @org.junit.jupiter.api.BeforeEach
+    void accountExists() {
+        when(candidates.existsByName("smoke")).thenReturn(true);
+    }
 
     @Test
     void onlyGuardsTheLegacyRoutes() {

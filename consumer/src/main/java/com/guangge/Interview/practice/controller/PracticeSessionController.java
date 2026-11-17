@@ -1,6 +1,7 @@
 package com.guangge.Interview.practice.controller;
 
 import com.guangge.Interview.analysis.AnalysisJobService;
+import com.guangge.Interview.privacy.RecordingConsentService;
 import com.guangge.Interview.practice.security.OwnerResolver;
 import com.guangge.Interview.practice.dto.PracticeAnswerRequest;
 import com.guangge.Interview.practice.dto.PracticeAnswerView;
@@ -56,6 +57,7 @@ public class PracticeSessionController {
     private final com.guangge.Interview.goal.DailyPlanService dailyPlans;
     private final TranscriptService transcripts;
     private final AnswerRewriteService rewrites;
+    private final RecordingConsentService consents;
 
     public PracticeSessionController(
             PracticeSessionService practiceSessions,
@@ -66,7 +68,8 @@ public class PracticeSessionController {
             com.guangge.Interview.practice.followup.PracticeFollowUpService followUps,
             com.guangge.Interview.goal.DailyPlanService dailyPlans,
             TranscriptService transcripts,
-            AnswerRewriteService rewrites) {
+            AnswerRewriteService rewrites,
+            RecordingConsentService consents) {
         this.practiceSessions = practiceSessions;
         this.practiceReports = practiceReports;
         this.analysisJobs = analysisJobs;
@@ -76,6 +79,7 @@ public class PracticeSessionController {
         this.dailyPlans = dailyPlans;
         this.transcripts = transcripts;
         this.rewrites = rewrites;
+        this.consents = consents;
     }
 
     @PostMapping("/practice-sessions")
@@ -102,7 +106,9 @@ public class PracticeSessionController {
     public PracticeSessionView start(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id) {
-        return practiceSessions.start(owner(authorization), id);
+        String ownerId = owner(authorization);
+        consents.requireRecordingConsent(ownerId);
+        return practiceSessions.start(ownerId, id);
     }
 
     @PostMapping("/practice-sessions/{id}/pause")
@@ -117,8 +123,10 @@ public class PracticeSessionController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @Validated @RequestBody PracticeAnswerRequest request) {
+        String ownerId = owner(authorization);
+        consents.requireRecordingConsent(ownerId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(practiceSessions.saveAnswer(owner(authorization), id, request));
+                .body(practiceSessions.saveAnswer(ownerId, id, request));
     }
 
     @PostMapping(value = "/answers/{answerId}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -127,8 +135,10 @@ public class PracticeSessionController {
             @PathVariable UUID answerId,
             @RequestPart("file") MultipartFile file) throws IOException {
         if (file.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Video file is empty");
+        String ownerId = owner(authorization);
+        consents.requireRecordingConsent(ownerId);
         try (InputStream content = file.getInputStream()) {
-            return practiceSessions.storeAnswerMedia(owner(authorization), answerId, file.getContentType(),
+            return practiceSessions.storeAnswerMedia(ownerId, answerId, file.getContentType(),
                     file.getSize(), content);
         }
     }
@@ -207,8 +217,10 @@ public class PracticeSessionController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID id,
             @PathVariable int questionIndex) {
+        String ownerId = owner(authorization);
+        consents.requireRecordingConsent(ownerId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(practiceSessions.createAttempt(owner(authorization), id, questionIndex));
+                .body(practiceSessions.createAttempt(ownerId, id, questionIndex));
     }
 
     @DeleteMapping("/answers/{answerId}/attempt")

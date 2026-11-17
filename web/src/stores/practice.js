@@ -117,6 +117,22 @@ export const usePracticeStore = defineStore('practice', {
       await this.loadFromServer();
       return created.id;
     },
+    async clearLocalData() {
+      const mediaIds = this.sessions.flatMap((session) =>
+        (session.answers || [])
+          .map((answer) => answer.localMediaId || answer.mediaId)
+          .filter(Boolean));
+      if (mediaIds.length) {
+        try {
+          await deleteMedia([...new Set(mediaIds)]);
+        } catch {
+          // 账号已经从服务端删除，本地清理失败不应把用户困在设置页。
+        }
+      }
+      this.sessions = [];
+      this.draft = null;
+      persist([]);
+    },
     async pruneExpired() {
       const expired = this.sessions.filter((item) => item.retentionUntil && Date.parse(item.retentionUntil) <= Date.now());
       for (const item of expired) {

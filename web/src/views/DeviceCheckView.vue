@@ -4,7 +4,8 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePracticeStore } from '../stores/practice';
 import { setActiveStream, stopActiveStream } from '../services/mediaCapture';
-import { tryStartSession } from '../services/api';
+import { acceptRecordingConsent, getRecordingConsent, tryStartSession } from '../services/api';
+import RecordingConsentDialog from '../components/RecordingConsentDialog.vue';
 import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
@@ -20,6 +21,9 @@ const stream = shallowRef(null);
 const state = ref('idle');
 const issue = ref('');
 const checking = ref(false);
+const consentDialogVisible = ref(false);
+const consentLoading = ref(false);
+const recordingConsent = ref(null);
 let keepStreamForSession = false;
 const cameraReady = computed(() => Boolean(stream.value?.getVideoTracks().some((track) => track.readyState === 'live')));
 const microphoneReady = computed(() => Boolean(stream.value?.getAudioTracks().some((track) => track.readyState === 'live')));
@@ -93,13 +97,47 @@ async function startCheck() {
 async function continueToSession() {
   if (!cameraReady.value || !microphoneReady.value) return;
   try {
-    await tryStartSession(draftId);
+    await enterSession();
   } catch (error) {
+    if (error?.status === 428) {
+      await openConsentDialog();
+      return;
+    }
     ElMessage.error(error.message || t('deviceCheck.startFailed'));
-    return;
   }
+}
+
+async function enterSession() {
+  await tryStartSession(draftId);
   keepStreamForSession = true;
   router.push(`/practice/${draftId}/session`);
+}
+
+async function openConsentDialog() {
+  try {
+    recordingConsent.value = await getRecordingConsent();
+    if (recordingConsent.value?.accepted) {
+      await enterSession();
+      return;
+    }
+    consentDialogVisible.value = true;
+  } catch (error) {
+    ElMessage.error(error?.message || t('deviceCheck.consentLoadFailed'));
+  }
+}
+
+async function confirmRecordingConsent(version) {
+  if (consentLoading.value || !version) return;
+  consentLoading.value = true;
+  try {
+    recordingConsent.value = await acceptRecordingConsent(version);
+    consentDialogVisible.value = false;
+    await enterSession();
+  } catch (error) {
+    ElMessage.error(error?.message || t('deviceCheck.consentSaveFailed'));
+  } finally {
+    consentLoading.value = false;
+  }
 }
 
 onBeforeRouteLeave((to) => {
@@ -137,6 +175,13 @@ onBeforeUnmount(() => {
         <button class="back-button" @click="router.push('/practice/setup')"><el-icon><ArrowLeft /></el-icon> {{ t('deviceCheck.backToSetup') }}</button>
       </aside>
     </div>
+
+    <RecordingConsentDialog
+      v-model="consentDialogVisible"
+      :consent="recordingConsent"
+      :loading="consentLoading"
+      @confirm="confirmRecordingConsent"
+    />
   </section>
 </template>
 

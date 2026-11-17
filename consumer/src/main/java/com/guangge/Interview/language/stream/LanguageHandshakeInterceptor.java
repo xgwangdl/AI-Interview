@@ -2,6 +2,8 @@ package com.guangge.Interview.language.stream;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.guangge.Interview.auth.Sign;
+import com.guangge.Interview.privacy.RecordingConsentService;
+import com.guangge.Interview.repository.CandidatesRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -25,9 +27,15 @@ public class LanguageHandshakeInterceptor implements HandshakeInterceptor {
     static final String OWNER_ATTRIBUTE = "owner";
 
     private final String tokenSecret;
+    private final CandidatesRepository candidates;
+    private final RecordingConsentService consents;
 
-    public LanguageHandshakeInterceptor(@Value("${auth.token.secret}") String tokenSecret) {
+    public LanguageHandshakeInterceptor(@Value("${auth.token.secret}") String tokenSecret,
+                                        CandidatesRepository candidates,
+                                        RecordingConsentService consents) {
         this.tokenSecret = tokenSecret;
+        this.candidates = candidates;
+        this.consents = consents;
     }
 
     @Override
@@ -39,8 +47,13 @@ public class LanguageHandshakeInterceptor implements HandshakeInterceptor {
             DecodedJWT jwt = Sign.verifyToken(token, tokenSecret);
             String userName = jwt.getClaim("userName").asString();
             if (userName == null || userName.isBlank()) throw new IllegalArgumentException("missing user");
+            if (!candidates.existsByName(userName)) throw new IllegalArgumentException("account deleted");
+            consents.requireRecordingConsent(userName);
             attributes.put(OWNER_ATTRIBUTE, userName);
             return true;
+        } catch (org.springframework.web.server.ResponseStatusException exception) {
+            response.setStatusCode(exception.getStatusCode());
+            return false;
         } catch (Exception exception) {
             response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;

@@ -1,6 +1,7 @@
 package com.guangge.Interview.practice.media;
 
 import com.guangge.Interview.practice.dto.PracticeAnswerView;
+import com.guangge.Interview.privacy.RecordingConsentService;
 import com.guangge.Interview.practice.security.OwnerResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
@@ -41,10 +42,13 @@ public class ChunkUploadController {
 
     private final OwnerResolver owners;
     private final ChunkedUploadService uploads;
+    private final RecordingConsentService consents;
 
-    public ChunkUploadController(OwnerResolver owners, ChunkedUploadService uploads) {
+    public ChunkUploadController(OwnerResolver owners, ChunkedUploadService uploads,
+                                 RecordingConsentService consents) {
         this.owners = owners;
         this.uploads = uploads;
+        this.consents = consents;
     }
 
     @GetMapping("/upload")
@@ -63,12 +67,14 @@ public class ChunkUploadController {
             @RequestParam int totalChunks,
             HttpServletRequest request,
             @RequestBody byte[] content) throws IOException {
+        String ownerId = owners.requireOwner(authorization);
+        consents.requireRecordingConsent(ownerId);
         long declared = request.getContentLengthLong();
         if (declared > ChunkedUploadService.MAX_CHUNK_BYTES) {
             throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
                     "单个分片不得超过 " + ChunkedUploadService.MAX_CHUNK_BYTES + " 字节");
         }
-        return uploads.storeChunk(owners.requireOwner(authorization), answerId, index, totalChunks, content);
+        return uploads.storeChunk(ownerId, answerId, index, totalChunks, content);
     }
 
     @PostMapping("/merge")
@@ -76,7 +82,9 @@ public class ChunkUploadController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable UUID answerId,
             @Validated @RequestBody MediaMergeRequest request) throws IOException {
-        return uploads.merge(owners.requireOwner(authorization), answerId, request);
+        String ownerId = owners.requireOwner(authorization);
+        consents.requireRecordingConsent(ownerId);
+        return uploads.merge(ownerId, answerId, request);
     }
 
     @DeleteMapping("/upload")
