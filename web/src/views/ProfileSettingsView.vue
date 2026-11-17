@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { THEMES } from '../services/theme';
 import {
   FONT_SCALE_OPTIONS, TIMEZONE_OPTIONS, applyAppearanceSettings, changePassword,
@@ -9,11 +10,18 @@ import {
   rememberDisplayName, saveProfile,
 } from '../services/profile';
 import { LOCALE_OPTIONS, normalizeLocale, setLocale } from '../i18n';
+import { deleteAccount, exportAccountData } from '../services/api';
+import { clearLocalSession } from '../services/authSession';
+import { usePracticeStore } from '../stores/practice';
 
 const { t, locale } = useI18n();
+const router = useRouter();
+const practice = usePracticeStore();
 const loading = ref(true);
 const savingProfile = ref(false);
 const savingPassword = ref(false);
+const exportingData = ref(false);
+const deletingAccount = ref(false);
 const profile = reactive({
   loginName: '',
   displayName: '',
@@ -133,6 +141,63 @@ async function submitPassword() {
     ElMessage.error(error?.message || t('profile.passwordFailed'));
   } finally {
     savingPassword.value = false;
+  }
+}
+
+async function downloadAccountData() {
+  if (exportingData.value) return;
+  exportingData.value = true;
+  try {
+    const { blob, filename } = await exportAccountData();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    ElMessage.success(t('profile.exportSuccess'));
+  } catch (error) {
+    ElMessage.error(error?.message || t('profile.exportFailed'));
+  } finally {
+    exportingData.value = false;
+  }
+}
+
+async function requestAccountDeletion() {
+  if (deletingAccount.value) return;
+  try {
+    await ElMessageBox.confirm(
+      t('profile.deleteConfirmBody'),
+      t('profile.deleteConfirmTitle'),
+      {
+        confirmButtonText: t('profile.deleteContinue'),
+        cancelButtonText: t('profile.deleteCancel'),
+        type: 'warning',
+      },
+    );
+    const { value } = await ElMessageBox.prompt(
+      t('profile.deletePromptBody'),
+      t('profile.deletePromptTitle'),
+      {
+        confirmButtonText: t('profile.deleteAccount'),
+        cancelButtonText: t('profile.deleteCancel'),
+        inputPlaceholder: profile.loginName,
+        inputValidator: (input) => input === profile.loginName || t('profile.deleteNameMismatch'),
+      },
+    );
+    deletingAccount.value = true;
+    await deleteAccount(value.trim());
+    await practice.clearLocalData();
+    clearLocalSession();
+    ElMessage.success(t('profile.deleteSuccess'));
+    await router.replace('/login');
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return;
+    if (error instanceof Error) ElMessage.error(error.message || t('profile.deleteFailed'));
+  } finally {
+    deletingAccount.value = false;
   }
 }
 </script>
@@ -296,6 +361,30 @@ async function submitPassword() {
           </el-button>
         </div>
       </section>
+
+      <section class="panel settings-panel data-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>{{ t('profile.privacyData') }}</h2>
+            <p>{{ t('profile.privacyDataHint') }}</p>
+          </div>
+          <span class="panel-icon secure"><el-icon><Lock /></el-icon></span>
+        </div>
+        <div class="data-actions">
+          <div class="data-action-row">
+            <div><strong>{{ t('profile.exportData') }}</strong><span>{{ t('profile.exportDataHint') }}</span></div>
+            <el-button class="soft-button" :loading="exportingData" :disabled="exportingData || deletingAccount" @click="downloadAccountData">
+              <el-icon><Download /></el-icon>{{ t('profile.exportData') }}
+            </el-button>
+          </div>
+          <div class="data-action-row danger">
+            <div><strong>{{ t('profile.deleteAccount') }}</strong><span>{{ t('profile.deleteAccountHint') }}</span></div>
+            <el-button class="danger-button" :loading="deletingAccount" :disabled="deletingAccount || exportingData" @click="requestAccountDeletion">
+              <el-icon><Delete /></el-icon>{{ t('profile.deleteAccount') }}
+            </el-button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="settings-actions">
@@ -361,6 +450,15 @@ async function submitPassword() {
 .motion-row span { line-height: 1.5; }
 .password-form { margin-bottom: 14px; }
 .security-actions { display: flex; justify-content: flex-end; }
+.data-panel { grid-column: 1 / -1; }
+.data-actions { display: grid; gap: 0; margin-top: 16px; border-top: 1px solid #edf0ed; }
+.data-action-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 0; border-bottom: 1px solid #edf0ed; }
+.data-action-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.data-action-row > div { display: grid; gap: 5px; }
+.data-action-row strong { color: #4a5750; font-size: 14px; }
+.data-action-row span { color: #98a19c; font-size: 12px; line-height: 1.6; }
+.data-action-row.danger strong { color: #9b4438; }
+.danger-button { border-color: #eccfc9; background: #fff7f5; color: #a6483b; }.danger-button:hover { border-color: #d99a8e; background: #fff0ed; color: #963b30; }
 .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; padding: 15px 2px 0; }
 .settings-actions > span { color: #929c96; font-size: 12px; }
 @media (max-width: 980px) {
@@ -373,5 +471,7 @@ async function submitPassword() {
   .settings-actions { align-items: stretch; flex-direction: column; }
   .settings-actions .primary-button { width: 100%; }
   .security-actions .el-button { width: 100%; }
+  .data-action-row { align-items: stretch; flex-direction: column; }
+  .data-action-row .el-button { width: 100%; }
 }
 </style>

@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * H2/unit test cannot prove. Skipped unless -Ddb.integration=true is passed.
  */
 @DataJpaTest(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:5432/interview",
+        "spring.datasource.url=jdbc:postgresql://localhost:5432/${test.database:interview}",
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
@@ -51,7 +51,7 @@ class JobRadarPersistenceIntegrationTest {
                  order by installed_rank desc limit 1
                 """, String.class);
 
-        assertThat(version).isEqualTo("21");
+        assertThat(version).isEqualTo("22");
         assertThat(tableExists("job_agent_runs")).isTrue();
         assertThat(tableExists("agent_runs")).isFalse();
         assertThat(columnExists("candidates", "skill_profile_json")).isTrue();

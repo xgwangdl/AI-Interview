@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import DigitalHuman from '../components/DigitalHuman.vue';
+import RecordingConsentDialog from '../components/RecordingConsentDialog.vue';
 import { AudioRecorder } from '../services/audioRecorder';
 import { LanguageStream } from '../services/languageStream';
 import { PcmCapture, PcmPlayer } from '../services/pcmStream';
@@ -11,6 +12,7 @@ import {
   resolveSpeechMode, sessionSubtitle, submitAudioTurn, submitTextTurn,
 } from '../services/language';
 import { useI18n } from 'vue-i18n';
+import { acceptRecordingConsent, getRecordingConsent } from '../services/api';
 
 /*
  * 回放优先用服务端合成的音频（英语）；没有服务端音色（日语）时用浏览器语音，
@@ -25,6 +27,10 @@ const busy = ref(false);
 const recording = ref(false);
 const elapsed = ref(0);
 const textMode = ref(false);
+const consentDialogVisible = ref(false);
+const consentLoading = ref(false);
+const consentReady = ref(false);
+const recordingConsent = ref(null);
 const draft = ref('');
 const speaking = ref(false);
 const amplitude = ref(-1);
@@ -64,7 +70,6 @@ const canSpeak = computed(() => Boolean(
 onMounted(async () => {
   await load();
   refreshVoices();
-  if (liveMode.value) void connectStream();
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.addEventListener?.('voiceschanged', refreshVoices);
   }
@@ -117,6 +122,7 @@ async function toggleRecording() {
     await stopAndSend();
     return;
   }
+  if (!(await ensureRecordingConsent())) return;
   try {
     stopSpeaking();
     // 打断：上一轮还在播/还在说，直接停
@@ -134,6 +140,37 @@ async function toggleRecording() {
   } catch {
     ElMessage.error(t('languageSession.micFailed'));
     textMode.value = true;
+  }
+}
+
+async function ensureRecordingConsent() {
+  if (consentReady.value) return true;
+  try {
+    recordingConsent.value = await getRecordingConsent();
+    if (recordingConsent.value?.accepted) {
+      consentReady.value = true;
+      return true;
+    }
+    consentDialogVisible.value = true;
+    return false;
+  } catch (error) {
+    ElMessage.error(error?.message || t('deviceCheck.consentLoadFailed'));
+    return false;
+  }
+}
+
+async function confirmLanguageConsent(version) {
+  if (consentLoading.value || !version) return;
+  consentLoading.value = true;
+  try {
+    recordingConsent.value = await acceptRecordingConsent(version);
+    consentReady.value = true;
+    consentDialogVisible.value = false;
+    await toggleRecording();
+  } catch (error) {
+    ElMessage.error(error?.message || t('deviceCheck.consentSaveFailed'));
+  } finally {
+    consentLoading.value = false;
   }
 }
 
@@ -195,9 +232,8 @@ async function beginLiveTurn() {
 
 function changeLiveMode(value) {
   localStorage.setItem('language-live-mode', value ? 'on' : 'off');
-  if (value) {
-    void connectStream();
-  } else {
+  // L2 首次连接也要等录制同意完成；toggleRecording 会在同意后调用 beginLiveTurn。
+  if (!value) {
     capture?.stop();
     capture = null;
     player.stop();
@@ -533,6 +569,13 @@ function backToList() {
         </div>
       </section>
     </template>
+
+    <RecordingConsentDialog
+      v-model="consentDialogVisible"
+      :consent="recordingConsent"
+      :loading="consentLoading"
+      @confirm="confirmLanguageConsent"
+    />
   </section>
 </template>
 

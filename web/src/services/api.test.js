@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  apiRequest, createAnswerAttempt, generateAnswerRewrite, getAnswerMedia, reEvaluateAnswer,
+  acceptRecordingConsent, apiRequest, createAnswerAttempt, deleteAccount, exportAccountData,
+  generateAnswerRewrite, getAnswerMedia, getRecordingConsent, reEvaluateAnswer,
   saveAnswerRewrite, tryLogin, tryPauseSession, tryRegister, trySyncSession, updateAnswerTranscript,
 } from './api';
 
@@ -138,6 +139,70 @@ describe('getAnswerMedia', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
 
     await expect(getAnswerMedia('a-1')).rejects.toThrow('无法读取这段视频');
+  });
+});
+
+describe('录制隐私同意 API', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('读取当前账号的录制同意状态', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      consentType: 'recording', version: 'v1', accepted: false, acceptedAt: null,
+    })));
+
+    const result = await getRecordingConsent();
+
+    expect(result.accepted).toBe(false);
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/me/consents/recording');
+  });
+
+  it('提交后端给定的版本号，不能由页面自行编造版本', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(200, JSON.stringify({
+      consentType: 'recording', version: 'v1', accepted: true, acceptedAt: '2026-11-17T00:00:00Z',
+    })));
+
+    await acceptRecordingConsent('v1');
+
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/me/consents/recording');
+    expect(globalThis.fetch.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(globalThis.fetch.mock.calls[0][1].body)).toEqual({ version: 'v1' });
+  });
+});
+
+describe('账号数据导出与删除 API', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('token', 'tok-1');
+    vi.restoreAllMocks();
+  });
+
+  it('导出时按附件返回 Blob 和文件名', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'attachment; filename="light-interview-export-alice.json"' },
+      blob: async () => new Blob(['{"account":{}}'], { type: 'application/json' }),
+    });
+
+    const result = await exportAccountData();
+
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/me/data-export');
+    expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
+    expect(result.filename).toBe('light-interview-export-alice.json');
+    expect(result.blob).toBeInstanceOf(Blob);
+  });
+
+  it('删除账号必须带上用户输入的确认名', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(204, ''));
+
+    await deleteAccount('alice');
+
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/me');
+    expect(globalThis.fetch.mock.calls[0][1].method).toBe('DELETE');
+    expect(JSON.parse(globalThis.fetch.mock.calls[0][1].body)).toEqual({ confirmation: 'alice' });
   });
 });
 

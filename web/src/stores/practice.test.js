@@ -97,4 +97,20 @@ describe('practice store', () => {
     expect(sessionId).toBe('new-session');
     expect(store.sessions.map((item) => item.id)).toEqual(['new-session']);
   });
+
+  it('账号删除后清空当前账号的本地练习记录与媒体缓存', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { id: 's1', status: 'completed', answers: [{ questionIndex: 0, localMediaId: 'm-1', mediaId: 'a-1' }] },
+    ]));
+    deleteMedia.mockResolvedValue(undefined);
+    const store = usePracticeStore();
+    store.resumeDraft(store.find('s1'));
+
+    await store.clearLocalData();
+
+    expect(deleteMedia).toHaveBeenCalledWith(['m-1']);
+    expect(store.sessions).toEqual([]);
+    expect(store.draft).toBeNull();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY))).toEqual([]);
+  });
 });

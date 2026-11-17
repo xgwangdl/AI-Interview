@@ -21,8 +21,8 @@ Light-Interview 是一个开源 AI 面试训练系统：输入目标岗位、JD 
 > 无需安装即可打开。已启用 HTTPS，可直接使用麦克风和摄像头进行录制练习。
 
 [![CI](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xgwangdl/AI-Interview/actions/workflows/build.yml)
-[![Backend tests](https://img.shields.io/badge/backend_tests-312-brightgreen.svg)](#工程质量)
-[![Frontend tests](https://img.shields.io/badge/frontend_tests-149-brightgreen.svg)](#工程质量)
+[![Backend tests](https://img.shields.io/badge/backend_tests-365-brightgreen.svg)](#工程质量)
+[![Frontend tests](https://img.shields.io/badge/frontend_tests-166-brightgreen.svg)](#工程质量)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring AI](https://img.shields.io/badge/Spring_AI-1.1-6DB33F.svg)](https://spring.io/projects/spring-ai)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883.svg)](https://vuejs.org/)
@@ -103,6 +103,8 @@ flowchart LR
 ### 产品与工程细节
 
 - 账号注册、个人资料、主题色、字号与减弱动效设置。
+- 首次面试或外语口语录制前必须确认隐私说明；同意版本和时间写入账号。
+- 个人设置可导出账号 JSON 数据，并可在二次确认后永久删除账号和全部媒体。
 - AI 调用额度按账号计数，成本有上限；排队中的分析任务会顺延而不是直接失败。
 - 录像默认保留 7 天，可随时删除；支持本地磁盘或 S3 兼容对象存储。
 - 大文件分片上传与断点续传；分析与媒体接口均有归属校验。
@@ -228,8 +230,8 @@ docker pull ghcr.io/xgwangdl/light-interview-web:0.2.0-beta.1
 
 ## 工程质量
 
-- 后端 **312** 个测试通过，13 个依赖外部环境的测试按配置跳过；集成环境下仅 7 个跳过。
-- 前端 **145** 个测试通过，生产构建通过。
+- 后端 **365** 个测试通过，20 个依赖外部环境的测试按默认配置跳过；CI 集成 job 会启用真实 PostgreSQL/S3。
+- 前端 **166** 个测试通过，生产构建通过。
 - 浏览器认证冒烟使用系统 Chrome，可重复验证登录、注册、空值提示和路由保护。
 - GitHub Actions 执行后端测试、前端测试、数据库/S3 集成测试和五语言 Docker 沙箱测试。
 - 已完成真实 PostgreSQL、Redis、S3 兼容存储和真实模型供应商的链路验证。

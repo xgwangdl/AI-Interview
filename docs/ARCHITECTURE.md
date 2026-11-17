@@ -91,6 +91,18 @@ AI-Interview/
 
 它只拦匿名访问，不改变这些功能的实现——目的是把「谁能调」这件事先对齐。
 
+### 3.4 `privacy` —— 录制同意、导出与账号删除
+
+| 类 | 职责 |
+| --- | --- |
+| `RecordingConsentService` | 服务端维护当前版本；面试和外语录音前校验，重复同意保持幂等 |
+| `RecordingConsentController` | `GET/POST /api/v1/me/consents/recording` |
+| `AccountDataService` | 汇总当前账号支持的 Flyway 数据；删除时先清理业务媒体，再在事务中按明确表清单删除 |
+| `AccountDataController` | `GET /api/v1/me/data-export`、`DELETE /api/v1/me` |
+
+`OwnerResolver` 不再只验证 JWT，还会确认 `candidates` 中的账号仍存在；账号删除后旧 token 立刻失效。
+导出只查询显式列，不返回 `invitation_code`（密码哈希）或原始媒体字节。
+
 ---
 
 ## 4. 一次练习的数据流
@@ -601,6 +613,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V19__profile_settings.sql` | `candidates` 的 `display_name` / `timezone` / `font_scale` / `reduce_motion` / `created_at` | 个人资料、外观偏好与加入时间 |
 | `V20__profile_language.sql` | `candidates.language` | 账号级界面语言偏好；旧账号默认 `zh-CN`，旧客户端不传语言时不会清空已有设置 |
 | `V21__job_radar_and_debrief.sql` | `job_leads` / `job_evaluations` / `interview_debriefs` / `training_weak_points` / `job_agent_runs` + `candidates.skill_profile_json` | 岗位台账、确定性评估、面试回填、训练短板和带租约的异步任务；原文可物理删除，JSON 使用 JSONB |
+| `V22__privacy_consent.sql` | `privacy_consents` | 账号 + 同意类型 + 版本唯一；记录接受时间；账号删除时级联清理 |
 
 > 遗留功能的表（`resume`、`knowledge`、`resume_vectors`、`vector_store` 等）由
 > `resources/ddl/` 下的脚本维护，**不在 Flyway 管理范围内**，这也是遗留接口容易 500 的原因。
@@ -630,6 +643,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | 数字人 | `PRACTICE_AVATAR_PROVIDER` / `_TTS_ENABLED` / `_VOICE` | local-2d / true / sambert-zhixiang-v1 |
 | 鉴权 | `AUTH_TOKEN_SECRET` / `AUTH_LOGIN_MAX_ATTEMPTS` / `AUTH_LOGIN_LOCK_WINDOW_MINUTES` | 见 .env.example |
 | AI 额度 | `QUOTA_MODEL_ENABLED` / `QUOTA_MODEL_DAILY_LIMIT` / `QUOTA_MODEL_MAX_CONCURRENT` / `QUOTA_MODEL_ZONE` | true / 120 / 3 / Asia/Shanghai |
+| 隐私同意 | `PRIVACY_RECORDING_CONSENT_VERSION` | `2026-11-17-v1` |
 | 外语口语 | `LANGUAGE_RETENTION_DAYS` | 7 |
 | Agent 调度 | `PRACTICE_AGENT_ENABLED` / `PRACTICE_AGENT_MAX_CONCURRENCY` / `PRACTICE_AGENT_LEASE_SECONDS` / `PRACTICE_AGENT_HEARTBEAT_INTERVAL_MS` / `PRACTICE_AGENT_MAX_ATTEMPTS` | true / 1 / 120 / 30000 / 3 |
 | 求职雷达 | `JOB_RADAR_DAILY_LIMIT` / `JOB_RADAR_PROMPT_VERSION` / `JOB_RADAR_ZONE` / `JOB_RADAR_MINUTES_*` | 5 / v1 / Asia/Shanghai / 15,10,20 |

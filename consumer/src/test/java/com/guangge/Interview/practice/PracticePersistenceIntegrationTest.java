@@ -36,7 +36,7 @@ import static org.mockito.Mockito.mock;
  * docker compose up -d postgres, then mvn -B test -Ddb.integration=true
  */
 @DataJpaTest(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:5432/interview",
+        "spring.datasource.url=jdbc:postgresql://localhost:5432/${test.database:interview}",
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",
         "spring.datasource.driver-class-name=org.postgresql.Driver",

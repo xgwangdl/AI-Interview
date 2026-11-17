@@ -1,6 +1,7 @@
 package com.guangge.Interview.language;
 
 import com.guangge.Interview.practice.security.OwnerResolver;
+import com.guangge.Interview.privacy.RecordingConsentService;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -38,11 +39,14 @@ public class LanguageController {
     private final OwnerResolver owners;
     private final LanguageCatalog catalog;
     private final LanguageSessionService sessions;
+    private final RecordingConsentService consents;
 
-    public LanguageController(OwnerResolver owners, LanguageCatalog catalog, LanguageSessionService sessions) {
+    public LanguageController(OwnerResolver owners, LanguageCatalog catalog, LanguageSessionService sessions,
+                              RecordingConsentService consents) {
         this.owners = owners;
         this.catalog = catalog;
         this.sessions = sessions;
+        this.consents = consents;
     }
 
     /** 语言 / 场景 / 等级 / 音色能力：前端据此决定用服务端音色还是浏览器语音。 */
@@ -82,6 +86,7 @@ public class LanguageController {
             @RequestPart("audio") MultipartFile audio,
             @RequestParam(value = "durationMs", required = false) Integer durationMs) throws IOException {
         String owner = owners.requireOwner(authorization);
+        consents.requireRecordingConsent(owner);
         if (audio.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "这一轮没有录音");
         // 有些客户端（脚本、部分手机浏览器）会把音频标成 application/octet-stream：
         // 真正的格式由后端 ffmpeg 校验，这里只挡住明确的非音频类型。

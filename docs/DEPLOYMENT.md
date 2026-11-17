@@ -112,6 +112,7 @@ MEDIA_S3_PATH_STYLE=true
 | `RATE_LIMIT_REGISTER_PER_HOUR` | `10` | 同一 IP 每小时注册请求上限 |
 | `RATE_LIMIT_LOGIN_PER_10_MINUTES` | `30` | 同一 IP 每 10 分钟登录请求上限 |
 | `TRUST_FORWARDED_FOR` | `false` | 是否信任反向代理传来的客户端 IP |
+| `PRIVACY_RECORDING_CONSENT_VERSION` | `2026-11-17-v1` | 首次录制隐私说明版本；修改处理方式时必须升级 |
 | `Ali_API_KEY` | 空 | DashScope：对话、ASR、TTS、图像 |
 | `PRACTICE_ANALYSIS_MAX_ATTEMPTS` | `3` | 分析任务最大重试次数 |
 | `PRACTICE_ANALYSIS_PROVIDER_TIMEOUT_MS` | `120000` | 单次转写/评分调用超时，避免挂起拖垮队列 |
@@ -129,6 +130,16 @@ MEDIA_S3_PATH_STYLE=true
 | `PRACTICE_AGENT_MAX_ATTEMPTS` | `3` | 普通失败最大尝试次数；额度不足使用 deferred，不消耗次数 |
 | `JOB_RADAR_DAILY_LIMIT` | `5` | 每个账号每天发起岗位评估的上限 |
 | `JOB_RADAR_PROMPT_VERSION` | `v1` | 进入评估去重键的提示词版本 |
+
+### 隐私闭环接口
+
+- `GET /api/v1/me/consents/recording`：读取当前账号是否同意当前版本。
+- `POST /api/v1/me/consents/recording`：提交服务端返回的版本号；旧版本返回 409。
+- `GET /api/v1/me/data-export`：下载当前账号 JSON 数据。
+- `DELETE /api/v1/me`：请求体 `{ "confirmation": "<当前登录名>" }`，先清理媒体再删除账号。
+
+面试开始、保存回答、单段/分片录像上传和外语音频轮次都会校验当前同意版本。删除账号后，
+`OwnerResolver` 会重新检查账号是否存在，因此旧 token 立即返回 401。
 
 ### 可观测性与死信队列
 
