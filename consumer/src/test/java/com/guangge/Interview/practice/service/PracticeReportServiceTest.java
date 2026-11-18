@@ -98,6 +98,31 @@ class PracticeReportServiceTest {
     }
 
     @Test
+    void leavesDeliverySummaryUnknownWhenTimingMetricsAreUnavailable() {
+        UUID sessionId = UUID.randomUUID();
+        PracticeSessionEntity session = session(sessionId, 1);
+        PracticeAnswerEntity answer = answer(sessionId, UUID.randomUUID());
+        EvaluationResult evaluation = new EvaluationResult(
+                75.0,
+                new EvaluationResult.DimensionScores(75.0, 75.0, 75.0, 75.0, 75.0),
+                new EvaluationResult.DeliveryMetrics(180.0, null, null, 2),
+                List.of("补细节"),
+                "示例回答",
+                List.of(new EvaluationResult.Evidence(
+                        "relevance", "我主导了订单系统的重构", null, null)));
+        answer.setEvaluationJson(validator.write(new EvaluationReport("qwen", "qwen",
+                "v2", Instant.now(), "", evaluation)));
+        answer.setEvaluationStatus("completed");
+
+        PracticeReportView report = buildReport(session, List.of(answer));
+
+        assertEquals(180.0, report.summary().speechRateCharactersPerMinute(), 0.001);
+        assertNull(report.summary().totalPauseCount());
+        assertNull(report.summary().totalPauseSeconds());
+        assertEquals(2, report.summary().totalFillerWordCount());
+    }
+
+    @Test
     void hidesReportsForSessionsOwnedByAnotherUser() {
         UUID sessionId = UUID.randomUUID();
         PracticeSessionRepository sessions = mock(PracticeSessionRepository.class);

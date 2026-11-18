@@ -26,10 +26,10 @@ public record PracticeReportView(
     public record ReportSummary(
             Double averageOverallScore,
             Map<String, Double> averageDimensionScores,
-            double speechRateCharactersPerMinute,
-            int totalPauseCount,
-            double totalPauseSeconds,
-            int totalFillerWordCount,
+            Double speechRateCharactersPerMinute,
+            Integer totalPauseCount,
+            Double totalPauseSeconds,
+            Integer totalFillerWordCount,
             /** 其中有多少个回答其实是面试官的追问（这些题也要说清楚，不然报告里会平白多出几道题）。 */
             int followUpCount,
             List<String> improvementSuggestions) { }

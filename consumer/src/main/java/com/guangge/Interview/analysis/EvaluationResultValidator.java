@@ -91,7 +91,7 @@ public class EvaluationResultValidator {
             }
         }
         validateDimensionFeedback(result, groundedTranscript, requireDimensionFeedback);
-        validateEvidence(result, groundedTranscript);
+        validateEvidence(result, groundedTranscript, requireDimensionFeedback);
         return result;
     }
 
@@ -136,8 +136,10 @@ public class EvaluationResultValidator {
         }
     }
 
-    private static void validateEvidence(EvaluationResult result, String groundedTranscript) {
-        if (result.overallScore() > 30 && (result.evidence() == null || result.evidence().isEmpty())) {
+    private static void validateEvidence(
+            EvaluationResult result, String groundedTranscript, boolean requireEvidence) {
+        if (requireEvidence && result.overallScore() > 30
+                && (result.evidence() == null || result.evidence().isEmpty())) {
             throw new EvaluationFormatException("evidence is required for a score above 30");
         }
         if (result.evidence() == null) return;

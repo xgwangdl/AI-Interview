@@ -187,7 +187,8 @@ public class PracticeReportService {
 
     private static PracticeReportView.ReportSummary summarize(List<EvaluationResult> evaluations, int followUpCount) {
         if (evaluations.isEmpty()) {
-            return new PracticeReportView.ReportSummary(null, Map.of(), 0, 0, 0, 0, followUpCount, List.of());
+            return new PracticeReportView.ReportSummary(
+                    null, Map.of(), null, null, null, null, followUpCount, List.of());
         }
         Map<String, Double> dimensions = new LinkedHashMap<>();
         dimensions.put("relevance", average(evaluations, result -> result.scores().relevance()));
@@ -204,12 +205,14 @@ public class PracticeReportService {
         return new PracticeReportView.ReportSummary(
                 average(evaluations, EvaluationResult::overallScore),
                 dimensions,
-                average(evaluations, result -> result.delivery().speechRateCharactersPerMinute()),
-                (int) Math.round(evaluations.stream()
-                        .mapToInt(result -> result.delivery().pauseCount()).average().orElse(0)),
-                average(evaluations, result -> result.delivery().totalPauseSeconds()),
-                (int) Math.round(evaluations.stream()
-                        .mapToInt(result -> result.delivery().fillerWordCount()).average().orElse(0)),
+                averageNullable(evaluations, result -> result.delivery() == null
+                        ? null : result.delivery().speechRateCharactersPerMinute()),
+                roundedIntegerAverage(evaluations, result -> result.delivery() == null
+                        ? null : result.delivery().pauseCount()),
+                averageNullable(evaluations, result -> result.delivery() == null
+                        ? null : result.delivery().totalPauseSeconds()),
+                roundedIntegerAverage(evaluations, result -> result.delivery() == null
+                        ? null : result.delivery().fillerWordCount()),
                 followUpCount,
                 suggestions);
     }
@@ -217,5 +220,28 @@ public class PracticeReportService {
     private static double average(List<EvaluationResult> evaluations, ToDoubleFunction<EvaluationResult> extractor) {
         double raw = evaluations.stream().mapToDouble(extractor).average().orElse(0);
         return Math.round(raw * 100.0) / 100.0;
+    }
+
+    private static Double averageNullable(
+            List<EvaluationResult> evaluations,
+            java.util.function.Function<EvaluationResult, Double> extractor) {
+        java.util.OptionalDouble value = evaluations.stream()
+                .map(extractor)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .average();
+        if (value.isEmpty()) return null;
+        return Math.round(value.getAsDouble() * 100.0) / 100.0;
+    }
+
+    private static Integer roundedIntegerAverage(
+            List<EvaluationResult> evaluations,
+            java.util.function.Function<EvaluationResult, Integer> extractor) {
+        java.util.OptionalDouble value = evaluations.stream()
+                .map(extractor)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Integer::doubleValue)
+                .average();
+        return value.isEmpty() ? null : (int) Math.round(value.getAsDouble());
     }
 }

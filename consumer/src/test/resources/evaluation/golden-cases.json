@@ -1,0 +1,68 @@
+[
+  {
+    "id": "strong-star-project",
+    "role": "Java backend engineer",
+    "jobDescription": "Design and optimize high-concurrency order systems",
+    "question": "Describe a backend project you led.",
+    "transcript": "I led the order query refactor. During peak traffic the API exceeded two seconds, so I used traces and logs to find duplicate queries and a missing index. I combined the reads and added a composite index. After launch, p99 stayed under three hundred milliseconds and the error rate fell from one percent to one per thousand.",
+    "durationSeconds": 95,
+    "expectedMin": 70,
+    "expectedMax": 100,
+    "rationale": "Specific context, ownership, action, trade-off, and measurable result."
+  },
+  {
+    "id": "off-topic-answer",
+    "role": "Java backend engineer",
+    "jobDescription": "Build idempotent payment callbacks",
+    "question": "How would you design an idempotent payment callback?",
+    "transcript": "I enjoy running and photography on weekends. A healthy work-life balance helps me stay focused at work.",
+    "durationSeconds": 30,
+    "expectedMin": 0,
+    "expectedMax": 35,
+    "rationale": "Fluent delivery must not earn professional credit for an unrelated answer."
+  },
+  {
+    "id": "no-experience",
+    "role": "Java backend engineer",
+    "jobDescription": "Distributed transaction experience required",
+    "question": "How do you guarantee consistency across services?",
+    "transcript": "I do not have relevant experience and I do not know how to handle it.",
+    "durationSeconds": 8,
+    "expectedMin": 0,
+    "expectedMax": 30,
+    "rationale": "The answer contains no evaluable content and must receive a low band."
+  },
+  {
+    "id": "vague-without-example",
+    "role": "Frontend engineer",
+    "jobDescription": "Frontend architecture for internal tools",
+    "question": "How do you optimize a large frontend application?",
+    "transcript": "I optimize performance by reducing repeated renders, splitting code, and watching resource loading. I choose a solution based on the situation and care about user experience.",
+    "durationSeconds": 35,
+    "expectedMin": 35,
+    "expectedMax": 70,
+    "rationale": "Relevant but generic, with no concrete case, measurement, or trade-off."
+  },
+  {
+    "id": "good-without-fabricated-metrics",
+    "role": "Product manager",
+    "jobDescription": "B2B product growth",
+    "question": "How do you decide whether a feature is worth building?",
+    "transcript": "I first confirm the target user and business problem, then estimate impact and delivery cost. If evidence is weak, I run interviews and a prototype before scheduling development. After launch I review adoption, task completion, and user feedback before deciding whether to continue.",
+    "durationSeconds": 55,
+    "expectedMin": 55,
+    "expectedMax": 90,
+    "rationale": "A complete method without inventing metrics that the candidate did not provide."
+  },
+  {
+    "id": "empty-answer",
+    "role": "Java backend engineer",
+    "jobDescription": "Cache consistency",
+    "question": "How do you avoid cache and database inconsistency?",
+    "transcript": "",
+    "durationSeconds": 0,
+    "expectedMin": 0,
+    "expectedMax": 15,
+    "rationale": "No answer content should remain in the lowest score band."
+  }
+]
