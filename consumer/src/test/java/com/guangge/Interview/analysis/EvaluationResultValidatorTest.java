@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EvaluationResultValidatorTest {
 
@@ -16,6 +17,7 @@ class EvaluationResultValidatorTest {
         EvaluationResult result = validator.parse(validJson());
 
         assertEquals(82.5, result.overallScore(), 0.001);
+        assertEquals(5, result.dimensionFeedback().size());
         assertEquals(1, result.improvementSuggestions().size());
         assertEquals(1, result.evidence().size());
     }
@@ -39,6 +41,48 @@ class EvaluationResultValidatorTest {
         String json = validJson().replace("[\"多用 STAR 结构描述项目\"]", "[]");
 
         assertThrows(EvaluationFormatException.class, () -> validator.parse(json));
+    }
+
+    @Test
+    void rejectsNewEvaluationsWithoutDimensionReasons() {
+        String json = validJson().replace("""
+                  "dimensionFeedback": [
+                    {"dimension": "relevance", "reason": "回答直接回应了重构目标。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "completeness", "reason": "有背景、行动和结果。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "professionalism", "reason": "使用了具体工程术语。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "starStructure", "reason": "行动和结果可以更明确。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "logic", "reason": "先讲目标再讲行动。", "evidenceQuote": "我主导了订单系统的重构"}
+                  ],
+                """, "");
+
+        EvaluationFormatException exception = assertThrows(EvaluationFormatException.class,
+                () -> validator.parse(json));
+
+        assertEquals("dimensionFeedback is required", exception.getMessage());
+    }
+
+    @Test
+    void rejectsDimensionEvidenceThatWasNotSaidInTheTranscript() {
+        String json = validJson().replace(
+                "\"reason\": \"回答直接回应了重构目标。\", \"evidenceQuote\": \"我主导了订单系统的重构\"",
+                "\"reason\": \"回答直接回应了重构目标。\", \"evidenceQuote\": \"我设计了整个支付平台\"");
+
+        EvaluationFormatException exception = assertThrows(EvaluationFormatException.class,
+                () -> validator.parse(json, "我主导了订单系统的重构，并补充了索引。"));
+
+        assertTrue(exception.getMessage().contains("dimensionFeedback.evidenceQuote"));
+    }
+
+    @Test
+    void acceptsEvidenceWithoutInventedTimestamps() {
+        String json = validJson()
+                .replace("\"startSeconds\": 0, \"endSeconds\": 5",
+                        "\"startSeconds\": null, \"endSeconds\": null");
+
+        EvaluationResult result = validator.parse(json, "我主导了订单系统的重构");
+
+        assertEquals(null, result.evidence().get(0).startSeconds());
+        assertEquals(null, result.evidence().get(0).endSeconds());
     }
 
     @Test
@@ -100,7 +144,7 @@ class EvaluationResultValidatorTest {
                 "\"sampleAnswer\": \"先讲背景，再说我把接口耗时降低了 25%。\"");
 
         EvaluationFormatException exception = assertThrows(EvaluationFormatException.class,
-                () -> validator.parse(json, "我负责订单系统，先讲背景再讲行动。"));
+                () -> validator.parse(json, "我主导了订单系统的重构。我负责订单系统，先讲背景再讲行动。"));
 
         assertEquals("sampleAnswer contains numbers not present in the transcript: 25%", exception.getMessage());
     }
@@ -111,7 +155,7 @@ class EvaluationResultValidatorTest {
                 "\"sampleAnswer\": \"先讲背景，再讲任务与行动。\"",
                 "\"sampleAnswer\": \"接口从 900ms 降到 100ms，【请补充：2026 年数据】。\"");
 
-        EvaluationResult result = validator.parse(json, "接口从 900ms 降到 100ms。");
+        EvaluationResult result = validator.parse(json, "我主导了订单系统的重构。接口从 900ms 降到 100ms。");
 
         assertEquals(82.5, result.overallScore(), 0.001);
     }
@@ -133,6 +177,13 @@ class EvaluationResultValidatorTest {
                     "totalPauseSeconds": 7.5,
                     "fillerWordCount": 3
                   },
+                  "dimensionFeedback": [
+                    {"dimension": "relevance", "reason": "回答直接回应了重构目标。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "completeness", "reason": "有背景、行动和结果。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "professionalism", "reason": "使用了具体工程术语。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "starStructure", "reason": "行动和结果可以更明确。", "evidenceQuote": "我主导了订单系统的重构"},
+                    {"dimension": "logic", "reason": "先讲目标再讲行动。", "evidenceQuote": "我主导了订单系统的重构"}
+                  ],
                   "improvementSuggestions": ["多用 STAR 结构描述项目"],
                   "sampleAnswer": "先讲背景，再讲任务与行动。",
                   "evidence": [

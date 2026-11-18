@@ -130,7 +130,8 @@ class PracticeReportServiceTest {
                 "answerId", "questionIndex", "questionText", "transcriptText", "mediaUrl",
                 "mediaSignedUrl", "evaluation", "overallScore", "scores", "relevance",
                 "starStructure", "delivery", "fillerWordCount", "evidence", "startSeconds",
-                "endSeconds", "sampleAnswer", "analysis", "attempts", "error",
+                "endSeconds", "dimensionFeedback", "reason", "evidenceQuote",
+                "sampleAnswer", "analysis", "attempts", "error",
                 "followUp", "parentQuestionIndex", "followUpRound", "followUpCount")) {
             assertTrue(json.contains("\"" + field + "\""), "report JSON is missing field: " + field);
         }
@@ -226,6 +227,17 @@ class PracticeReportServiceTest {
                 82.5,
                 new EvaluationResult.DimensionScores(88.0, 80.0, 85.0, 75.0, 84.0),
                 new EvaluationResult.DeliveryMetrics(210.5, 4, 7.5, 3),
+                List.of(
+                        new EvaluationResult.DimensionFeedback("relevance",
+                                "回答直接回应了重构目标。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("completeness",
+                                "包含背景、行动和结果。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("professionalism",
+                                "使用了具体工程术语。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("starStructure",
+                                "行动和结果可以更明确。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("logic",
+                                "先讲目标再讲行动。", "我主导了订单系统的重构")),
                 List.of("多用 STAR 结构描述项目"),
                 "先讲背景，再讲任务与行动。",
                 List.of(new EvaluationResult.Evidence("relevance", "我主导了订单系统的重构", 0.0, 5.0)));

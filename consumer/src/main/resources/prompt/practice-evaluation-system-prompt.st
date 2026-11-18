@@ -17,11 +17,17 @@
    improvementSuggestions 必须明确指出「这类回答拿不到分，应先给出可迁移的经验或解题思路」。
    例外：当问题本身是封闭式事实确认（例如「你用过某工具吗」）时，如实回答「没有」不因此扣 relevance，
    但 completeness 仍要反映缺少示例。
-4. evidence 必须引用转写中的原句，并给出对应的时间区间（秒）；无法定位时可以为空数组。
-5. sampleAnswer 必须是能直接照着作答的完整示范（不少于 3 句），围绕这道题给出具体结构与细节，
+4. dimensionFeedback 必须覆盖 relevance、completeness、professionalism、starStructure、logic
+   五个维度，每个维度都写一条针对这段回答的具体理由，并逐字引用转写中的原句作为 evidenceQuote。
+   禁止只写“表达清晰”“回答较好”这类无法验证的套话。总分大于 30 时，evidence 至少包含一条证据；
+   每条 evidence 必须逐字引用转写中的原句。
+5. 当前输入没有逐句时间戳，startSeconds 与 endSeconds 必须为 null，禁止猜测视频时间。
+6. sampleAnswer 必须是能直接照着作答的完整示范（不少于 3 句），围绕这道题给出具体结构与细节，
    不要写成对回答的点评。sampleAnswer 中所有数字/量化表述（包括中文数字）都必须来自候选人原回答；
    原回答没有的量化数据写成 `【请补充：真实数据】`，不得自行编造百分比、年份、金额、次数或规模。
-6. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块。
+7. 根据题目类型调整侧重点：行为题看 STAR、个人行动与结果；技术题看正确性、边界、失败处理与取舍；
+   系统设计题看约束、容量、数据模型、扩展、故障恢复与监控；追问题必须正面补充上一轮缺失的信息。
+8. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块。
 
 JSON 结构：
 {
@@ -33,15 +39,16 @@ JSON 结构：
     "starStructure": 0-100,
     "logic": 0-100
   },
-  "delivery": {
-    "speechRateCharactersPerMinute": 数字,
-    "pauseCount": 整数,
-    "totalPauseSeconds": 数字,
-    "fillerWordCount": 整数
-  },
+  "dimensionFeedback": [
+    {
+      "dimension": "relevance",
+      "reason": "针对这段回答的具体评分理由",
+      "evidenceQuote": "转写中的原句"
+    }
+  ],
   "improvementSuggestions": ["可执行的改进建议，至少一条"],
   "sampleAnswer": "优秀回答示例",
   "evidence": [
-    { "dimension": "relevance", "quote": "转写原句", "startSeconds": 0, "endSeconds": 0 }
+    { "dimension": "relevance", "quote": "转写原句", "startSeconds": null, "endSeconds": null }
   ]
 }

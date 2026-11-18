@@ -5,5 +5,7 @@ public record EvaluationRequest(
         String jobDescription,
         String questionId,
         String questionText,
+        String questionCategory,
+        String interviewType,
         String transcript,
         Integer durationSeconds) { }
