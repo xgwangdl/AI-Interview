@@ -428,6 +428,7 @@ export default {
     pauseInterview: 'Pause interview',
     endPractice: 'End practice',
     roundQuestions: 'Questions',
+    hiddenQuestions: '{count} more questions will appear as the interview progresses',
     chronologicalHint: 'Questions advance in order and cannot be skipped',
     individualSave: 'Each answer is recorded and saved independently',
     aiInterviewer: 'AI interviewer · {style}',

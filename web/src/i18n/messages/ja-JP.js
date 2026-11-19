@@ -428,6 +428,7 @@ export default {
     pauseInterview: '面接を一時停止',
     endPractice: '練習を終了',
     roundQuestions: '今回の質問',
+    hiddenQuestions: '残り{count}問は回答に応じて順次表示されます',
     chronologicalHint: '順番に自動で進み、他の質問には移動できません',
     individualSave: '各回答は個別に録画・保存されます',
     aiInterviewer: 'AI面接官 · {style}',

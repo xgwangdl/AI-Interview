@@ -454,6 +454,7 @@ export default {
     pauseInterview: '暂停面试',
     endPractice: '结束练习',
     roundQuestions: '本轮问题',
+    hiddenQuestions: '还有 {count} 道题会根据你的回答逐步出现',
     chronologicalHint: '按顺序自动进行，不能跳到其他题',
     individualSave: '每道回答独立录制与保存',
     aiInterviewer: 'AI 面试官 · {style}',
