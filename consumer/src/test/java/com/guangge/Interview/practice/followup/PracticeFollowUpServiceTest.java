@@ -208,6 +208,18 @@ class PracticeFollowUpServiceTest {
     }
 
     @Test
+    @DisplayName("候选人明确说没做过 → 不追问同一段经历，直接进入下一题")
+    void skipsWhenTheCandidateHasNoRelevantExperience() {
+        transcript = "这个我没有做过，也不太了解，目前没有相关经验。";
+
+        PracticeFollowUpView view = service.followUp("smoke", sessionId, answerId);
+
+        assertThat(view.question()).isNull();
+        assertThat(view.reason()).contains("没有可继续追问的经历");
+        verify(provider, never()).followUp(any());
+    }
+
+    @Test
     @DisplayName("一场最多追问 3 次：够了就说清楚，而不是继续追问")
     void stopsAfterThreeFollowUps() {
         session.setQuestionsJson("""

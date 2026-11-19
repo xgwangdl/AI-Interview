@@ -160,7 +160,8 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `AnalysisJobService` | 入队、原子领取、执行、重试、卡死回收、超时控制 |
 | `AsrProvider` | 转写接口；`DashScopeAsrProvider` 走 Paraformer，`StubAsrProvider` 为本地兜底 |
 | `EvaluationProvider` | 评分接口；`SpringAiEvaluationProvider` 走大模型，`StubEvaluationProvider` 为兜底 |
-| `EvaluationResultValidator` | 校验固定 JSON 结构（分数 0–100、证据时间区间、必填字段），校验不过抛 `EvaluationFormatException` |
+| `EvaluationResultValidator` | 校验固定 JSON 结构（分数 0–100、五维理由、原句证据、可选时间区间、必填字段），校验不过抛 `EvaluationFormatException` |
+| `DeliveryMetricsCalculator` | 服务端根据转写和时长计算语速、口头禅；没有 ASR 分段时间时不伪造停顿数据 |
 | `EvaluationOutcome` / `EvaluationProvenance` | 评分结果 + 来源（供应商、模型、耗时） |
 | `EvaluationRequest` / `EvaluationResult` / `EvaluationReport` | 请求与响应模型 |
 | `TranscriptResult` | 转写文本 + 片段 |
@@ -170,7 +171,18 @@ pending ──claim──▶ processing ──成功──▶ completed
 | `AnalysisRequeueResult` | 重新入队后的明确返回体 |
 
 **设计要点**：供应商以接口注入，切换只改配置；评分强制走 JSON 结构校验，自由文本直接被拒绝，
-避免模型输出漂移进数据库。
+避免模型输出漂移进数据库。模型只评价内容并解释五个维度；语速、口头禅和证据时间由服务端治理。
+当前 DashScope 适配器只返回文本，因此 `startSeconds` / `endSeconds` 保持为空，不向用户展示猜测的视频定位。
+
+评分提示词或模型变更前，先在真实供应商环境运行人工校准样本：
+
+```powershell
+mvn -B -pl consumer -am -Dtest=EvaluationGoldenSetLiveTest `
+  -Dai.quality.live=true -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+样本位于 `consumer/src/test/resources/evaluation/golden-cases.json`，覆盖高质量回答、跑题、不会作答、
+空回答、泛泛而谈和“不得编造数字”等场景。
 
 失败处理（#10）：任务失败后按 `retry-backoff-ms × 2^(n-1)` 退避重排（上限 `retry-backoff-max-ms`），
 调度器只领取 `next_attempt_at` 到期的任务；重试到 `max-attempts` 后写入 `analysis_jobs_dlq`

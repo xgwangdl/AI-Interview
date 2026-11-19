@@ -55,6 +55,7 @@ public class AnalysisJobService {
     private final AsrProvider asrProvider;
     private final EvaluationProvider evaluationProvider;
     private final EvaluationResultValidator validator;
+    private final DeliveryMetricsCalculator deliveryMetrics;
     private final PracticeQuestionCatalog questions;
     private final AnalysisQueueMetrics metrics;
     private final com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive;
@@ -73,6 +74,7 @@ public class AnalysisJobService {
             AsrProvider asrProvider,
             EvaluationProvider evaluationProvider,
             EvaluationResultValidator validator,
+            DeliveryMetricsCalculator deliveryMetrics,
             PracticeQuestionCatalog questions,
             AnalysisQueueMetrics metrics,
             com.guangge.Interview.practice.archive.PracticeScoreArchiveService scoreArchive,
@@ -89,6 +91,7 @@ public class AnalysisJobService {
         this.asrProvider = asrProvider;
         this.evaluationProvider = evaluationProvider;
         this.validator = validator;
+        this.deliveryMetrics = deliveryMetrics;
         this.questions = questions;
         this.metrics = metrics;
         this.scoreArchive = scoreArchive;
@@ -383,15 +386,20 @@ public class AnalysisJobService {
         if (answer.getEvaluationJson() == null || answer.getEvaluationJson().isBlank()) {
             String spoken = transcript;
             try (ModelLease lease = reserveFor(session, job, "内容评分")) {
+                com.guangge.Interview.practice.dto.PracticeQuestion question =
+                        questionOf(session, answer.getQuestionId());
                 EvaluationRequest request = new EvaluationRequest(
                         session.getRole(),
                         session.getJobDescription(),
                         answer.getQuestionId(),
-                        questionText(session, answer.getQuestionId()),
+                        question == null ? "" : question.text(),
+                        question == null ? null : question.category(),
+                        session.getInterviewType(),
                         spoken,
                         answer.getDurationSeconds());
                 EvaluationOutcome outcome = withTimeout("内容评分",
                         () -> evaluationProvider.evaluate(request));
+                EvaluationResult result = finalizeEvaluation(outcome.result(), spoken, answer.getDurationSeconds());
                 EvaluationProvenance provenance = evaluationProvider.provenance();
                 EvaluationReport report = new EvaluationReport(
                         provenance.modelName(),
@@ -400,7 +408,7 @@ public class AnalysisJobService {
                         Instant.now(),
                         // 原始响应留档用于审计，但加上限，避免异常长的输出撑爆这一行。
                         LogSanitizer.truncate(outcome.rawResponse(), MAX_RAW_RESPONSE_LENGTH),
-                        outcome.result());
+                        result);
                 answer.setEvaluationJson(validator.write(report));
                 answer.setEvaluationStatus("completed");
                 answers.save(answer);
@@ -408,10 +416,32 @@ public class AnalysisJobService {
                 // 题面一起带上：错题本要靠它才能把"这道题"重练一遍（见 V10 迁移）
                 // 旧 attempt 只保留在报告对照里，不覆盖当前成绩档案
                 if (answer.isCurrent()) {
-                    scoreArchive.record(session, answer, questionOf(session, answer.getQuestionId()), outcome.result());
+                    scoreArchive.record(session, answer, question, result);
                 }
             }
         }
+    }
+
+    /**
+     * The model judges content. The server owns delivery metrics and evidence timing:
+     * current ASR exposes text only, so model-generated pause counts and video offsets
+     * would be invented measurements.
+     */
+    private EvaluationResult finalizeEvaluation(EvaluationResult result, String transcript, Integer durationSeconds) {
+        EvaluationResult.DeliveryMetrics computed = deliveryMetrics.calculate(transcript, durationSeconds);
+        List<EvaluationResult.Evidence> evidence = result.evidence() == null ? null
+                : result.evidence().stream()
+                        .map(item -> new EvaluationResult.Evidence(
+                                item.dimension(), item.quote(), null, null))
+                        .toList();
+        return new EvaluationResult(
+                result.overallScore(),
+                result.scores(),
+                computed,
+                result.dimensionFeedback(),
+                result.improvementSuggestions(),
+                result.sampleAnswer(),
+                evidence);
     }
 
     /**
@@ -492,10 +522,6 @@ public class AnalysisJobService {
     @FunctionalInterface
     private interface ProviderCall<T> {
         T get() throws Exception;
-    }
-
-    private String questionText(PracticeSessionEntity session, String questionId) {
-        return questions.questionText(session.getQuestionsJson(), questionId);
     }
 
     private static String trimError(RuntimeException exception) {

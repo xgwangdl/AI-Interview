@@ -7,6 +7,7 @@ import com.guangge.Interview.analysis.AnalysisJobService;
 import com.guangge.Interview.analysis.AnalysisDlqRepository;
 import com.guangge.Interview.analysis.AnalysisQueueMetrics;
 import com.guangge.Interview.analysis.AsrProvider;
+import com.guangge.Interview.analysis.DeliveryMetricsCalculator;
 import com.guangge.Interview.analysis.EvaluationProvider;
 import com.guangge.Interview.analysis.EvaluationProvenance;
 import com.guangge.Interview.analysis.EvaluationOutcome;
@@ -108,7 +109,7 @@ class PracticeFlowAcceptanceTest {
         sessionService = new PracticeSessionService(sessions, answers, mediaStorage, objectMapper,
                 scoreArchive, 7);
         jobService = new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, transcribingAsr(),
-                evaluatingProvider(), validator, catalog, metrics, scoreArchive,
+                evaluatingProvider(), validator, new DeliveryMetricsCalculator(), catalog, metrics, scoreArchive,
                 ModelCallGuard.inMemory(true, 10_000, 10), 3, 60_000, 1_000, 60_000);
         reportService = new PracticeReportService(sessions, answers, jobs, validator, signedUrls, catalog);
 

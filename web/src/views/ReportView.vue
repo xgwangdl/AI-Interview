@@ -10,6 +10,9 @@ import {
 } from '../services/api';
 import { buildQuestions, STYLE_LABEL_KEYS, TYPE_LABEL_KEYS } from '../data/questions';
 import { DIMENSION_LABEL_KEYS, DIMENSION_LABELS } from '../services/practiceArchive';
+import {
+  buildDimensionAssessments, displayScore, hasEvidenceTiming, scoreBandKey,
+} from '../services/evaluationQuality';
 import DigitalHuman from '../components/DigitalHuman.vue';
 import { createAvatarAudio } from '../services/avatarAudio';
 import { revealedSentenceCount, splitSentences } from '../services/mouthAnimation';
@@ -71,6 +74,7 @@ const helpNote = ref('');
 const helpSending = ref(false);
 const signedMediaUrl = computed(() => currentReport.value?.mediaSignedUrl || '');
 const evidenceList = computed(() => currentEvaluation.value?.evidence || []);
+const currentScoreBand = computed(() => scoreBandKey(currentEvaluation.value?.overallScore));
 /** 追问在这份报告里算"顺着上一题问的"，不算凭空多出来的一道题。 */
 const followUpCount = computed(() => report.value?.summary?.followUpCount || 0);
 const learnerCohorts = computed(() => cohorts.value.filter((cohort) => cohort.role === 'learner'));
@@ -188,9 +192,16 @@ const dimensions = computed(() => Object.keys(DIMENSION_LABEL_KEYS).map((key) =>
   key,
   label: t(DIMENSION_LABEL_KEYS[key]),
 })));
+const dimensionAssessments = computed(() => buildDimensionAssessments(currentEvaluation.value)
+  .map((item) => ({ ...item, label: t(DIMENSION_LABEL_KEYS[item.key]) })));
 const dimensionLabels = computed(() => Object.fromEntries(
   Object.keys(DIMENSION_LABELS).map((key) => [key, t(DIMENSION_LABEL_KEYS[key])]),
 ));
+const delivery = computed(() => currentEvaluation.value?.delivery || null);
+const hasSpeechRate = computed(() => Number.isFinite(delivery.value?.speechRateCharactersPerMinute));
+const hasPauseMetrics = computed(() => Number.isFinite(delivery.value?.pauseCount)
+  && Number.isFinite(delivery.value?.totalPauseSeconds));
+const hasFillerCount = computed(() => Number.isFinite(delivery.value?.fillerWordCount));
 const reportStatusLabel = computed(() => {
   if (reportLoading.value) return t('report.analyzing');
   const status = report.value?.status;
@@ -225,7 +236,7 @@ const reportSummaryText = computed(() => {
     const followUps = followUpCount.value ? t('report.followUps', { count: followUpCount.value }) : '';
     return t('report.summaryScore', {
       base,
-      score: summary.averageOverallScore.toFixed(1),
+      score: displayScore(summary.averageOverallScore),
       details: details.length ? ` · ${details.join(' · ')}` : '',
       followUps,
     });
@@ -445,14 +456,9 @@ function playAt(offset) {
   video.value.play();
 }
 
-function scoreOf(key) {
-  const value = currentEvaluation.value?.scores?.[key];
-  return Number.isFinite(value) ? value.toFixed(1) : '—';
-}
-
 function evidenceWidth(item) {
   const duration = currentAnswer.value?.durationSeconds || 0;
-  if (!duration) return '15%';
+  if (!duration || !hasEvidenceTiming(item)) return '15%';
   const width = ((item.endSeconds - item.startSeconds) / duration) * 100;
   return `${Math.min(100, Math.max(4, width))}%`;
 }
@@ -568,7 +574,7 @@ onBeforeUnmount(() => {
                   :class="{ current: attempt.current, selected: selectedAttemptId === attempt.answerId }"
                   @click="playAttempt(attempt)">
             <span>{{ t('report.attemptNth', { attempt: attempt.attempt }) }}<el-tag v-if="attempt.current" class="tag-ready" size="small">{{ t('report.current') }}</el-tag></span>
-            <strong>{{ attempt.evaluation?.overallScore != null ? t('dashboard.points', { score: attempt.evaluation.overallScore.toFixed(1) }) : t('report.pendingScore') }}</strong>
+            <strong>{{ attempt.evaluation?.overallScore != null ? t('dashboard.points', { score: displayScore(attempt.evaluation.overallScore) }) : t('report.pendingScore') }}</strong>
             <p>{{ attempt.transcriptText || t('report.noTranscript') }}</p>
           </button>
         </div>
@@ -579,12 +585,35 @@ onBeforeUnmount(() => {
         <div class="section-title">{{ t('report.answerAnalysis') }} <el-tag :class="currentEvaluation ? 'tag-ready' : 'tag-muted'" size="small">{{ currentEvaluation ? t('report.generated') : (reportLoading ? t('report.analyzing') : t('report.waitingIntegration')) }}</el-tag></div>
         <div class="score-panel panel">
           <template v-if="currentEvaluation">
-            <div class="score-overall"><strong>{{ currentEvaluation.overallScore.toFixed(1) }}</strong><span>{{ t('report.overallScore') }}</span></div>
-            <div class="rubric-list"><div v-for="dimension in dimensions" :key="dimension.key"><span>{{ dimension.label }}</span><i class="filled">{{ scoreOf(dimension.key) }}</i></div></div>
-            <div class="delivery-list">
-              <div><span>{{ t('report.speechRateLabel') }}</span><i>{{ t('report.charsPerMinute', { value: Math.round(currentEvaluation.delivery.speechRateCharactersPerMinute) }) }}</i></div>
-              <div><span>{{ t('report.pauseLabel') }}</span><i>{{ t('report.pauseValue', { count: currentEvaluation.delivery.pauseCount, seconds: currentEvaluation.delivery.totalPauseSeconds }) }}</i></div>
-              <div><span>{{ t('report.fillerLabel') }}</span><i>{{ t('report.countTimes', { count: currentEvaluation.delivery.fillerWordCount }) }}</i></div>
+            <div class="score-overall">
+              <strong>{{ displayScore(currentEvaluation.overallScore) }}</strong>
+              <span>{{ t('report.overallScore') }}</span>
+              <em>{{ t(`report.scoreBands.${currentScoreBand}`) }}</em>
+            </div>
+            <div class="dimension-assessments">
+              <article v-for="item in dimensionAssessments" :key="item.key" class="dimension-assessment">
+                <header>
+                  <span>{{ item.label }}</span>
+                  <small>{{ t(`report.scoreBands.${item.band}`) }}</small>
+                  <strong>{{ item.score }}</strong>
+                </header>
+                <p v-if="item.reason">{{ item.reason }}</p>
+                <blockquote v-if="item.evidenceQuote">{{ item.evidenceQuote }}</blockquote>
+              </article>
+            </div>
+            <div v-if="hasSpeechRate || hasPauseMetrics || hasFillerCount" class="delivery-list">
+              <div v-if="hasSpeechRate">
+                <span>{{ t('report.speechRateLabel') }}</span>
+                <i>{{ t('report.charsPerMinute', { value: Math.round(delivery.speechRateCharactersPerMinute) }) }}</i>
+              </div>
+              <div v-if="hasPauseMetrics">
+                <span>{{ t('report.pauseLabel') }}</span>
+                <i>{{ t('report.pauseValue', { count: delivery.pauseCount, seconds: delivery.totalPauseSeconds }) }}</i>
+              </div>
+              <div v-if="hasFillerCount">
+                <span>{{ t('report.fillerLabel') }}</span>
+                <i>{{ t('report.countTimes', { count: delivery.fillerWordCount }) }}</i>
+              </div>
             </div>
           </template>
           <template v-else>
@@ -622,12 +651,18 @@ onBeforeUnmount(() => {
           <p v-if="avatarError" class="sample-note error">{{ avatarError }}</p>
         </div>
         <div class="evidence-panel panel">
-          <div class="section-title">{{ t('report.evidenceTitle') }} <small>{{ t('report.videoTimeline') }}</small></div>
+          <div class="section-title">{{ t('report.evidenceTitle') }} <small>{{ t('report.evidenceHint') }}</small></div>
           <div v-if="evidenceList.length" class="evidence-list">
-            <div v-for="(item, index) in evidenceList" :key="index" class="evidence-row">
-              <button class="timeline-play" :aria-label="t('report.playEvidence', { number: index + 1 })" :title="t('report.playEvidenceAt', { time: formatDuration(item.startSeconds) })" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button>
-              <div><strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong><small>{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · {{ item.quote }}</small></div>
-              <span class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span>
+            <div v-for="(item, index) in evidenceList" :key="index" class="evidence-row" :class="{ 'has-timing': hasEvidenceTiming(item) }">
+              <button v-if="hasEvidenceTiming(item)" class="timeline-play" :aria-label="t('report.playEvidence', { number: index + 1 })" :title="t('report.playEvidenceAt', { time: formatDuration(item.startSeconds) })" @click="playAt(item.startSeconds)"><el-icon><VideoPlay /></el-icon></button>
+              <div>
+                <strong>{{ dimensionLabels[item.dimension] || item.dimension }}</strong>
+                <small>
+                  <template v-if="hasEvidenceTiming(item)">{{ formatDuration(item.startSeconds) }} – {{ formatDuration(item.endSeconds) }} · </template>
+                  {{ item.quote }}
+                </small>
+              </div>
+              <span v-if="hasEvidenceTiming(item)" class="timeline-track"><i :style="{ width: evidenceWidth(item) }"></i></span>
             </div>
           </div>
           <div v-else-if="currentAnswer" class="evidence-row">
@@ -655,6 +690,19 @@ onBeforeUnmount(() => {
 .score-overall { display: flex; align-items: baseline; gap: 7px; padding-bottom: 11px; border-bottom: 1px solid #edf0ed; }
 .score-overall strong { color: var(--green); font-size: 25px; font-weight: 650; }
 .score-overall span { color: #8b968f; font-size: 12px; }
+.score-overall em { width: 100%; color: #53645a; font-size: 13px; font-style: normal; font-weight: 600; }
+.dimension-assessments { display: grid; padding-top: 3px; }
+.dimension-assessment { padding: 12px 0; border-bottom: 1px solid #edf0ed; }
+.dimension-assessment:last-child { padding-bottom: 5px; border-bottom: 0; }
+.dimension-assessment header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 8px; }
+.dimension-assessment header span { color: #4e5a53; font-size: 13px; font-weight: 650; }
+.dimension-assessment header small { color: #6f7d75; font-size: 11px; }
+.dimension-assessment header strong { color: var(--green-dark); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dimension-assessment p { margin: 7px 0 0; color: #637069; font-size: 12px; line-height: 1.7; }
+.dimension-assessment blockquote { margin: 7px 0 0; padding: 7px 9px; border: 1px solid #e5ebe6; border-radius: 6px; background: #f7f9f7; color: #5a675f; font-size: 12px; line-height: 1.65; }
+.evidence-row > div { min-width: 0; flex: 1; }
+.evidence-row small { color: #6f7d75; font-size: 12px; line-height: 1.65; }
+.timeline-track { flex: .7; }
 .rubric-list i.filled { color: #476b56; font-weight: 600; }
 .suggestion-panel { padding: 14px; box-shadow: none; }
 .suggestion-panel .section-title { margin-bottom: 8px; }

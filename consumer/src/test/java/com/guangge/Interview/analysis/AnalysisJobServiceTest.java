@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -167,6 +168,40 @@ class AnalysisJobServiceTest {
         assertTrue(answer.getEvaluationJson().contains("\"overallScore\":82.5"));
         assertTrue(answer.getEvaluationJson().contains("raw-model-output"),
                 "报告的原始模型响应必须落库");
+    }
+
+    @Test
+    void passesQuestionContextAndReplacesUnreliableModelMetrics() {
+        AnalysisJobEntity job = pendingJob();
+        session.setInterviewType("technical");
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+        when(answers.findById(answerId)).thenReturn(Optional.of(answer));
+        when(sessions.findById(sessionId)).thenReturn(Optional.of(session));
+        stubStoredMedia();
+        AtomicReference<EvaluationRequest> captured = new AtomicReference<>();
+        EvaluationProvider provider = new EvaluationProvider() {
+            @Override
+            public EvaluationOutcome evaluate(EvaluationRequest request) {
+                captured.set(request);
+                return new EvaluationOutcome(stubEvaluationResult(), RAW_RESPONSE);
+            }
+
+            @Override
+            public EvaluationProvenance provenance() {
+                return new EvaluationProvenance("qwen-max", "qwen-max", "practice-evaluation-v2");
+            }
+        };
+
+        service(stubAsr("嗯我主导了订单系统的重构"), provider, 3).process(job.getId());
+
+        assertEquals("design", captured.get().questionCategory());
+        assertEquals("technical", captured.get().interviewType());
+        EvaluationResult persisted = validator.parseReport(answer.getEvaluationJson()).result();
+        assertEquals(1, persisted.delivery().fillerWordCount());
+        assertNull(persisted.delivery().pauseCount());
+        assertNull(persisted.delivery().totalPauseSeconds());
+        assertNull(persisted.evidence().get(0).startSeconds());
+        assertNull(persisted.evidence().get(0).endSeconds());
     }
 
     @Test
@@ -419,7 +454,7 @@ class AnalysisJobServiceTest {
     private AnalysisJobService service(AsrProvider asr, EvaluationProvider evaluation, int maxAttempts,
                                        long providerTimeoutMs) {
         return new AnalysisJobService(jobs, dlq, sessions, answers, mediaStorage, asr, evaluation, validator,
-                new PracticeQuestionCatalog(objectMapper), metrics,
+                new DeliveryMetricsCalculator(), new PracticeQuestionCatalog(objectMapper), metrics,
                 mock(com.guangge.Interview.practice.archive.PracticeScoreArchiveService.class),
                 ModelCallGuard.inMemory(true, 10_000, 10),
                 maxAttempts, providerTimeoutMs,
@@ -448,13 +483,7 @@ class AnalysisJobServiceTest {
     }
 
     private static EvaluationProvider stubEvaluation() {
-        EvaluationResult result = new EvaluationResult(
-                82.5,
-                new EvaluationResult.DimensionScores(88.0, 80.0, 85.0, 75.0, 84.0),
-                new EvaluationResult.DeliveryMetrics(210.5, 4, 7.5, 3),
-                List.of("多用 STAR 结构描述项目"),
-                "先讲背景，再讲任务与行动。",
-                List.of(new EvaluationResult.Evidence("relevance", "我主导了订单系统的重构", 0.0, 5.0)));
+        EvaluationResult result = stubEvaluationResult();
         return new EvaluationProvider() {
             @Override
             public EvaluationOutcome evaluate(EvaluationRequest request) {
@@ -466,5 +495,26 @@ class AnalysisJobServiceTest {
                 return new EvaluationProvenance("qwen-max", "qwen-max", "practice-evaluation-v1");
             }
         };
+    }
+
+    private static EvaluationResult stubEvaluationResult() {
+        return new EvaluationResult(
+                82.5,
+                new EvaluationResult.DimensionScores(88.0, 80.0, 85.0, 75.0, 84.0),
+                new EvaluationResult.DeliveryMetrics(210.5, 4, 7.5, 3),
+                List.of(
+                        new EvaluationResult.DimensionFeedback("relevance",
+                                "回答直接回应了重构目标。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("completeness",
+                                "包含背景、行动和结果。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("professionalism",
+                                "使用了具体工程术语。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("starStructure",
+                                "行动和结果可以更明确。", "我主导了订单系统的重构"),
+                        new EvaluationResult.DimensionFeedback("logic",
+                                "先讲目标再讲行动。", "我主导了订单系统的重构")),
+                List.of("多用 STAR 结构描述项目"),
+                "先讲背景，再讲任务与行动。",
+                List.of(new EvaluationResult.Evidence("relevance", "我主导了订单系统的重构", 0.0, 5.0)));
     }
 }

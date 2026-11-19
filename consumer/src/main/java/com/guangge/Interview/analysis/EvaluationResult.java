@@ -13,9 +13,25 @@ public record EvaluationResult(
         Double overallScore,
         DimensionScores scores,
         DeliveryMetrics delivery,
+        List<DimensionFeedback> dimensionFeedback,
         List<String> improvementSuggestions,
         String sampleAnswer,
         List<Evidence> evidence) {
+
+    /**
+     * Backward-compatible constructor for older callers. New model responses should
+     * always populate dimensionFeedback so the report can explain every score.
+     */
+    public EvaluationResult(
+            Double overallScore,
+            DimensionScores scores,
+            DeliveryMetrics delivery,
+            List<String> improvementSuggestions,
+            String sampleAnswer,
+            List<Evidence> evidence) {
+        this(overallScore, scores, delivery, List.of(),
+                improvementSuggestions, sampleAnswer, evidence);
+    }
 
     public record DimensionScores(
             Double relevance,
@@ -30,6 +46,12 @@ public record EvaluationResult(
             Double totalPauseSeconds,
             Integer fillerWordCount) { }
 
-    /** Evidence is anchored to a playback offset so the report can jump into the video. */
+    /** A human-readable reason tied to one rubric dimension. */
+    public record DimensionFeedback(String dimension, String reason, String evidenceQuote) { }
+
+    /**
+     * A transcript quote. Timestamps are optional because the current ASR adapter
+     * returns text only; guessed offsets are worse than no playback link.
+     */
     public record Evidence(String dimension, String quote, Double startSeconds, Double endSeconds) { }
 }

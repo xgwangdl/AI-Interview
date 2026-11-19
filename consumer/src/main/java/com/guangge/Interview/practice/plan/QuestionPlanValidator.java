@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -23,6 +24,13 @@ public class QuestionPlanValidator {
     private static final int MAX_TEXT_LENGTH = 2000;
     private static final int MAX_CATEGORY_LENGTH = 100;
     private static final String DEFAULT_CATEGORY = "综合";
+    private static final double MIN_TECHNICAL_RATIO = 0.6;
+    private static final List<String> TECHNICAL_SIGNALS = List.of(
+            "java", "jvm", "gc", "垃圾回收", "线程", "并发", "spring", "bean",
+            "事务", "索引", "sql", "mysql", "redis", "缓存", "消息队列", "mq",
+            "分布式", "幂等", "接口", "性能", "数据库", "锁", "内存", "日志",
+            "链路", "架构", "服务", "调优", "排查", "故障", "吞吐", "延迟",
+            "连接池", "类加载", "工程实践", "系统设计", "技术原理", "稳定性");
 
     private final ObjectMapper objectMapper;
 
@@ -32,6 +40,10 @@ public class QuestionPlanValidator {
     }
 
     public List<PracticeQuestion> parse(String raw, int expectedCount) {
+        return parse(raw, expectedCount, null);
+    }
+
+    public List<PracticeQuestion> parse(String raw, int expectedCount, String interviewType) {
         if (raw == null || raw.isBlank()) {
             throw new QuestionPlanException("模型没有返回题目");
         }
@@ -62,7 +74,24 @@ public class QuestionPlanValidator {
             }
             questions.add(new PracticeQuestion("q-" + (index + 1), text, normalizeCategory(draft.category())));
         }
+        enforceInterviewType(questions, interviewType);
         return List.copyOf(questions);
+    }
+
+    private static void enforceInterviewType(List<PracticeQuestion> questions, String interviewType) {
+        if (!"technical".equalsIgnoreCase(interviewType)) return;
+        int required = Math.max(1,
+                (int) Math.ceil(questions.size() * MIN_TECHNICAL_RATIO));
+        long technical = questions.stream().filter(QuestionPlanValidator::isTechnicalQuestion).count();
+        if (technical < required) {
+            throw new QuestionPlanException(
+                    "技术面试需要至少 " + required + " 道 Java 后端技术题，实际只有 " + technical + " 道");
+        }
+    }
+
+    private static boolean isTechnicalQuestion(PracticeQuestion question) {
+        String content = (question.text() + " " + question.category()).toLowerCase(Locale.ROOT);
+        return TECHNICAL_SIGNALS.stream().anyMatch(content::contains);
     }
 
     private static String normalizeCategory(String category) {
