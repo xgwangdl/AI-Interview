@@ -52,6 +52,14 @@ public class PracticeFollowUpService {
     static final int MAX_ROUNDS_PER_QUESTION = 2;
     /** 转写短于这个字数就不问了 —— 没听清或者根本没答，追问也问不出东西。 */
     static final int MIN_TRANSCRIPT_CHARS = 12;
+    private static final int MAX_NO_EXPERIENCE_ANSWER_CHARS = 80;
+    private static final List<String> NO_EXPERIENCE_MARKERS = List.of(
+            "没做过", "没有做过", "没接触过", "没有接触过", "没经验", "没有经验",
+            "没实践过", "没有实践过", "不了解", "不熟悉", "没处理过", "没有处理过",
+            "没参与过", "没有参与过", "没用过", "没有用过", "没使用过", "没有使用过",
+            "不会做", "不会处理", "不知道怎么");
+    private static final List<String> POSITIVE_EXPERIENCE_MARKERS = List.of(
+            "但是", "不过", "后来", "曾经", "做过一次", "处理过一次", "也做过", "也用过");
     static final String FOLLOW_UP_CATEGORY = PracticeQuestionCatalog.FOLLOW_UP_CATEGORY;
 
     private final PracticeSessionRepository sessions;
@@ -124,6 +132,9 @@ public class PracticeFollowUpService {
         if (transcript == null || transcript.strip().length() < MIN_TRANSCRIPT_CHARS) {
             return PracticeFollowUpView.none("这段回答太短，没有可以深挖的内容");
         }
+        if (isNoExperienceAnswer(transcript)) {
+            return PracticeFollowUpView.none("这段回答没有可继续追问的经历，先换下一道技术题");
+        }
 
         PracticeFollowUpContext context = context(session, questionList, answeredIndex, answer, transcript, nextRound);
         PracticeFollowUpResult result = withTimeout(() -> provider.followUp(context));
@@ -195,6 +206,20 @@ public class PracticeFollowUpService {
             index = json.indexOf("\"follow_up\"", index + 1);
         }
         return count;
+    }
+
+    /**
+     * Do not interrogate someone who explicitly says they never did the task.
+     * Repeating "how did you solve it" is not adaptive interviewing; the next
+     * useful move is to test a different technical topic.
+     */
+    static boolean isNoExperienceAnswer(String transcript) {
+        if (transcript == null) return false;
+        String compact = transcript.replaceAll("\\s+", "");
+        if (compact.length() > MAX_NO_EXPERIENCE_ANSWER_CHARS) return false;
+        boolean saysNoExperience = NO_EXPERIENCE_MARKERS.stream().anyMatch(compact::contains);
+        if (!saysNoExperience) return false;
+        return POSITIVE_EXPERIENCE_MARKERS.stream().noneMatch(compact::contains);
     }
 
     private <T> T withTimeout(ThrowingCall<T> call) {
