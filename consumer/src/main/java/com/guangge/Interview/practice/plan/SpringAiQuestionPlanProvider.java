@@ -13,7 +13,7 @@ import java.util.List;
 public class SpringAiQuestionPlanProvider implements QuestionPlanProvider {
 
     private static final String PROVIDER = "spring-ai";
-    private static final String PROMPT_VERSION = "practice-question-plan-v1";
+    private static final String PROMPT_VERSION = "practice-question-plan-v2";
     private static final String NO_VALUE = "（未提供）";
 
     private final ChatClient chatClient;
@@ -36,7 +36,7 @@ public class SpringAiQuestionPlanProvider implements QuestionPlanProvider {
                 .user(userMessage(request))
                 .call()
                 .content();
-        return validator.parse(raw, request.questionCount());
+        return validator.parse(raw, request.questionCount(), request.interviewType());
     }
 
     @Override

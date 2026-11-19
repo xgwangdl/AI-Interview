@@ -72,4 +72,53 @@ class QuestionPlanValidatorTest {
     void rejectsFreeFormModelOutput() {
         assertThrows(QuestionPlanException.class, () -> validator.parse("好的，我来出几道题：", 3));
     }
+
+    @Test
+    void technicalInterviewRequiresEnoughConcreteEngineeringQuestions() {
+        String plan = """
+                [
+                  {"text":"请介绍一次你解决过的线上接口性能问题。","category":"问题排查"},
+                  {"text":"Spring 事务在什么情况下会失效？","category":"技术原理"},
+                  {"text":"MySQL 联合索引为什么需要遵守最左前缀？","category":"技术原理"},
+                  {"text":"当你和产品经理意见不一致时怎么处理？","category":"协作沟通"},
+                  {"text":"你未来三个月有什么计划？","category":"岗位匹配"}
+                ]
+                """;
+
+        List<PracticeQuestion> questions = validator.parse(plan, 5, "technical");
+
+        assertEquals(5, questions.size());
+        assertEquals("Spring 事务在什么情况下会失效？", questions.get(1).text());
+    }
+
+    @Test
+    void technicalInterviewRejectsAPlanDominatedByGenericSoftQuestions() {
+        String plan = """
+                [
+                  {"text":"请介绍一次你解决过的问题。","category":"项目经验"},
+                  {"text":"当需求不明确时你怎么安排优先级？","category":"问题解决"},
+                  {"text":"分享一次你和同事意见不一致的经历。","category":"协作沟通"},
+                  {"text":"你希望加入什么样的团队？","category":"岗位匹配"},
+                  {"text":"你未来三个月有什么计划？","category":"职业规划"}
+                ]
+                """;
+
+        QuestionPlanException error = assertThrows(QuestionPlanException.class,
+                () -> validator.parse(plan, 5, "technical"));
+
+        assertTrue(error.getMessage().contains("技术题"), error.getMessage());
+    }
+
+    @Test
+    void behavioralInterviewCanUseSoftSkillQuestions() {
+        String plan = """
+                [
+                  {"text":"请介绍一次你推动团队达成目标的经历。","category":"项目经验"},
+                  {"text":"需求不明确时你如何澄清？","category":"问题解决"},
+                  {"text":"分享一次意见不一致的处理经历。","category":"协作沟通"}
+                ]
+                """;
+
+        assertEquals(3, validator.parse(plan, 3, "behavioral").size());
+    }
 }
