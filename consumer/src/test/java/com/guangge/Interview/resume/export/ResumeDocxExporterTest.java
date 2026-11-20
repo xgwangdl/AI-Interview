@@ -1,12 +1,16 @@
 package com.guangge.Interview.resume.export;
 
+import com.guangge.Interview.resume.ResumeDataFixtures;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -48,5 +52,30 @@ class ResumeDocxExporterTest {
         try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
             assertThat(document.getParagraphs()).extracting(XWPFParagraph::getText).contains("简历");
         }
+    }
+
+    @Test
+    @DisplayName("结构化简历直接按 schema 渲染，不经纯文本猜段落")
+    void rendersStructuredResumeData() throws Exception {
+        byte[] bytes = exporter.render(ResumeDataFixtures.sample("zh", "resume"), ResumeTheme.GREEN);
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            assertThat(document.getParagraphs()).extracting(XWPFParagraph::getText)
+                    .contains("张伟", "职业摘要", "核心能力", "工作经历", "项目经历", "教育背景")
+                    .contains("某某科技　·　Java 后端工程师")
+                    .contains("2020.07 - 至今")
+                    .contains("• 负责订单系统重构，接口耗时从 800ms 降至 120ms。");
+        }
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "resume.visual.qa", matches = "true")
+    @DisplayName("生成一份结构化 DOCX 供文档技能做逐页视觉检查")
+    void writesVisualQaFixture() throws Exception {
+        Path output = Path.of("target", "resume-visual", "structured-resume.docx");
+        Files.createDirectories(output.getParent());
+        Files.write(output, exporter.render(
+                ResumeDataFixtures.sample("zh", "resume"), ResumeTheme.GREEN));
+        assertThat(output).exists();
     }
 }

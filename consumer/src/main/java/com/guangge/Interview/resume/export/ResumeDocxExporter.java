@@ -1,5 +1,6 @@
 package com.guangge.Interview.resume.export;
 
+import com.guangge.Interview.resume.dto.ResumeData;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
 import org.apache.poi.xwpf.usermodel.Borders;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
@@ -12,12 +13,16 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageMar;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STShd;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 简历导出 Word（.docx）。
@@ -40,6 +45,11 @@ public class ResumeDocxExporter {
     private static final String MUTED = "78838F";
     private static final String RULE = "DCE3E8";
     private static final String PLACEHOLDER_CHAR = "B45309";
+    private static final String NAVY = "17324D";
+    private static final String BLUE = "2D5F7A";
+    private static final String TEAL = "2A8C82";
+    private static final String STRUCTURED_MUTED = "5E6B73";
+    private static final String PALE_BLUE = "EDF3F7";
 
     /** OOXML 的字号是半磅：18pt = 36。 */
     private static final int NAME_HALF_POINTS = 42;
@@ -52,6 +62,9 @@ public class ResumeDocxExporter {
     private static final int BULLET_INDENT_TWIPS = 292;
     private static final int BULLET_HANGING_TWIPS = 292;
     private static final int PAGE_MARGIN_TWIPS = 1080;
+    private static final int STRUCTURED_BODY_HALF_POINTS = 18;
+    private static final int STRUCTURED_META_HALF_POINTS = 16;
+    private static final int STRUCTURED_SECTION_HALF_POINTS = 22;
 
     public byte[] render(String title, String text) throws IOException {
         return render(title, text, ResumeTheme.GREEN);
@@ -67,6 +80,165 @@ public class ResumeDocxExporter {
             document.write(out);
             return out.toByteArray();
         }
+    }
+
+    /**
+     * Structured rendering follows the resume-builder design system instead of
+     * inferring headings from raw text.
+     */
+    public byte[] render(ResumeData data, ResumeTheme theme) throws IOException {
+        if (data == null) throw new IllegalArgumentException("ResumeData is required");
+        try (XWPFDocument document = new XWPFDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            pageSetup(document);
+            writeStructuredHeader(document, data);
+            writeStructuredBody(document, data);
+            writeFooter(document, data.person().name(), theme);
+            document.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void writeStructuredHeader(XWPFDocument document, ResumeData data) {
+        writeParagraph(document, data.person().name(), ParagraphAlignment.LEFT,
+                NAME_HALF_POINTS, true, NAVY, 0, 80, null);
+        writeParagraph(document, data.headline(), ParagraphAlignment.LEFT,
+                OBJECTIVE_HALF_POINTS, false, BLUE, 0, 80, null);
+        String contact = contactLine(data);
+        if (!contact.isBlank()) {
+            writeParagraph(document, contact, ParagraphAlignment.LEFT,
+                    STRUCTURED_META_HALF_POINTS, false, STRUCTURED_MUTED, 0, 160, null);
+        }
+    }
+
+    private void writeStructuredBody(XWPFDocument document, ResumeData data) {
+        Labels labels = Labels.of(data.language());
+        if (!data.summary().isEmpty()) {
+            structuredSection(document, labels.summary());
+            data.summary().forEach(value -> structuredBullet(document, value));
+        }
+        if (!data.skills().isEmpty()) {
+            structuredSection(document, labels.skills());
+            for (ResumeData.SkillGroup group : data.skills()) {
+                structuredBullet(document, group.label() + "：" + String.join("、", group.items()));
+            }
+        }
+        if (!data.experience().isEmpty()) {
+            structuredSection(document, labels.experience());
+            for (ResumeData.Experience item : data.experience()) {
+                structuredEntry(document, item.company(), item.role(), item.start(), item.end());
+                item.bullets().forEach(value -> structuredBullet(document, value));
+            }
+        }
+        if (!data.projects().isEmpty()) {
+            structuredSection(document, labels.projects());
+            for (ResumeData.Project item : data.projects()) {
+                structuredEntry(document, item.name(), item.role(), item.start(), item.end());
+                item.bullets().forEach(value -> structuredBullet(document, value));
+            }
+        }
+        if (!data.education().isEmpty()) {
+            structuredSection(document, labels.education());
+            for (ResumeData.Education item : data.education()) {
+                structuredEntry(document, item.institution(), item.field(), item.start(), item.end());
+            }
+        }
+        if (!data.portfolio().isEmpty()) {
+            structuredSection(document, labels.portfolio());
+            for (ResumeData.PortfolioItem item : data.portfolio()) {
+                String description = item.description() == null || item.description().isBlank()
+                        ? "" : "：" + item.description();
+                structuredBullet(document, item.name() + description + " - " + item.url());
+            }
+        }
+        if (!data.certifications().isEmpty()) {
+            structuredSection(document, labels.certifications());
+            for (ResumeData.Certification item : data.certifications()) {
+                List<String> values = new ArrayList<>();
+                values.add(item.name());
+                if (!blank(item.issuer())) values.add(item.issuer());
+                if (!blank(item.date())) values.add(item.date());
+                structuredBullet(document, String.join(" · ", values));
+            }
+        }
+        if (!data.languages().isEmpty()) {
+            structuredSection(document, labels.languages());
+            for (ResumeData.LanguageSkill item : data.languages()) {
+                structuredBullet(document, item.language() + "：" + item.level());
+            }
+        }
+        if (!data.notes().isEmpty()) {
+            structuredSection(document, labels.notes());
+            data.notes().forEach(value -> structuredBullet(document, value));
+        }
+    }
+
+    private void structuredSection(XWPFDocument document, String title) {
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setSpacingBefore(180);
+        paragraph.setSpacingAfter(80);
+        paragraph.setKeepNext(true);
+        paragraph.setIndentationLeft(90);
+        paragraph.setBorderLeft(Borders.SINGLE);
+        CTPPr properties = paragraph.getCTP().getPPr();
+        CTBorder left = properties.getPBdr().getLeft();
+        left.setColor(NAVY);
+        left.setSz(BigInteger.valueOf(18));
+        left.setSpace(BigInteger.valueOf(4));
+        CTShd shading = properties.addNewShd();
+        shading.setVal(STShd.CLEAR);
+        shading.setColor("auto");
+        shading.setFill(PALE_BLUE);
+        run(paragraph, title, true, STRUCTURED_SECTION_HALF_POINTS, NAVY);
+    }
+
+    private void structuredEntry(
+            XWPFDocument document, String primary, String secondary, String start, String end) {
+        XWPFParagraph heading = document.createParagraph();
+        heading.setSpacingBefore(100);
+        heading.setSpacingAfter(25);
+        heading.setKeepNext(true);
+        run(heading, primary, true, ENTRY_HALF_POINTS, NAVY);
+        if (!blank(secondary)) run(heading, "　·　" + secondary, false, ENTRY_HALF_POINTS, BLUE);
+        String period = period(start, end);
+        if (!period.isBlank()) {
+            XWPFParagraph date = document.createParagraph();
+            date.setSpacingAfter(35);
+            date.setKeepNext(true);
+            run(date, period, false, STRUCTURED_META_HALF_POINTS, BLUE);
+        }
+    }
+
+    private void structuredBullet(XWPFDocument document, String text) {
+        if (blank(text)) return;
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setIndentationLeft(BULLET_INDENT_TWIPS);
+        paragraph.setIndentationHanging(BULLET_HANGING_TWIPS);
+        paragraph.setSpacingAfter(35);
+        run(paragraph, "• ", false, STRUCTURED_BODY_HALF_POINTS, TEAL);
+        run(paragraph, text, false, STRUCTURED_BODY_HALF_POINTS, BODY);
+    }
+
+    private static String contactLine(ResumeData data) {
+        List<String> values = new ArrayList<>();
+        if (!blank(data.person().phone())) values.add(data.person().phone());
+        if (!blank(data.person().email())) values.add(data.person().email());
+        if (!blank(data.person().location())) values.add(data.person().location());
+        for (ResumeData.Link link : data.person().links()) {
+            values.add(link.label() + " " + link.url());
+        }
+        return String.join("　·　", values);
+    }
+
+    private static String period(String start, String end) {
+        if (blank(start) && blank(end)) return "";
+        if (blank(start)) return end;
+        if (blank(end)) return start;
+        return start + " - " + end;
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void writeHeader(XWPFDocument document, String name, String text, ResumeTheme theme) {
@@ -222,6 +394,29 @@ public class ResumeDocxExporter {
         margin.setBottom(BigInteger.valueOf(PAGE_MARGIN_TWIPS));
         margin.setLeft(BigInteger.valueOf(PAGE_MARGIN_TWIPS));
         margin.setRight(BigInteger.valueOf(PAGE_MARGIN_TWIPS));
+    }
+
+    private record Labels(
+            String summary,
+            String skills,
+            String experience,
+            String projects,
+            String education,
+            String portfolio,
+            String certifications,
+            String languages,
+            String notes) {
+
+        static Labels of(String language) {
+            return switch (language == null ? "zh" : language) {
+                case "en" -> new Labels("PROFILE", "CORE SKILLS", "EXPERIENCE", "SELECTED PROJECTS",
+                        "EDUCATION", "PORTFOLIO", "CERTIFICATIONS", "LANGUAGES", "NOTES");
+                case "ja" -> new Labels("職務要約", "活かせる経験・スキル", "職務経歴", "主要プロジェクト",
+                        "学歴", "個人開発・ポートフォリオ", "資格・語学", "語学", "補足");
+                default -> new Labels("职业摘要", "核心能力", "工作经历", "项目经历",
+                        "教育背景", "作品与链接", "专业资格", "语言能力", "补充说明");
+            };
+        }
     }
 
     /** 段落下边框：颜色 + 粗细（八分之一磅）。 */

@@ -10,10 +10,20 @@ import java.util.Map;
  * （沿用 EvaluationResultValidator 的做法）。
  */
 public record ResumeOptimizationResult(
+        ResumeData resumeData,
         String summary,
         List<Section> sections,
         List<String> placeholders,
         Map<String, List<String>> keywordCoverage) {
+
+    /** Kept for old persisted optimization rows and older tests. */
+    public ResumeOptimizationResult(
+            String summary,
+            List<Section> sections,
+            List<String> placeholders,
+            Map<String, List<String>> keywordCoverage) {
+        this(null, summary, sections, placeholders, keywordCoverage);
+    }
 
     /** 一段的改动。original 可能为空（新增段落）。 */
     public record Section(

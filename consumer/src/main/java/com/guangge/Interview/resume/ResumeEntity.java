@@ -38,6 +38,10 @@ public class ResumeEntity {
     @Column(name = "raw_text", nullable = false, columnDefinition = "text")
     private String rawText;
 
+    /** Validated resume-builder structured data for deterministic export. */
+    @Column(name = "resume_data_json", columnDefinition = "text")
+    private String resumeDataJson;
+
     @Column(nullable = false)
     private int version;
 

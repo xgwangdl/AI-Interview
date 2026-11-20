@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { draftResume, downloadResume, refineResume, RESUME_EXPORT_FORMATS } from './resume';
+import {
+  draftResume, downloadResume, optimizeResume, refineResume, RESUME_EXPORT_FORMATS,
+} from './resume';
 
 function fakeDownload(status, body, contentType) {
   return {
@@ -119,5 +121,42 @@ describe('从零创建的两个接口', () => {
     );
 
     await expect(draftResume({})).rejects.toThrow('模型这次没按约定返回，请重试');
+  });
+});
+
+describe('结构化简历优化', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('把简历语言和文档类型一起传给后端', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(200, {
+      status: 'completed',
+      language: 'ja',
+      documentType: 'career_history',
+      resumeData: { headline: 'Javaバックエンドエンジニア' },
+    }));
+
+    await optimizeResume('resume-1', 'Java后端', '订单系统开发', 'ja', 'career_history');
+
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/v1/resumes/resume-1/optimizations');
+    expect(JSON.parse(globalThis.fetch.mock.calls[0][1].body)).toEqual({
+      role: 'Java后端',
+      jobDescription: '订单系统开发',
+      language: 'ja',
+      documentType: 'career_history',
+    });
+  });
+
+  it('未指定时默认输出中文普通简历', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(200, { status: 'completed' }));
+
+    await optimizeResume('resume-1', 'Java后端', '订单系统开发');
+
+    expect(JSON.parse(globalThis.fetch.mock.calls[0][1].body)).toMatchObject({
+      language: 'zh',
+      documentType: 'resume',
+    });
   });
 });

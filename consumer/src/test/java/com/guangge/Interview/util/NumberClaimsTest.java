@@ -25,6 +25,16 @@ class NumberClaimsTest {
     }
 
     @Test
+    void treatsCommonDateFormatsAsEquivalent() {
+        assertTrue(NumberClaims.unsupported(
+                "项目时间：2016.09 - 2016.10",
+                "项目时间：2016-09 - 2016-10").isEmpty());
+        assertTrue(NumberClaims.unsupported(
+                "教育时间：2009年9月 - 2013年6月",
+                "教育时间：2009.09 - 2013.06").isEmpty());
+    }
+
+    @Test
     void rejectsChineseQuantitiesMissingFromTheGroundedText() {
         assertTrue(NumberClaims.unsupported("性能提升了二十五%", "我优化了性能").contains("25%"));
     }

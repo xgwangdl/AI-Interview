@@ -29,10 +29,16 @@ export function parseResumeFile(file) {
   return apiRequest('/resumes/parse', { method: 'POST', body: form });
 }
 
-export function optimizeResume(id, role, jobDescription) {
+export function optimizeResume(
+  id,
+  role,
+  jobDescription,
+  language = 'zh',
+  documentType = language === 'ja' ? 'career_history' : 'resume',
+) {
   return apiRequest(`/resumes/${encodeURIComponent(id)}/optimizations`, {
     method: 'POST',
-    body: JSON.stringify({ role, jobDescription }),
+    body: JSON.stringify({ role, jobDescription, language, documentType }),
   });
 }
 

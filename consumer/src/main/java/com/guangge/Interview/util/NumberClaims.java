@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
 public final class NumberClaims {
 
     private static final String UNITS = "ms|s|秒|分钟|小时|天|周|个月|月|年|次|人|个|条|台|套|万元|元|块|倍|%";
+    private static final Pattern DATE_CLAIM = Pattern.compile(
+            "(?<!\\d)(\\d{4})\\s*[./年-]\\s*(\\d{1,2})(?:\\s*[./月-]\\s*(\\d{1,2})\\s*日?)?(?!\\d)");
     private static final Pattern ARABIC_CLAIM = Pattern.compile(
             "\\d+(?:\\.\\d+)?(?:\\s*(?:" + UNITS + "))?");
     private static final Pattern CHINESE_CLAIM = Pattern.compile(
@@ -24,7 +26,15 @@ public final class NumberClaims {
         Set<String> result = new LinkedHashSet<>();
         if (value == null || value.isBlank()) return result;
         String normalized = normalizeDigits(value);
-        Matcher matcher = ARABIC_CLAIM.matcher(normalized);
+        Matcher dates = DATE_CLAIM.matcher(normalized);
+        StringBuilder remaining = new StringBuilder(normalized.length());
+        while (dates.find()) {
+            result.add(canonicalDate(dates));
+            dates.appendReplacement(remaining, " ");
+        }
+        dates.appendTail(remaining);
+
+        Matcher matcher = ARABIC_CLAIM.matcher(remaining.toString());
         while (matcher.find()) result.add(matcher.group().replaceAll("\\s+", ""));
         Matcher percent = CHINESE_PERCENT.matcher(normalized);
         while (percent.find()) {
@@ -63,6 +73,14 @@ public final class NumberClaims {
             }
         }
         return normalized.toString();
+    }
+
+    private static String canonicalDate(Matcher matcher) {
+        String date = matcher.group(1) + "-" + String.format("%02d", Integer.parseInt(matcher.group(2)));
+        if (matcher.group(3) != null) {
+            date += "-" + String.format("%02d", Integer.parseInt(matcher.group(3)));
+        }
+        return date;
     }
 
     private static String normalizeUnit(String unit) {
