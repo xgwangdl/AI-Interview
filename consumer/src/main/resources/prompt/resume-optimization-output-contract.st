@@ -50,3 +50,4 @@
 4. 缺少可选事实时保持 null 或空数组；需要用户补充的信息写入 notes，并仅在正文占位符中标注。
 5. 中文输出使用 `resume`；日文默认输出 `career_history`；英文可使用 `resume` 或 `cv`。
 6. 只输出 JSON，不要 Markdown 代码块或解释文字。
+7. 不要在 `sections` 中返回 `original` 与 `optimized` 同时为空的占位对象；没有可对比段落时返回空数组。

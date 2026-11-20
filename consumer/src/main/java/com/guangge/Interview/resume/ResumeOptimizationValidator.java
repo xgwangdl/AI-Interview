@@ -72,11 +72,13 @@ public class ResumeOptimizationValidator {
         if (result.resumeData() != null) {
             resumeDataValidator.validate(result.resumeData(), groundedSource);
         }
-        if (result.sections() == null || result.sections().isEmpty()) {
+        List<ResumeOptimizationResult.Section> sections =
+                result.sections() == null ? List.of() : result.sections();
+        if (sections.isEmpty() && result.resumeData() == null) {
             throw new ResumeFormatException("sections 不能为空");
         }
-        if (result.sections().size() > MAX_SECTIONS) {
-            throw new ResumeFormatException("sections 过多（" + result.sections().size() + "）");
+        if (sections.size() > MAX_SECTIONS) {
+            throw new ResumeFormatException("sections 过多（" + sections.size() + "）");
         }
 
         // 只在**正文**里找占位符。之前把"声明的占位符"也塞进了这个集合，
@@ -84,16 +86,18 @@ public class ResumeOptimizationValidator {
         List<String> inText = new ArrayList<>();
         StringBuilder generated = new StringBuilder();
         List<ResumeOptimizationResult.Section> normalized = new ArrayList<>();
-        for (int index = 0; index < result.sections().size(); index++) {
-            ResumeOptimizationResult.Section section = result.sections().get(index);
+        for (int index = 0; index < sections.size(); index++) {
+            ResumeOptimizationResult.Section section = sections.get(index);
             String where = "sections[" + index + "]";
-            if (section == null) throw new ResumeFormatException(where + " 不能为空");
+            if (section == null) continue;
             String optimized = section.optimized();
             String changeType = section.changeType();
             if (optimized == null || optimized.isBlank()) {
                 // A "keep" patch often omits optimized text because the original is unchanged.
+                // If both fields are empty, the model returned a pure noise object. The structured
+                // resumeData remains authoritative, so do not fail an otherwise usable optimization.
                 if (section.original() == null || section.original().isBlank()) {
-                    throw new ResumeFormatException(where + ".optimized 不能为空");
+                    continue;
                 }
                 optimized = section.original();
                 changeType = "keep";
@@ -107,6 +111,9 @@ public class ResumeOptimizationValidator {
             normalized.add(value);
             collectPlaceholders(optimized, inText);
             generated.append(withoutPlaceholders(optimized)).append('\n');
+        }
+        if (normalized.isEmpty() && result.resumeData() == null) {
+            throw new ResumeFormatException("sections 不能为空");
         }
 
         if (groundedSource != null) {

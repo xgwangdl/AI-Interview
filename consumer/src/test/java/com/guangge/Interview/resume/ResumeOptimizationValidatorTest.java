@@ -1,6 +1,7 @@
 package com.guangge.Interview.resume;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
 import org.junit.jupiter.api.Test;
@@ -128,6 +129,25 @@ class ResumeOptimizationValidatorTest {
 
         assertEquals("在某某公司负责订单系统开发。", result.sections().get(0).optimized());
         assertEquals("keep", result.sections().get(0).changeType());
+    }
+
+    @Test
+    void ignoresEmptySectionPatchesWhenStructuredResumeDataIsValid() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = (ObjectNode) mapper.readTree(validJson());
+        ArrayNode sections = root.withArray("sections");
+        sections.removeAll();
+        ObjectNode emptyPatch = sections.addObject();
+        emptyPatch.put("kind", "summary");
+        emptyPatch.put("original", "");
+        emptyPatch.put("optimized", "");
+        emptyPatch.put("reason", "模型返回了空片段");
+        emptyPatch.put("changeType", "add_detail");
+        root.putArray("placeholders");
+
+        ResumeOptimizationResult result = validator.parse(mapper.writeValueAsString(root));
+
+        assertTrue(result.sections().isEmpty());
     }
 
     @Test
