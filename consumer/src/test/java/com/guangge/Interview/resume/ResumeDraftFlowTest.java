@@ -4,18 +4,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeDraftRequests;
 import com.guangge.Interview.resume.dto.ResumeDraftResult;
 import com.guangge.Interview.resume.dto.ResumeDraftView;
+import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
+import com.guangge.Interview.resume.dto.ResumeOptimizationView;
+import com.guangge.Interview.resume.dto.ResumeRequests;
 import com.guangge.Interview.resume.export.ResumeDocxExporter;
 import com.guangge.Interview.resume.export.ResumePdfExporter;
 import com.guangge.Interview.resume.export.ResumeThemeResolver;
+import com.guangge.Interview.resume.export.ResumeExportFormat;
+import com.guangge.Interview.resume.export.ResumeTheme;
 import com.guangge.Interview.quota.ModelCallGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -76,6 +83,86 @@ class ResumeDraftFlowTest {
         ResumeDraftView view = service.draft("smoke", emptyMaterials());
 
         assertThat(view.placeholders()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("优化结果同时保存 Skill schema 结构化数据、语言与文档类型")
+    void storesStructuredResumeData() {
+        UUID resumeId = UUID.randomUUID();
+        ResumeEntity resume = new ResumeEntity();
+        resume.setId(resumeId);
+        resume.setOwnerId("smoke");
+        resume.setTitle("张伟的简历");
+        resume.setSource(ResumeEntity.SOURCE_MANUAL);
+        resume.setRawText("张伟\n教育背景\n- 某某大学");
+        resume.setVersion(1);
+        resume.setCreatedAt(Instant.now());
+        resume.setUpdatedAt(Instant.now());
+        when(resumes.findByIdAndOwnerId(resumeId, "smoke")).thenReturn(Optional.of(resume));
+        when(optimizationProvider.modelName()).thenReturn("qwen-max");
+        when(optimizationProvider.optimize(
+                any(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new ResumeOptimizationResult(
+                        ResumeDataFixtures.sample("ja", "career_history"),
+                        "按日语職務経歴書重建结构",
+                        List.of(new ResumeOptimizationResult.Section(
+                                "other", null, "職務経歴書", "structure", "restructure")),
+                        List.of(),
+                        Map.of()));
+
+        ResumeOptimizationView view = service.optimize(
+                "smoke", resumeId,
+                new ResumeRequests.Optimize("Javaバックエンド", "注文システム", "ja", "career_history"));
+
+        assertThat(view.language()).isEqualTo("ja");
+        assertThat(view.documentType()).isEqualTo("career_history");
+        assertThat(view.resumeData()).isNotNull();
+        assertThat(view.resumeData().headline()).isEqualTo("Javaバックエンドエンジニア");
+        ArgumentCaptor<ResumeOptimizationEntity> captor =
+                ArgumentCaptor.forClass(ResumeOptimizationEntity.class);
+        verify(optimizations).save(captor.capture());
+        assertThat(captor.getValue().getResumeDataJson()).contains("\"document_type\":\"career_history\"");
+    }
+
+    @Test
+    @DisplayName("全部采纳后把结构化数据固化到简历，后续 DOCX/PDF 使用确定性渲染")
+    void appliesStructuredDataAndExportsIt() throws Exception {
+        UUID resumeId = UUID.randomUUID();
+        UUID optimizationId = UUID.randomUUID();
+        ResumeEntity resume = new ResumeEntity();
+        resume.setId(resumeId);
+        resume.setOwnerId("smoke");
+        resume.setTitle("张伟的简历");
+        resume.setSource(ResumeEntity.SOURCE_MANUAL);
+        resume.setRawText("张伟");
+        resume.setVersion(1);
+        resume.setCreatedAt(Instant.now());
+        resume.setUpdatedAt(Instant.now());
+
+        ResumeOptimizationEntity optimization = new ResumeOptimizationEntity();
+        optimization.setId(optimizationId);
+        optimization.setResumeId(resumeId);
+        optimization.setOwnerId("smoke");
+        optimization.setStatus(ResumeOptimizationEntity.STATUS_COMPLETED);
+        optimization.setLanguage("zh");
+        optimization.setDocumentType("resume");
+        optimization.setOptimizedText("张伟\nJava 后端工程师");
+        optimization.setResumeDataJson(new ObjectMapper().writeValueAsString(
+                ResumeDataFixtures.sample("zh", "resume")));
+        optimization.setChangesJson(new ObjectMapper().writeValueAsString(List.of(
+                new ResumeOptimizationResult.Section(
+                        "other", "张伟", "张伟\nJava 后端工程师", "结构优化", "restructure"))));
+        optimization.setPlaceholdersJson("[]");
+        optimization.setCreatedAt(Instant.now());
+
+        when(resumes.findByIdAndOwnerId(resumeId, "smoke")).thenReturn(Optional.of(resume));
+        when(optimizations.findByIdAndOwnerId(optimizationId, "smoke")).thenReturn(Optional.of(optimization));
+        when(themeResolver.themeOf("smoke")).thenReturn(ResumeTheme.GREEN);
+
+        service.apply("smoke", resumeId, optimizationId, List.of());
+
+        assertThat(resume.getResumeDataJson()).contains("\"headline\":\"Java 后端工程师\"");
+        assertThat(service.export("smoke", resumeId, ResumeExportFormat.DOCX).body()).isNotEmpty();
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.guangge.Interview.resume;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeDetailView;
+import com.guangge.Interview.resume.dto.ResumeData;
 import com.guangge.Interview.resume.dto.ResumeDraftRequests;
 import com.guangge.Interview.resume.dto.ResumeDraftResult;
 import com.guangge.Interview.resume.dto.ResumeDraftView;
@@ -15,6 +16,7 @@ import com.guangge.Interview.resume.export.ResumeExportException;
 import com.guangge.Interview.resume.export.ResumeExportFormat;
 import com.guangge.Interview.resume.export.ResumeLayout;
 import com.guangge.Interview.resume.export.ResumePdfExporter;
+import com.guangge.Interview.resume.export.ResumeTextRenderer;
 import com.guangge.Interview.resume.export.ResumeTheme;
 import com.guangge.Interview.resume.export.ResumeThemeResolver;
 import com.guangge.Interview.quota.ModelCallGuard;
@@ -174,7 +176,11 @@ public class ResumeLibraryService {
         boolean textChanged = !text.equals(entity.getRawText());
         entity.setTitle(request.title().trim());
         entity.setRawText(text);
-        if (textChanged) entity.setVersion(entity.getVersion() + 1);
+        if (textChanged) {
+            entity.setVersion(entity.getVersion() + 1);
+            // Free-text edits invalidate a previously validated structured document.
+            entity.setResumeDataJson(null);
+        }
         entity.setUpdatedAt(Instant.now());
         resumes.save(entity);
         return toDetail(entity);
@@ -207,17 +213,23 @@ public class ResumeLibraryService {
         entity.setOwnerId(ownerId);
         entity.setRole(request.role());
         entity.setJobDescription(request.jobDescription());
+        String language = normalizeLanguage(request.language());
+        String documentType = normalizeDocumentType(request.documentType(), language);
+        entity.setLanguage(language);
+        entity.setDocumentType(documentType);
         entity.setModel(provider.modelName());
         entity.setCreatedAt(Instant.now());
         try {
             ResumeOptimizationResult result =
-                    provider.optimize(request.role(), request.jobDescription(), resume.getRawText());
+                    provider.optimize(request.role(), request.jobDescription(), resume.getRawText(),
+                            language, documentType);
             String optimizedText = String.join("\n\n", result.sections().stream()
                     .map(ResumeOptimizationResult.Section::optimized)
                     .toList());
             entity.setStatus(ResumeOptimizationEntity.STATUS_COMPLETED);
             entity.setOptimizedText(optimizedText);
             entity.setChangesJson(write(result.sections()));
+            entity.setResumeDataJson(write(result.resumeData()));
             // 存"正文里真实出现的占位符"，而不是模型自述的那份：模型可能只声明不写
             entity.setPlaceholdersJson(write(ResumeOptimizationValidator.placeholdersIn(optimizedText)));
             optimizations.save(entity);
@@ -280,13 +292,24 @@ public class ResumeLibraryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "没有选中任何段落");
         }
 
+        boolean applyAll = sections == null || sections.isEmpty();
         String text = resume.getRawText();
-        int applied = 0;
-        for (ResumeOptimizationResult.Section section : chosen) {
-            if (section.original() == null || section.original().isBlank()) continue;   // 新增段落无处替换
-            if (text.contains(section.original())) {
-                text = text.replace(section.original(), section.optimized());
-                applied++;
+        int applied;
+        if (applyAll) {
+            String complete = entity.getOptimizedText();
+            if (complete == null || complete.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "这次优化没有生成完整正文");
+            }
+            text = complete;
+            applied = result.sections().size();
+        } else {
+            applied = 0;
+            for (ResumeOptimizationResult.Section section : chosen) {
+                if (section.original() == null || section.original().isBlank()) continue;   // 新增段落无处替换
+                if (text.contains(section.original())) {
+                    text = text.replace(section.original(), section.optimized());
+                    applied++;
+                }
             }
         }
         if (applied == 0) {
@@ -294,6 +317,13 @@ public class ResumeLibraryService {
                     "选中的段落都没能在当前正文里定位到（简历可能已被修改过），请重新优化");
         }
         resume.setRawText(text);
+        boolean fullyApplied = applied == result.sections().size();
+        if (fullyApplied && result.resumeData() != null) {
+            resume.setResumeDataJson(entity.getResumeDataJson());
+        } else {
+            // Partial adoption no longer matches the structured document.
+            resume.setResumeDataJson(null);
+        }
         resume.setVersion(resume.getVersion() + 1);
         resume.setUpdatedAt(Instant.now());
         resumes.save(resume);
@@ -313,11 +343,18 @@ public class ResumeLibraryService {
         try {
             // 强调色跟着账号的主题色走：导出的文件和用户在界面上看到的是同一套配色
             ResumeTheme theme = themeResolver.themeOf(ownerId);
+            ResumeData structured = readResumeData(resume.getResumeDataJson());
+            String structuredText = structured == null ? null : new ResumeTextRenderer().render(structured);
             byte[] body = switch (format) {
-                case MARKDOWN -> ResumeLayout.toMarkdown(resume.getTitle(), resume.getRawText())
+                case MARKDOWN -> ResumeLayout.toMarkdown(resume.getTitle(),
+                                structuredText == null ? resume.getRawText() : structuredText)
                         .getBytes(StandardCharsets.UTF_8);
-                case DOCX -> docxExporter.render(resume.getTitle(), resume.getRawText(), theme);
-                case PDF -> pdfExporter.render(resume.getTitle(), resume.getRawText(), theme);
+                case DOCX -> structured == null
+                        ? docxExporter.render(resume.getTitle(), resume.getRawText(), theme)
+                        : docxExporter.render(structured, theme);
+                case PDF -> structured == null
+                        ? pdfExporter.render(resume.getTitle(), resume.getRawText(), theme)
+                        : pdfExporter.render(structured, theme);
             };
             log.info("导出简历 {}：{}，{} 字节", resumeId, format.extension(), body.length);
             return new ExportedResume(fileNameOf(resume, format), body, format);
@@ -382,7 +419,7 @@ public class ResumeLibraryService {
         List<ResumeOptimizationResult.Section> sections = read(entity.getChangesJson(),
                 new com.fasterxml.jackson.core.type.TypeReference<>() { }, List.of());
         return new ResumeOptimizationResult(
-                null,
+                readResumeData(entity.getResumeDataJson()), null,
                 sections,
                 read(entity.getPlaceholdersJson(),
                         new com.fasterxml.jackson.core.type.TypeReference<>() { }, List.of()),
@@ -401,8 +438,9 @@ public class ResumeLibraryService {
         List<String> placeholders = read(entity.getPlaceholdersJson(),
                 new com.fasterxml.jackson.core.type.TypeReference<>() { }, List.of());
         return new ResumeOptimizationView(entity.getId(), entity.getResumeId(), entity.getRole(),
-                entity.getStatus(), entity.getOptimizedText(),
+                entity.getStatus(), entity.getLanguage(), entity.getDocumentType(), entity.getOptimizedText(),
                 result == null ? null : result.summary(),
+                readResumeData(entity.getResumeDataJson()),
                 sections, placeholders,
                 result == null ? null : result.keywordCoverage(),
                 entity.getError(), entity.getModel(), entity.getCreatedAt());
@@ -411,5 +449,34 @@ public class ResumeLibraryService {
     private static String message(RuntimeException exception) {
         String value = exception.getMessage();
         return value == null || value.isBlank() ? exception.getClass().getSimpleName() : value;
+    }
+
+    private ResumeData readResumeData(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, ResumeData.class);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private static String normalizeLanguage(String language) {
+        if (language == null || language.isBlank()) return "zh";
+        return switch (language.strip().toLowerCase(java.util.Locale.ROOT)) {
+            case "en" -> "en";
+            case "ja" -> "ja";
+            default -> "zh";
+        };
+    }
+
+    private static String normalizeDocumentType(String documentType, String language) {
+        if (documentType == null || documentType.isBlank()) {
+            return "ja".equals(language) ? "career_history" : "resume";
+        }
+        String value = documentType.strip().toLowerCase(java.util.Locale.ROOT);
+        return switch (value) {
+            case "cv", "career_history" -> value;
+            default -> "resume";
+        };
     }
 }

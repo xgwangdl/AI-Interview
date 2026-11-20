@@ -1,6 +1,7 @@
 package com.guangge.Interview.resume;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
 import org.junit.jupiter.api.Test;
 
@@ -113,9 +114,22 @@ class ResumeOptimizationValidatorTest {
         assertThrows(ResumeFormatException.class, () -> validator.parse(json));
     }
 
+    @Test
+    void rejectsNewModelOutputWithoutStructuredResumeData() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode json = (ObjectNode) mapper.readTree(validJson());
+        json.remove("resumeData");
+
+        ResumeFormatException exception = assertThrows(ResumeFormatException.class,
+                () -> validator.parse(mapper.writeValueAsString(json)));
+
+        assertTrue(exception.getMessage().contains("resumeData"));
+    }
+
     static String validJson() {
         return """
                 {
+                  "resumeData": __RESUME_DATA__,
                   "summary": "缺少量化数据，项目描述偏流水账",
                   "sections": [
                     {
@@ -136,6 +150,6 @@ class ResumeOptimizationValidatorTest {
                   "placeholders": ["【请补充：订单量级】"],
                   "keywordCoverage": { "matched": ["订单系统"], "missing": ["分布式事务"] }
                 }
-                """;
+                """.replace("__RESUME_DATA__", ResumeDataValidatorTest.validJson());
     }
 }

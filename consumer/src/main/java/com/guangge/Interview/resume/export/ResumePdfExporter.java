@@ -1,5 +1,6 @@
 package com.guangge.Interview.resume.export;
 
+import com.guangge.Interview.resume.dto.ResumeData;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -145,6 +146,15 @@ public class ResumePdfExporter {
                 fonts.close();
             }
         }
+    }
+
+    /**
+     * Structured PDF path. The visual engine is shared with the legacy exporter,
+     * but all headings and entries are supplied deterministically by ResumeData.
+     */
+    public byte[] render(ResumeData data, ResumeTheme theme) throws IOException {
+        if (data == null) throw new IllegalArgumentException("ResumeData is required");
+        return render(data.person().name(), new ResumeTextRenderer().render(data), theme);
     }
 
     private static String nameOf(String title) {

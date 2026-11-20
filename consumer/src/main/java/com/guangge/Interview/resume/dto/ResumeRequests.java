@@ -19,7 +19,13 @@ public final class ResumeRequests {
 
     public record Optimize(
             @Size(max = 200) String role,
-            @NotBlank @Size(max = 10000) String jobDescription) {
+            @NotBlank @Size(max = 10000) String jobDescription,
+            @Size(max = 8) String language,
+            @Size(max = 32) String documentType) {
+
+        public Optimize(String role, String jobDescription) {
+            this(role, jobDescription, null, null);
+        }
     }
 
     /** 采纳哪些段；空列表表示"全部采用"（前端会二次确认）。 */

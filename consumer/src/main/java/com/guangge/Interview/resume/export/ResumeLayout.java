@@ -35,7 +35,12 @@ public final class ResumeLayout {
             "个人信息", "基本资料", "基本信息", "联系方式", "求职意向", "求职目标",
             "教育背景", "教育经历", "工作经历", "工作经验", "实习经历", "校园经历", "实践经历",
             "项目经历", "项目经验", "项目背景", "专业技能", "技能清单", "技能特长", "职业技能",
-            "获奖情况", "荣誉奖项", "证书", "培训经历", "自我评价", "个人评价", "其他");
+            "获奖情况", "荣誉奖项", "证书", "培训经历", "自我评价", "个人评价", "其他",
+            "职业摘要", "核心能力", "专业资格", "语言能力", "作品与链接", "补充说明",
+            "RESUME", "CURRICULUM VITAE", "PROFILE", "CORE SKILLS", "EXPERIENCE",
+            "SELECTED PROJECTS", "EDUCATION", "PORTFOLIO", "CERTIFICATIONS", "LANGUAGES", "NOTES",
+            "職務経歴書", "職務要約", "活かせる経験・スキル", "職務経歴", "主要プロジェクト",
+            "学歴", "個人開発・ポートフォリオ", "資格・語学", "補足");
 
     private static final int MAX_SECTION_TITLE_LENGTH = 16;
     private static final int MAX_MARKDOWN_HEADING_LEVEL = 6;

@@ -25,9 +25,15 @@ public class ResumeOptimizationValidator {
     private static final int MAX_SECTIONS = 60;
 
     private final ObjectMapper objectMapper;
+    private final ResumeDataValidator resumeDataValidator;
 
     public ResumeOptimizationValidator(ObjectMapper objectMapper) {
+        this(objectMapper, new ResumeDataValidator(objectMapper));
+    }
+
+    public ResumeOptimizationValidator(ObjectMapper objectMapper, ResumeDataValidator resumeDataValidator) {
         this.objectMapper = objectMapper;
+        this.resumeDataValidator = resumeDataValidator;
     }
 
     public ResumeOptimizationResult parse(String raw) {
@@ -44,15 +50,26 @@ public class ResumeOptimizationValidator {
         } catch (Exception exception) {
             throw new ResumeFormatException("模型返回的不是约定的 JSON：" + exception.getMessage(), exception);
         }
-        return validate(result, groundedSource);
+        return validate(result, groundedSource, true);
     }
 
     public ResumeOptimizationResult validate(ResumeOptimizationResult result) {
-        return validate(result, null);
+        return validate(result, null, false);
     }
 
     public ResumeOptimizationResult validate(ResumeOptimizationResult result, String groundedSource) {
+        return validate(result, groundedSource, false);
+    }
+
+    private ResumeOptimizationResult validate(
+            ResumeOptimizationResult result, String groundedSource, boolean requireResumeData) {
         if (result == null) throw new ResumeFormatException("优化结果缺失");
+        if (requireResumeData && result.resumeData() == null) {
+            throw new ResumeFormatException("resumeData 不能为空");
+        }
+        if (result.resumeData() != null) {
+            resumeDataValidator.validate(result.resumeData(), groundedSource);
+        }
         if (result.sections() == null || result.sections().isEmpty()) {
             throw new ResumeFormatException("sections 不能为空");
         }

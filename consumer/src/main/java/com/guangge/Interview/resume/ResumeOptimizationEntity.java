@@ -35,6 +35,12 @@ public class ResumeOptimizationEntity {
     @Column(name = "job_description", columnDefinition = "text")
     private String jobDescription;
 
+    @Column(length = 8)
+    private String language;
+
+    @Column(name = "document_type", length = 32)
+    private String documentType;
+
     @Column(nullable = false, length = 32)
     private String status;
 
@@ -43,6 +49,9 @@ public class ResumeOptimizationEntity {
 
     @Column(name = "changes_json", columnDefinition = "text")
     private String changesJson;
+
+    @Column(name = "resume_data_json", columnDefinition = "text")
+    private String resumeDataJson;
 
     @Column(name = "placeholders_json", columnDefinition = "text")
     private String placeholdersJson;
