@@ -19,13 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Applies V1-V21 to a real PostgreSQL database and verifies the constraints that a
+ * Applies the current Flyway chain to a real PostgreSQL database and verifies constraints that a
  * H2/unit test cannot prove. Skipped unless -Ddb.integration=true is passed.
  */
 @DataJpaTest(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:5432/interview",
-        "spring.datasource.username=postgres",
-        "spring.datasource.password=postgres",
+        "spring.datasource.url=${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/interview}",
+        "spring.datasource.username=${TEST_DATABASE_USERNAME:postgres}",
+        "spring.datasource.password=${TEST_DATABASE_PASSWORD:postgres}",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=true"
@@ -44,17 +44,19 @@ class JobRadarPersistenceIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void flywayAppliesV21OnTopOfTheExistingSchema() {
+    void flywayAppliesJobRadarAndLaterMigrations() {
         String version = jdbc.queryForObject("""
                 select version from flyway_schema_history
                  where success = true and version is not null
                  order by installed_rank desc limit 1
                 """, String.class);
 
-        assertThat(version).isEqualTo("21");
+        assertThat(Integer.parseInt(version)).isGreaterThanOrEqualTo(21);
         assertThat(tableExists("job_agent_runs")).isTrue();
         assertThat(tableExists("agent_runs")).isFalse();
         assertThat(columnExists("candidates", "skill_profile_json")).isTrue();
+        assertThat(columnExists("resumes", "resume_data_json")).isTrue();
+        assertThat(columnExists("resume_optimizations", "resume_data_json")).isTrue();
     }
 
     @Test
