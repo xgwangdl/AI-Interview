@@ -522,6 +522,20 @@ python scripts/split-avatar-sheet.py --preview-only # 只出预览，先看效�
 `ServiceInfoController` 在 `/` 返回服务名、版本、健康检查地址、API 前缀和 ffmpeg 可用性。
 该接口只暴露运行状态，不包含密钥、数据库地址或用户数据，便于部署探活和快速排障。
 
+### 5.18 `resume` —— 结构化简历与文档导出
+
+| 类 | 职责 |
+| --- | --- |
+| `ResumeData` | 严格对应 `resume-builder` Skill 的 `resume-data.schema.json`，覆盖个人信息、摘要、技能、经历、项目、教育、证书、语言与链接 |
+| `ResumeDataValidator` | 校验字段、枚举、邮箱、URL、日期格式，并阻止出现原文没有的数字或语言等级 |
+| `SpringAiResumeOptimizationProvider` | 显式加载 Skill 的系统提示词、完整性规则、语言规则和 JSON Schema，要求模型同时返回 `resumeData` 与逐段改动 |
+| `ResumeTextRenderer` | 从结构化数据生成确定性纯文本投影，供 Markdown 与 PDF 兼容路径使用 |
+| `ResumeDocxExporter` | 按 Skill 设计规范直接渲染 A4 Word，不再从纯文本猜标题、经历和项目边界 |
+
+旧的自由文本仍作为编辑与兼容字段保留；当用户“全部采用”一次成功优化时，会同时保存经过校验的
+`resume_data_json`。之后手动改正文会使结构化快照失效，避免 Word/PDF 导出旧结构。
+语言规则支持中文 `resume`、英文 `resume/cv` 和日文 `career_history`。
+
 ## 6. 认证与授权
 
 - **注册**：`POST /register`（`RegistrationController` → `CandidatesService.register`），
@@ -588,6 +602,7 @@ Flyway 迁移在 `consumer/src/main/resources/db/migration/`：
 | `V6__coding_assessment.sql` | `coding_sessions` / `code_questions` / `code_submissions` | 笔试模块：会话、题目（五种题型共用一张表）、提交与判分结果 |
 | `V7__user_theme_preference.sql` | `candidates` | 每个账号的界面主题色 |
 | `V8__resume_library.sql` | `resumes` / `resume_optimizations` | 简历库与按 JD 优化的历史（逐段改动 + 待补充占位符） |
+| `V22__structured_resume_builder.sql` | `resumes` / `resume_optimizations` | 增加语言、文档类型与经过 Skill Schema 校验的 `resume_data_json` |
 | `V9__score_archive_and_follow_up.sql` | `practice_score_archive` + `practice_sessions.follow_up_enabled` | 成绩与录像分开保留（只存分数与维度），并回填历史；追问开关 |
 | `V10__mistake_book.sql` | `practice_score_archive` | 题面 / 题目分类 / 面试类型与风格跟着成绩走，错题本才有题可重练；回填还在保留期内的历史 |
 | `V11__language_practice.sql` | `language_sessions` / `language_turns` | 外语口语：会话（语言/场景/水平/轮数/报告）+ 每一轮（录音、转写、回复、建议、四段耗时） |

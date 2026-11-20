@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -10,7 +10,7 @@ import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const loading = ref(true);
 const saving = ref(false);
 const optimizing = ref(false);
@@ -21,7 +21,14 @@ const optimization = ref(null);
 const selected = ref([]);
 
 const form = reactive({ title: '', rawText: '' });
-const job = reactive({ role: '', jobDescription: '' });
+const initialLanguage = String(locale.value || 'zh-CN').startsWith('en') ? 'en'
+  : String(locale.value || 'zh-CN').startsWith('ja') ? 'ja' : 'zh';
+const job = reactive({
+  role: '',
+  jobDescription: '',
+  language: initialLanguage,
+  documentType: initialLanguage === 'ja' ? 'career_history' : 'resume',
+});
 
 const placeholderPattern = /【[^】]{1,60}】/g;
 
@@ -41,6 +48,11 @@ function segmentsOf(text) {
 
 const sections = computed(() => optimization.value?.sections || []);
 const pendingCount = computed(() => optimization.value?.placeholders?.length || 0);
+const structured = computed(() => optimization.value?.resumeData || null);
+
+watch(() => job.language, (language) => {
+  job.documentType = language === 'ja' ? 'career_history' : 'resume';
+});
 
 onMounted(load);
 
@@ -94,7 +106,13 @@ async function optimize() {
   optimization.value = null;
   selected.value = [];
   try {
-    const result = await optimizeResume(resume.value.id, job.role.trim(), job.jobDescription.trim());
+    const result = await optimizeResume(
+      resume.value.id,
+      job.role.trim(),
+      job.jobDescription.trim(),
+      job.language,
+      job.documentType,
+    );
     optimization.value = result;
     if (result.status !== 'completed') {
       ElMessage.error(result.error || t('resume.optimizeFailedRetry'));
@@ -203,6 +221,22 @@ async function exportResume(format) {
       <section class="panel optimize-panel">
         <div class="section-title">{{ t('resume.optimize') }}</div>
         <el-form label-position="top">
+          <div class="optimize-grid">
+            <el-form-item :label="t('resume.outputLanguage')">
+              <el-select v-model="job.language">
+                <el-option value="zh" :label="t('resume.languageZh')" />
+                <el-option value="en" :label="t('resume.languageEn')" />
+                <el-option value="ja" :label="t('resume.languageJa')" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('resume.documentType')">
+              <el-select v-model="job.documentType">
+                <el-option value="resume" :label="t('resume.documentResume')" />
+                <el-option value="cv" :label="t('resume.documentCv')" />
+                <el-option value="career_history" :label="t('resume.documentCareerHistory')" />
+              </el-select>
+            </el-form-item>
+          </div>
           <el-form-item :label="t('resume.targetRole')"><el-input v-model="job.role" maxlength="200" :placeholder="t('resume.targetRolePlaceholder')" /></el-form-item>
           <el-form-item :label="t('resume.jobDescription')">
             <el-input v-model="job.jobDescription" type="textarea" :rows="6" maxlength="10000" show-word-limit
@@ -227,6 +261,23 @@ async function exportResume(format) {
 
       <p v-if="optimization.summary" class="summary">{{ optimization.summary }}</p>
       <p v-if="optimization.error" class="error-text">{{ optimization.error }}</p>
+
+      <div v-if="structured" class="structured-preview">
+        <div class="structured-head">
+          <div>
+            <small>{{ t('resume.structuredReady') }}</small>
+            <strong>{{ structured.person?.name }} · {{ structured.headline }}</strong>
+          </div>
+          <span>{{ t('resume.structuredCounts', {
+            experience: structured.experience?.length || 0,
+            projects: structured.projects?.length || 0,
+            skills: structured.skills?.length || 0,
+          }) }}</span>
+        </div>
+        <ul v-if="structured.notes?.length" class="structured-notes">
+          <li v-for="note in structured.notes" :key="note">{{ note }}</li>
+        </ul>
+      </div>
 
       <div v-if="optimization.keywordCoverage" class="coverage">
         <span>{{ t('resume.jdKeywords') }}</span>
@@ -277,10 +328,19 @@ async function exportResume(format) {
 .title-input { margin-bottom: 10px; }
 .row-actions { display: flex; gap: 8px; margin-top: 12px; }
 .hint { margin: 10px 0 0; color: #8a958e; font-size: 12px; line-height: 1.7; }
+.optimize-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.optimize-grid :deep(.el-select) { width: 100%; }
 .soft-button.danger { color: #a4483a; }
 .result-head { display: flex; align-items: center; gap: 10px; }
 .pending { color: #b4622a; font-size: 12px; }
 .summary { margin: 10px 0 0; color: #47534d; font-size: 13px; line-height: 1.7; }
+.structured-preview { margin-top: 12px; padding: 12px; border: 1px solid #dde8e1; border-radius: 8px; background: #f7faf8; }
+.structured-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.structured-head > div { display: grid; gap: 4px; }
+.structured-head small { color: #718078; font-size: 11px; }
+.structured-head strong { color: #30443a; font-size: 14px; font-weight: 650; }
+.structured-head > span { color: #6c7b73; font-size: 12px; white-space: nowrap; }
+.structured-notes { display: grid; gap: 4px; margin: 10px 0 0; padding: 9px 10px 9px 28px; border-radius: 6px; background: #fbf5eb; color: #806543; font-size: 12px; line-height: 1.6; }
 .error-text { margin: 10px 0 0; color: #a4483a; font-size: 13px; }
 .coverage { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; color: #6b7770; font-size: 12px; }
 .coverage em { padding: 2px 7px; border-radius: 10px; font-style: normal; }
@@ -297,4 +357,5 @@ async function exportResume(format) {
 .col mark { padding: 1px 4px; border-radius: 3px; background: #fbeee4; color: #b4622a; }
 .reason { display: block; margin-top: 6px; color: #8a958e; font-size: 11px; line-height: 1.6; }
 @media (max-width: 900px) { .resume-layout { grid-template-columns: 1fr; } .pair { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .optimize-grid { grid-template-columns: 1fr; } .structured-head { flex-direction: column; gap: 6px; } .structured-head > span { white-space: normal; } }
 </style>
