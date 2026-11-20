@@ -351,10 +351,10 @@ public class ResumeLibraryService {
                         .getBytes(StandardCharsets.UTF_8);
                 case DOCX -> structured == null
                         ? docxExporter.render(resume.getTitle(), resume.getRawText(), theme)
-                        : docxExporter.render(structured, theme);
+                        : docxExporter.render(structured, ResumeTheme.BLUE);
                 case PDF -> structured == null
                         ? pdfExporter.render(resume.getTitle(), resume.getRawText(), theme)
-                        : pdfExporter.render(structured, theme);
+                        : pdfExporter.render(structured, ResumeTheme.BLUE);
             };
             log.info("导出简历 {}：{}，{} 字节", resumeId, format.extension(), body.length);
             return new ExportedResume(fileNameOf(resume, format), body, format);

@@ -131,10 +131,14 @@ public class ResumePdfExporter {
     }
 
     public byte[] render(String title, String text, ResumeTheme theme) throws IOException {
+        return render(title, text, theme, false);
+    }
+
+    private byte[] render(String title, String text, ResumeTheme theme, boolean structured) throws IOException {
         try (PDDocument document = new PDDocument()) {
             ResumePdfFonts fonts = ResumePdfFonts.load(document, regularCandidates, boldCandidates);
             try {
-                Composer composer = new Composer(document, fonts, theme);
+                Composer composer = new Composer(document, fonts, theme, structured);
                 composer.compose(title, text);
                 composer.close();
                 composer.paintFooter(nameOf(title));
@@ -154,7 +158,7 @@ public class ResumePdfExporter {
      */
     public byte[] render(ResumeData data, ResumeTheme theme) throws IOException {
         if (data == null) throw new IllegalArgumentException("ResumeData is required");
-        return render(data.person().name(), new ResumeTextRenderer().render(data), theme);
+        return render(data.person().name(), new ResumeTextRenderer().render(data), theme, true);
     }
 
     private static String nameOf(String title) {
@@ -191,6 +195,7 @@ public class ResumePdfExporter {
         private final ResumePdfFonts fonts;
         private final PDColor accent;
         private final PDColor accentDark;
+        private final boolean structured;
         private final Map<Integer, Float> regularWidths = new HashMap<>();
         private final Map<Integer, Float> boldWidths = new HashMap<>();
         private final Map<PDType0Font, Set<Integer>> unsupported = new IdentityHashMap<>();
@@ -200,11 +205,12 @@ public class ResumePdfExporter {
         private float y;
         private float width;
 
-        Composer(PDDocument document, ResumePdfFonts fonts, ResumeTheme theme) {
+        Composer(PDDocument document, ResumePdfFonts fonts, ResumeTheme theme, boolean structured) {
             this.document = document;
             this.fonts = fonts;
-            this.accent = rgb(theme.accent());
-            this.accentDark = rgb(theme.accentDark());
+            this.structured = structured;
+            this.accent = structured ? rgb("17324D") : rgb(theme.accent());
+            this.accentDark = structured ? rgb("17324D") : rgb(theme.accentDark());
         }
 
         void compose(String title, String text) throws IOException {
@@ -231,8 +237,12 @@ public class ResumePdfExporter {
                 consumed = 1;
             }
             y -= 7f;
-            rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 1.6f, accent);
-            y -= 11f;
+            if (!structured) {
+                rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 1.6f, accent);
+                y -= 11f;
+            } else {
+                y -= 8f;
+            }
             return blocks.subList(consumed, blocks.size());
         }
 
@@ -251,13 +261,20 @@ public class ResumePdfExporter {
             y -= SECTION_GAP_BEFORE + lineHeight;
 
             float barBottom = y + (lineHeight - SECTION_BAR_HEIGHT) / 2f - 1f;
+            if (structured) {
+                content.setNonStrokingColor(rgb("EDF3F7"));
+                content.addRect(MARGIN_LEFT, y - 3f, width, lineHeight + 5f);
+                content.fill();
+            }
             content.setNonStrokingColor(accent);
             content.addRect(MARGIN_LEFT, barBottom, SECTION_BAR_WIDTH, SECTION_BAR_HEIGHT);
             content.fill();
             show(block.text(), fonts.bold(), size, MARGIN_LEFT + SECTION_BAR_WIDTH + 6.5f, accentDark);
 
             y -= 5f;
-            rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 0.7f, RULE);
+            if (!structured) {
+                rule(MARGIN_LEFT, y, MARGIN_LEFT + width, 0.7f, RULE);
+            }
             y -= SECTION_GAP_AFTER;
         }
 

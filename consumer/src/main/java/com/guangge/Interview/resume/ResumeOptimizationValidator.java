@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.resume.dto.ResumeOptimizationResult;
 import com.guangge.Interview.util.JsonText;
 import com.guangge.Interview.util.NumberClaims;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ public class ResumeOptimizationValidator {
         this(objectMapper, new ResumeDataValidator(objectMapper));
     }
 
+    @Autowired
     public ResumeOptimizationValidator(ObjectMapper objectMapper, ResumeDataValidator resumeDataValidator) {
         this.objectMapper = objectMapper;
         this.resumeDataValidator = resumeDataValidator;
@@ -81,19 +83,30 @@ public class ResumeOptimizationValidator {
         // 于是"声明了却没写"这种自相矛盾永远检测不出来（声明的字符串自己就能匹配正则）。
         List<String> inText = new ArrayList<>();
         StringBuilder generated = new StringBuilder();
+        List<ResumeOptimizationResult.Section> normalized = new ArrayList<>();
         for (int index = 0; index < result.sections().size(); index++) {
             ResumeOptimizationResult.Section section = result.sections().get(index);
             String where = "sections[" + index + "]";
             if (section == null) throw new ResumeFormatException(where + " 不能为空");
-            if (section.optimized() == null || section.optimized().isBlank()) {
-                throw new ResumeFormatException(where + ".optimized 不能为空");
+            String optimized = section.optimized();
+            String changeType = section.changeType();
+            if (optimized == null || optimized.isBlank()) {
+                // A "keep" patch often omits optimized text because the original is unchanged.
+                if (section.original() == null || section.original().isBlank()) {
+                    throw new ResumeFormatException(where + ".optimized 不能为空");
+                }
+                optimized = section.original();
+                changeType = "keep";
             }
-            if (section.changeType() == null
-                    || !ResumeOptimizationResult.Section.CHANGE_TYPES.contains(section.changeType())) {
-                throw new ResumeFormatException(where + ".changeType 非法：" + section.changeType());
+            if (changeType == null
+                    || !ResumeOptimizationResult.Section.CHANGE_TYPES.contains(changeType)) {
+                throw new ResumeFormatException(where + ".changeType 非法：" + changeType);
             }
-            collectPlaceholders(section.optimized(), inText);
-            generated.append(withoutPlaceholders(section.optimized())).append('\n');
+            ResumeOptimizationResult.Section value = new ResumeOptimizationResult.Section(
+                    section.kind(), section.original(), optimized, section.reason(), changeType);
+            normalized.add(value);
+            collectPlaceholders(optimized, inText);
+            generated.append(withoutPlaceholders(optimized)).append('\n');
         }
 
         if (groundedSource != null) {
@@ -113,7 +126,12 @@ public class ResumeOptimizationValidator {
             throw new ResumeFormatException(
                     "placeholders 声明了占位符，但正文里一个都没出现（疑似编造了数据）");
         }
-        return result;
+        return new ResumeOptimizationResult(
+                result.resumeData(),
+                result.summary(),
+                List.copyOf(normalized),
+                result.placeholders(),
+                result.keywordCoverage());
     }
 
     private static void collectPlaceholders(String text, List<String> sink) {

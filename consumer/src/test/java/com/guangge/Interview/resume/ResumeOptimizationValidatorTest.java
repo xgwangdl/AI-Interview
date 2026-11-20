@@ -115,6 +115,22 @@ class ResumeOptimizationValidatorTest {
     }
 
     @Test
+    void treatsBlankKeepPatchAsTheOriginalText() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = (ObjectNode) mapper.readTree(validJson());
+        ObjectNode section = (ObjectNode) root.withArray("sections").get(0);
+        section.put("optimized", "");
+        section.put("reason", "原文已经清楚");
+        section.put("changeType", "keep");
+        String json = mapper.writeValueAsString(root);
+
+        ResumeOptimizationResult result = validator.parse(json);
+
+        assertEquals("在某某公司负责订单系统开发。", result.sections().get(0).optimized());
+        assertEquals("keep", result.sections().get(0).changeType());
+    }
+
+    @Test
     void rejectsNewModelOutputWithoutStructuredResumeData() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode json = (ObjectNode) mapper.readTree(validJson());
